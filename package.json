@@ -1,0 +1,13 @@
+{
+  "name": "ai-note-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minimal AI note app with Node.js and OpenAI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

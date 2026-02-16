@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Notes</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="backdrop"></div>
+
+    <main class="app-shell">
+      <section class="auth-card" id="auth-card">
+        <div class="auth-head">
+          <h1>AI Note App</h1>
+          <span id="cloud-badge" class="badge">Local mode</span>
+        </div>
+        <p class="muted">Create an account or sign in to sync notes across sessions.</p>
+        <div class="row">
+          <input id="auth-email" type="email" placeholder="you@example.com" />
+          <input id="auth-password" type="password" placeholder="Password (8+ chars)" />
+        </div>
+        <div class="row wrap">
+          <button id="register-btn">Register</button>
+          <button id="login-btn">Login</button>
+          <button id="logout-btn" class="ghost">Logout</button>
+        </div>
+        <div id="auth-status" class="status"></div>
+        <div class="divider"></div>
+        <div class="row wrap">
+          <button id="subscribe-btn">Go Ad-free ($5.99/mo)</button>
+          <button id="manage-btn" class="ghost">Manage subscription</button>
+        </div>
+        <div id="billing-status" class="status"></div>
+      </section>
+
+      <section class="workspace" id="workspace">
+        <aside class="panel left">
+          <header class="left-header">
+            <strong>Notes</strong>
+            <button id="new-note-btn">New</button>
+          </header>
+          <div class="search-wrap">
+            <input id="search-input" placeholder="Search title, text, tags" />
+          </div>
+          <div id="notes-list" class="notes-list"></div>
+        </aside>
+
+        <section class="panel right">
+          <header class="editor-header">
+            <input id="note-title" placeholder="Untitled note" />
+            <input id="note-tags" placeholder="tags: work, ideas" />
+            <div class="row wrap">
+              <button id="save-btn">Save</button>
+              <button id="delete-btn" class="danger">Delete</button>
+            </div>
+          </header>
+
+          <div class="toolbar row wrap">
+            <button data-cmd="bold" class="ghost">Bold</button>
+            <button data-cmd="italic" class="ghost">Italic</button>
+            <button data-cmd="insertUnorderedList" class="ghost">Bullet List</button>
+            <button data-cmd="insertOrderedList" class="ghost">Numbered List</button>
+            <button id="clear-format-btn" class="ghost">Clear Format</button>
+          </div>
+
+          <div id="note-editor" class="note-editor" contenteditable="true"></div>
+
+          <section class="ai-tools">
+            <div class="row wrap">
+              <button data-ai="summarize">Summarize</button>
+              <button data-ai="improve">Improve writing</button>
+              <button data-ai="tasks">Extract tasks</button>
+              <button id="record-btn" class="ghost">Record voice note</button>
+            </div>
+            <p class="muted">Select text to run AI on a specific section. Voice transcription appends text to the note.</p>
+            <div id="ai-output" class="ai-output"></div>
+
+            <div class="divider"></div>
+            <div class="row wrap">
+              <button id="gen-cards-btn">Generate flashcards</button>
+              <button id="study-btn" class="ghost">Study due</button>
+              <button id="testprep-btn" class="ghost">Practice test</button>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <div id="study-overlay" class="overlay hidden" aria-hidden="true">
+      <div class="overlay-card">
+        <header class="overlay-head">
+          <strong id="overlay-title">Study</strong>
+          <button id="overlay-close" class="ghost">Close</button>
+        </header>
+        <div id="overlay-body" class="overlay-body"></div>
+      </div>
+    </div>
+
+    <div id="ad-bottom-bar" class="ad-bottom hidden" aria-hidden="true">
+      <div class="ad-inner">
+        <div class="ad-label">Sponsored</div>
+        <div id="ad-bottom-slot" class="ad-slot"></div>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
