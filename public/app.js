@@ -10,6 +10,12 @@ const cloudBadgeEl = document.getElementById("cloud-badge");
 const subscribeBtn = document.getElementById("subscribe-btn");
 const manageBtn = document.getElementById("manage-btn");
 const billingStatusEl = document.getElementById("billing-status");
+const metricTotalEl = document.getElementById("metric-total");
+const metricTopEventEl = document.getElementById("metric-top-event");
+const metricFlashcardsEl = document.getElementById("metric-flashcards");
+const metricAiEl = document.getElementById("metric-ai");
+const adCheckBtn = document.getElementById("ad-check-btn");
+const adCheckStatusEl = document.getElementById("ad-check-status");
 
 const notesListEl = document.getElementById("notes-list");
 const searchInputEl = document.getElementById("search-input");
@@ -38,6 +44,10 @@ const onboardingOverlayEl = document.getElementById("onboarding-overlay");
 const onboardingCloseEl = document.getElementById("onboarding-close");
 const onboardingStartEl = document.getElementById("onboarding-start");
 const onboardingStudyEl = document.getElementById("onboarding-study");
+const onboardingEmailEl = document.getElementById("onboarding-email");
+const onboardingEmailSaveEl = document.getElementById("onboarding-email-save");
+const onboardingEmailStatusEl = document.getElementById("onboarding-email-status");
+const onboardingTipsEl = document.getElementById("onboarding-tips");
 
 const adBottomBarEl = document.getElementById("ad-bottom-bar");
 const adBottomSlotEl = document.getElementById("ad-bottom-slot");
@@ -63,6 +73,21 @@ function authScopedKey(prefix) {
 function setAnalyticsStatus(msg, isError = false) {
   analyticsStatusEl.textContent = msg;
   analyticsStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function setAdCheckStatus(msg, isError = false) {
+  adCheckStatusEl.textContent = msg;
+  adCheckStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function setMetric(el, value) {
+  if (el) el.textContent = String(value);
+}
+
+function formatEventName(name) {
+  const raw = String(name || "").trim();
+  if (!raw) return "-";
+  return raw.replaceAll(".", " ");
 }
 
 function onboardingSeen() {
@@ -305,9 +330,83 @@ async function loadAnalyticsSummary() {
   try {
     const data = await api("/api/analytics/summary?days=7", { method: "GET" });
     setAnalyticsStatus(`Last 7d: ${data.total || 0} tracked actions`);
+    const counts = data.counts || {};
+    const entries = Object.entries(counts).sort((a, b) => Number(b[1]) - Number(a[1]));
+    const top = entries[0] || null;
+    const flashcards = entries
+      .filter(([k]) => String(k).startsWith("flashcards."))
+      .reduce((sum, [, n]) => sum + Number(n || 0), 0);
+    const aiActions = Number(counts["ai.action"] || 0);
+    setMetric(metricTotalEl, data.total || 0);
+    setMetric(metricTopEventEl, top ? `${formatEventName(top[0])} (${top[1]})` : "-");
+    setMetric(metricFlashcardsEl, flashcards);
+    setMetric(metricAiEl, aiActions);
   } catch (e) {
     setAnalyticsStatus(`Analytics error: ${e.message}`, true);
+    setMetric(metricTotalEl, "-");
+    setMetric(metricTopEventEl, "-");
+    setMetric(metricFlashcardsEl, "-");
+    setMetric(metricAiEl, "-");
   }
+}
+
+async function loadServerAdCheck() {
+  if (!token) return null;
+  try {
+    return await api("/api/ads/check", { method: "GET" });
+  } catch {
+    return null;
+  }
+}
+
+async function runAdDiagnostics() {
+  if (!token) {
+    setAdCheckStatus("Log in first to run ad checks.", true);
+    return;
+  }
+
+  const lines = [];
+  const server = await loadServerAdCheck();
+  if (server) {
+    lines.push(`Server ad enabled: ${server.adsEnabled ? "yes" : "no"}`);
+    lines.push(`Client configured: ${server.clientConfigured ? "yes" : "no"}`);
+    lines.push(`Bottom slot configured: ${server.bottomSlotConfigured ? "yes" : "no"}`);
+    lines.push(`Ad-free plan active: ${server.adFree ? "yes" : "no"}`);
+  }
+
+  if (adFree) {
+    lines.push("Ads are intentionally hidden for your ad-free plan.");
+    setAdCheckStatus(lines.join("\n"));
+    return;
+  }
+
+  if (!adsenseCfg?.enabled || !adsenseCfg.client || !adsenseCfg.bottomSlot) {
+    lines.push("AdSense env vars are incomplete. Set ADSENSE_CLIENT and ADSENSE_SLOT_BOTTOM in Render.");
+    setAdCheckStatus(lines.join("\n"), true);
+    return;
+  }
+
+  try {
+    await loadAdSenseScript(adsenseCfg.client);
+  } catch {
+    lines.push("Could not load the AdSense script (likely blocker or network policy).");
+    setAdCheckStatus(lines.join("\n"), true);
+    return;
+  }
+
+  const insEl = adBottomSlotEl.querySelector("ins.adsbygoogle");
+  const hasScriptTag = Boolean(document.querySelector('script[src*="adsbygoogle.js"]'));
+  lines.push(`AdSense script tag present: ${hasScriptTag ? "yes" : "no"}`);
+  lines.push(`Bottom ad element present: ${insEl ? "yes" : "no"}`);
+
+  await new Promise((resolve) => setTimeout(resolve, 1400));
+  const iframeCount = adBottomSlotEl.querySelectorAll("iframe").length;
+  lines.push(`Rendered ad iframe count: ${iframeCount}`);
+  if (iframeCount === 0) {
+    lines.push("No creative yet. Common reasons: new AdSense site/domain review, low fill, ad blocker.");
+  }
+
+  setAdCheckStatus(lines.join("\n"), false);
 }
 
 async function startCheckout() {
@@ -401,6 +500,11 @@ async function logout() {
   billingLoaded = false;
   setBillingStatus("");
   setAnalyticsStatus("");
+  setAdCheckStatus("");
+  setMetric(metricTotalEl, "-");
+  setMetric(metricTopEventEl, "-");
+  setMetric(metricFlashcardsEl, "-");
+  setMetric(metricAiEl, "-");
 }
 
 async function loadMe() {
@@ -489,6 +593,10 @@ function closeOverlay() {
 }
 
 function openOnboarding() {
+  if (me?.email) onboardingEmailEl.value = me.email;
+  onboardingEmailStatusEl.textContent = "";
+  onboardingTipsEl.innerHTML = "";
+  onboardingTipsEl.classList.add("hidden");
   onboardingOverlayEl.classList.remove("hidden");
   onboardingOverlayEl.setAttribute("aria-hidden", "false");
 }
@@ -497,6 +605,42 @@ function closeOnboarding() {
   onboardingOverlayEl.classList.add("hidden");
   onboardingOverlayEl.setAttribute("aria-hidden", "true");
   markOnboardingSeen();
+}
+
+function setOnboardingEmailStatus(msg, isError = false) {
+  onboardingEmailStatusEl.textContent = msg;
+  onboardingEmailStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function renderWelcomeTips(tips = []) {
+  onboardingTipsEl.innerHTML = "";
+  if (!Array.isArray(tips) || !tips.length) {
+    onboardingTipsEl.classList.add("hidden");
+    return;
+  }
+  for (const tip of tips) {
+    const li = document.createElement("li");
+    li.textContent = tip;
+    onboardingTipsEl.appendChild(li);
+  }
+  onboardingTipsEl.classList.remove("hidden");
+}
+
+async function saveOnboardingEmail() {
+  if (!token) return setOnboardingEmailStatus("Log in first.", true);
+  const email = String(onboardingEmailEl.value || "").trim();
+  if (!email.includes("@")) return setOnboardingEmailStatus("Enter a valid email address.", true);
+  try {
+    const out = await api("/api/onboarding/email", {
+      method: "POST",
+      body: JSON.stringify({ email, source: "onboarding_modal" })
+    });
+    setOnboardingEmailStatus("Saved. Welcome tips are ready.");
+    renderWelcomeTips(out.tips || []);
+    fireAndForgetTrack("onboarding.tips_viewed", { tipCount: (out.tips || []).length });
+  } catch (e) {
+    setOnboardingEmailStatus(`Could not save email: ${e.message}`, true);
+  }
 }
 
 function buttonRow(buttons) {
@@ -631,7 +775,7 @@ async function renderStudyDue() {
           if (idx >= cards.length) {
             overlayBodyEl.innerHTML = `<div class="muted">Done. You reviewed ${cards.length} cards.</div>`;
           } else {
-            if (reviewed % 3 === 0) {
+            if (!adFree && reviewed % 3 === 0) {
               renderAdBreak(render);
             } else {
               render();
@@ -878,6 +1022,8 @@ onboardingStudyEl.addEventListener("click", () => {
   closeOnboarding();
   renderStudyDue().catch((e) => (aiOutputEl.textContent = `Study error: ${e.message}`));
 });
+onboardingEmailSaveEl.addEventListener("click", () => saveOnboardingEmail());
+adCheckBtn.addEventListener("click", () => runAdDiagnostics());
 
 (async function init() {
   await loadConfig();

@@ -88,6 +88,33 @@ h1 {
   min-height: 1.25rem;
   color: #0f172a;
   font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.metric-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #ffffffdb;
+  padding: 0.55rem 0.65rem;
+}
+
+.metric-label {
+  color: var(--soft);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.metric-value {
+  font: 700 0.92rem "IBM Plex Mono", monospace;
+  margin-top: 0.2rem;
+  overflow-wrap: anywhere;
 }
 
 .workspace {
@@ -351,6 +378,13 @@ h1 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.8rem;
+}
+
+.tips-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: #0f172a;
+  font-size: 0.84rem;
 }
 
 @media (max-width: 760px) {

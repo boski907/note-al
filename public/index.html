@@ -40,6 +40,29 @@
         </div>
         <div id="billing-status" class="status"></div>
         <div id="analytics-status" class="status"></div>
+        <div class="metrics-grid">
+          <article class="metric-card">
+            <div class="metric-label">7d actions</div>
+            <div id="metric-total" class="metric-value">-</div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-label">Top event</div>
+            <div id="metric-top-event" class="metric-value">-</div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-label">Flashcards</div>
+            <div id="metric-flashcards" class="metric-value">-</div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-label">AI actions</div>
+            <div id="metric-ai" class="metric-value">-</div>
+          </article>
+        </div>
+        <div class="divider"></div>
+        <div class="row wrap">
+          <button id="ad-check-btn" class="ghost">Run ad check</button>
+        </div>
+        <div id="ad-check-status" class="status"></div>
       </section>
 
       <section class="workspace" id="workspace">
@@ -126,6 +149,16 @@
           <div class="card-face">
             <h3>Study Loop</h3>
             <p class="muted">Write notes, generate flashcards, run practice tests, then review due cards daily.</p>
+          </div>
+          <div class="card-face">
+            <h3>Get Welcome Tips</h3>
+            <p class="muted">Add your best email to receive setup and study tips.</p>
+            <div class="row wrap">
+              <input id="onboarding-email" type="email" placeholder="you@example.com" />
+              <button id="onboarding-email-save" class="ghost">Save email</button>
+            </div>
+            <div id="onboarding-email-status" class="status"></div>
+            <ul id="onboarding-tips" class="tips-list hidden"></ul>
           </div>
           <div class="row wrap">
             <button id="onboarding-start">Start writing</button>

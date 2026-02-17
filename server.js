@@ -45,6 +45,7 @@ const DATA_DIR = path.join(__dirname, "data");
 const NOTES_FILE = path.join(DATA_DIR, "notes.json");
 const FLASHCARDS_FILE = path.join(DATA_DIR, "flashcards.json");
 const ANALYTICS_FILE = path.join(DATA_DIR, "analytics.json");
+const ONBOARDING_FILE = path.join(DATA_DIR, "onboarding_emails.json");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
 
@@ -148,6 +149,11 @@ function getAuthToken(req) {
 
 function sanitizeEmail(email) {
   return String(email || "").trim().toLowerCase();
+}
+
+function looksLikeEmail(value) {
+  const v = sanitizeEmail(value);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 }
 
 function sanitizeTags(tags) {
@@ -630,6 +636,37 @@ async function getAnalyticsSummary(user, days = 7) {
   };
 }
 
+async function saveOnboardingEmail(user, email, source = "onboarding_modal") {
+  const cleanEmail = sanitizeEmail(email);
+  if (!looksLikeEmail(cleanEmail)) {
+    throw new Error("Invalid email");
+  }
+
+  if (USE_SUPABASE) {
+    await trackEvent(user, "onboarding.email_capture", { email: cleanEmail, source: String(source || "onboarding_modal").slice(0, 40) });
+    return;
+  }
+
+  const items = loadJson(ONBOARDING_FILE, []);
+  const existing = items.find((x) => x.userId === user.id);
+  const now = new Date().toISOString();
+  if (existing) {
+    existing.email = cleanEmail;
+    existing.source = String(source || "onboarding_modal").slice(0, 40);
+    existing.updatedAt = now;
+  } else {
+    items.push({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      email: cleanEmail,
+      source: String(source || "onboarding_modal").slice(0, 40),
+      createdAt: now,
+      updatedAt: now
+    });
+  }
+  saveJson(ONBOARDING_FILE, items);
+}
+
 async function upsertNote(user, payload) {
   const now = new Date().toISOString();
   const note = {
@@ -1074,6 +1111,28 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, out);
       }
 
+      if (pathname === "/api/ads/check" && req.method === "GET") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        let adFree = false;
+        if (USE_SUPABASE && STRIPE_SECRET_KEY) {
+          try {
+            const billing = await computeAdFreeStatus(user);
+            adFree = Boolean(billing.adFree);
+          } catch {
+            // Keep adFree=false if billing lookup fails.
+          }
+        }
+        return json(res, 200, {
+          appBaseUrl: APP_BASE_URL,
+          adsEnabled: Boolean(ADSENSE_CLIENT && ADSENSE_SLOT_BOTTOM),
+          clientConfigured: Boolean(ADSENSE_CLIENT),
+          bottomSlotConfigured: Boolean(ADSENSE_SLOT_BOTTOM),
+          breakSlotConfigured: Boolean(ADSENSE_SLOT_BREAK || ADSENSE_SLOT_BOTTOM),
+          adFree
+        });
+      }
+
       if (pathname === "/api/billing/create-checkout-session" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
@@ -1144,6 +1203,24 @@ const server = http.createServer(async (req, res) => {
         const days = Number(reqUrl.searchParams.get("days") || 7);
         const summary = await getAnalyticsSummary(user, days);
         return json(res, 200, summary);
+      }
+
+      if (pathname === "/api/onboarding/email" && req.method === "POST") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const body = parseJsonBody(await readBody(req));
+        const email = sanitizeEmail(body.email);
+        const source = String(body.source || "onboarding_modal");
+        await saveOnboardingEmail(user, email, source);
+        await trackEvent(user, "onboarding.welcome_tips_served", { source: source.slice(0, 40) });
+        return json(res, 200, {
+          ok: true,
+          tips: [
+            "Generate flashcards from each note, then review due cards daily.",
+            "Use practice test mode before quizzes to find weak topics quickly.",
+            "If ads appear blank, run the ad check and confirm AdSense site approval."
+          ]
+        });
       }
 
       if (pathname === "/api/auth/register" && req.method === "POST") {
