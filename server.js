@@ -22,6 +22,22 @@ loadEnvFile(path.join(__dirname, ".env"));
 
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = Number(process.env.PORT || 3000);
+const NODE_ENV = process.env.NODE_ENV || "development";
+const IS_PROD = NODE_ENV === "production" || Boolean(process.env.RENDER_SERVICE_ID || process.env.RENDER);
+
+// Security / abuse limits (keep these fairly generous; tune down once you have real traffic patterns).
+const DEFAULT_MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 12_000_000); // 12MB
+const TRANSCRIBE_MAX_BODY_BYTES = Number(process.env.TRANSCRIBE_MAX_BODY_BYTES || 20_000_000); // 20MB (base64 JSON)
+const STRIPE_WEBHOOK_MAX_BODY_BYTES = Number(process.env.STRIPE_WEBHOOK_MAX_BODY_BYTES || 2_000_000); // 2MB
+
+const RATE_LIMIT_ENABLED = (process.env.RATE_LIMIT_ENABLED || (IS_PROD ? "1" : "0")) !== "0";
+const RL_AUTH_WINDOW_MS = Number(process.env.RL_AUTH_WINDOW_MS || 10 * 60 * 1000); // 10 min
+const RL_AUTH_LOGIN_MAX = Number(process.env.RL_AUTH_LOGIN_MAX || 20);
+const RL_AUTH_REGISTER_MAX = Number(process.env.RL_AUTH_REGISTER_MAX || 10);
+
+const RL_AI_WINDOW_MS = Number(process.env.RL_AI_WINDOW_MS || 60 * 1000); // 1 min
+const RL_AI_MAX_PER_IP = Number(process.env.RL_AI_MAX_PER_IP || 30);
+const RL_AI_MAX_PER_USER = Number(process.env.RL_AI_MAX_PER_USER || 60);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const OPENAI_TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe";
@@ -74,25 +90,57 @@ function saveJson(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
 }
 
+function httpError(statusCode, message) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+}
+
+function getClientIp(req) {
+  // Only trust X-Forwarded-For in production where we expect a proxy/load balancer.
+  const xff = String(req.headers["x-forwarded-for"] || "");
+  if (IS_PROD && xff) {
+    const first = xff.split(",")[0].trim();
+    if (first) return first;
+  }
+  return String(req.socket?.remoteAddress || "");
+}
+
+function securityHeaders() {
+  const headers = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    // Keep this permissive enough for your voice feature.
+    "Permissions-Policy": "camera=(), geolocation=(), microphone=(self), payment=(), usb=()"
+  };
+
+  // Safe to set for your public domain in production; browsers ignore it on plain HTTP.
+  if (IS_PROD) headers["Strict-Transport-Security"] = "max-age=15552000; includeSubDomains"; // 180d
+  return headers;
+}
+
 function json(res, status, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
-    "Content-Length": Buffer.byteLength(body)
+    "Content-Length": Buffer.byteLength(body),
+    "Cache-Control": "no-store",
+    ...securityHeaders()
   });
   res.end(body);
 }
 
 function sendFile(res, filePath) {
   if (!filePath.startsWith(PUBLIC_DIR)) {
-    res.writeHead(403);
+    res.writeHead(403, securityHeaders());
     res.end("Forbidden");
     return;
   }
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
-      res.writeHead(404);
+      res.writeHead(404, securityHeaders());
       res.end("Not found");
       return;
     }
@@ -111,24 +159,49 @@ function sendFile(res, filePath) {
 
     if (filePath === path.join(PUBLIC_DIR, "index.html")) {
       const html = data.toString("utf8").replaceAll("__ADSENSE_CLIENT__", ADSENSE_CLIENT || "");
-      res.writeHead(200, { "Content-Type": contentType });
+      res.writeHead(200, {
+        "Content-Type": contentType,
+        "Cache-Control": "no-store",
+        ...securityHeaders()
+      });
       res.end(html);
       return;
     }
 
-    res.writeHead(200, { "Content-Type": contentType });
+    res.writeHead(200, {
+      "Content-Type": contentType,
+      // Cache static assets a bit in production, but avoid long cache since filenames aren't hashed.
+      "Cache-Control": IS_PROD ? "public, max-age=300" : "no-store",
+      ...securityHeaders()
+    });
     res.end(data);
   });
 }
 
-function readBody(req) {
+function readBody(req, opts = {}) {
+  const maxBytes = Number(opts.maxBytes || DEFAULT_MAX_BODY_BYTES);
   return new Promise((resolve, reject) => {
-    let body = "";
+    const chunks = [];
+    let bytes = 0;
+    let aborted = false;
     req.on("data", (chunk) => {
-      body += chunk;
-      if (body.length > 40_000_000) reject(new Error("Payload too large"));
+      if (aborted) return;
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      bytes += buf.length;
+      if (bytes > maxBytes) {
+        aborted = true;
+        // Stop reading ASAP to avoid buffering attacker payloads.
+        try {
+          req.destroy();
+        } catch {
+          // ignore
+        }
+        reject(httpError(413, "Payload too large"));
+        return;
+      }
+      chunks.push(buf);
     });
-    req.on("end", () => resolve(body));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
 }
@@ -149,6 +222,27 @@ function getAuthToken(req) {
   const header = req.headers.authorization || "";
   if (!header.startsWith("Bearer ")) return "";
   return header.slice(7).trim();
+}
+
+const _rateBuckets = new Map();
+function rateLimitConsume(key, limit, windowMs) {
+  const now = Date.now();
+  const bucket = _rateBuckets.get(key);
+  if (!bucket || now >= bucket.resetAt) {
+    _rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return { ok: true, remaining: Math.max(0, limit - 1), resetAt: now + windowMs };
+  }
+  bucket.count += 1;
+  const remaining = Math.max(0, limit - bucket.count);
+  return { ok: bucket.count <= limit, remaining, resetAt: bucket.resetAt };
+}
+
+function rateLimitOr429(res, key, limit, windowMs) {
+  if (!RATE_LIMIT_ENABLED) return true;
+  const out = rateLimitConsume(key, limit, windowMs);
+  if (out.ok) return true;
+  json(res, 429, { error: "Too many requests. Please slow down." });
+  return false;
 }
 
 function sanitizeEmail(email) {
@@ -1686,10 +1780,11 @@ const server = http.createServer(async (req, res) => {
   try {
     const reqUrl = new URL(req.url, `http://${req.headers.host}`);
     const pathname = reqUrl.pathname;
+    const ip = getClientIp(req);
 
     if (pathname.startsWith("/api/")) {
       if (pathname === "/api/stripe/webhook" && req.method === "POST") {
-        const rawBody = await readBody(req);
+        const rawBody = await readBody(req, { maxBytes: STRIPE_WEBHOOK_MAX_BODY_BYTES });
         try {
           verifyStripeWebhookSignature(rawBody, req.headers["stripe-signature"], STRIPE_WEBHOOK_SECRET);
           const event = parseJsonBody(rawBody);
@@ -1858,6 +1953,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (pathname === "/api/auth/register" && req.method === "POST") {
+        if (!rateLimitOr429(res, `ip:${ip}:auth:register`, RL_AUTH_REGISTER_MAX, RL_AUTH_WINDOW_MS)) return;
         const body = parseJsonBody(await readBody(req));
         const email = sanitizeEmail(body.email);
         const password = String(body.password || "");
@@ -1898,6 +1994,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (pathname === "/api/auth/login" && req.method === "POST") {
+        if (!rateLimitOr429(res, `ip:${ip}:auth:login`, RL_AUTH_LOGIN_MAX, RL_AUTH_WINDOW_MS)) return;
         const body = parseJsonBody(await readBody(req));
         const email = sanitizeEmail(body.email);
         const password = String(body.password || "");
@@ -2026,6 +2123,8 @@ const server = http.createServer(async (req, res) => {
         const user = await requireUser(req, res);
         if (!user) return;
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
+        if (!rateLimitOr429(res, `ip:${ip}:ai:flashcards`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
+        if (!rateLimitOr429(res, `user:${user.id}:ai:flashcards`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
         const body = parseJsonBody(await readBody(req));
         const noteText = String(body.noteText || "");
         const noteId = body.noteId ? String(body.noteId) : null;
@@ -2095,6 +2194,8 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/ai" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
+        if (!rateLimitOr429(res, `ip:${ip}:ai:generic`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
+        if (!rateLimitOr429(res, `user:${user.id}:ai:generic`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
         const body = parseJsonBody(await readBody(req));
         const action = String(body.action || "summarize");
         const noteText = String(body.noteText || "");
@@ -2109,6 +2210,8 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/tutor" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
+        if (!rateLimitOr429(res, `ip:${ip}:ai:tutor`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
+        if (!rateLimitOr429(res, `user:${user.id}:ai:tutor`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
         const body = parseJsonBody(await readBody(req));
         const noteText = String(body.noteText || "");
         const question = String(body.question || "");
@@ -2129,7 +2232,9 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/sources/import" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
-        const body = parseJsonBody(await readBody(req));
+        if (!rateLimitOr429(res, `ip:${ip}:ai:sources`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
+        if (!rateLimitOr429(res, `user:${user.id}:ai:sources`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        const body = parseJsonBody(await readBody(req, { maxBytes: DEFAULT_MAX_BODY_BYTES }));
         const imported = await importSources(body);
         if (!imported.length) {
           return json(res, 400, { error: "No readable sources were imported" });
@@ -2145,7 +2250,9 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/transcribe" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
-        const body = parseJsonBody(await readBody(req));
+        if (!rateLimitOr429(res, `ip:${ip}:ai:transcribe`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
+        if (!rateLimitOr429(res, `user:${user.id}:ai:transcribe`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        const body = parseJsonBody(await readBody(req, { maxBytes: TRANSCRIBE_MAX_BODY_BYTES }));
         const text = await transcribeAudio(body.audioBase64, body.mimeType);
         return json(res, 200, { text });
       }
@@ -2154,6 +2261,8 @@ const server = http.createServer(async (req, res) => {
         const user = await requireUser(req, res);
         if (!user) return;
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
+        if (!rateLimitOr429(res, `ip:${ip}:ai:testprep`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
+        if (!rateLimitOr429(res, `user:${user.id}:ai:testprep`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
         const body = parseJsonBody(await readBody(req));
         const noteText = String(body.noteText || "");
         const numQuestions = Number(body.numQuestions || 8);
@@ -2170,8 +2279,9 @@ const server = http.createServer(async (req, res) => {
     const filePath = path.join(PUBLIC_DIR, relativePath);
     sendFile(res, filePath);
   } catch (error) {
+    const status = error && typeof error === "object" && error.statusCode ? Number(error.statusCode) : 500;
     const message = error instanceof Error ? error.message : "Unexpected error";
-    json(res, 500, { error: message });
+    json(res, status, { error: status === 500 && IS_PROD ? "Internal server error" : message });
   }
 });
 
