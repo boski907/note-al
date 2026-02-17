@@ -508,8 +508,40 @@ function parseUrlInput(raw) {
 
 function canImportFile(name) {
   const lower = String(name || "").toLowerCase();
-  const allowed = [".txt", ".md", ".csv", ".json", ".html", ".htm", ".xml", ".log"];
+  const allowed = [
+    ".txt",
+    ".md",
+    ".csv",
+    ".json",
+    ".html",
+    ".htm",
+    ".xml",
+    ".log",
+    ".pdf",
+    ".mp4",
+    ".mov",
+    ".m4v",
+    ".webm",
+    ".mp3",
+    ".wav",
+    ".m4a",
+    ".ogg"
+  ];
   return allowed.some((ext) => lower.endsWith(ext));
+}
+
+function extOf(name) {
+  const lower = String(name || "").toLowerCase();
+  const idx = lower.lastIndexOf(".");
+  return idx >= 0 ? lower.slice(idx) : "";
+}
+
+function isPdfExt(ext) {
+  return ext === ".pdf";
+}
+
+function isMediaExt(ext) {
+  return [".mp4", ".mov", ".m4v", ".webm", ".mp3", ".wav", ".m4a", ".ogg"].includes(ext);
 }
 
 async function readSelectedFilesAsSources() {
@@ -518,10 +550,33 @@ async function readSelectedFilesAsSources() {
   const rejected = files.length - accepted.length;
   const sources = [];
   for (const f of accepted) {
+    const ext = extOf(f.name);
+    if (isPdfExt(ext)) {
+      const base64 = await blobToBase64(f);
+      sources.push({
+        name: f.name,
+        kind: "pdf",
+        base64
+      });
+      continue;
+    }
+
+    if (isMediaExt(ext)) {
+      const base64 = await blobToBase64(f);
+      sources.push({
+        name: f.name,
+        kind: "media",
+        mimeType: f.type || "audio/webm",
+        base64
+      });
+      continue;
+    }
+
     const text = String(await f.text()).trim();
     if (!text) continue;
     sources.push({
       name: f.name,
+      kind: "text",
       content: text.slice(0, 140000)
     });
   }
@@ -1040,7 +1095,7 @@ importFilesBtn.addEventListener("click", async () => {
   if (!sources.length) {
     setSourceStatus(
       rejected > 0
-        ? "No supported text files selected. Use txt, md, csv, json, html, xml, or log."
+        ? "No supported files selected. Use text, PDF, or video/audio files."
         : "Select files first.",
       true
     );

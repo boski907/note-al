@@ -122,7 +122,7 @@ function readBody(req) {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 8_000_000) reject(new Error("Payload too large"));
+      if (body.length > 40_000_000) reject(new Error("Payload too large"));
     });
     req.on("end", () => resolve(body));
     req.on("error", reject);
@@ -900,6 +900,13 @@ function cleanImportedText(value) {
     .trim();
 }
 
+function decodeBase64Payload(base64) {
+  const cleaned = String(base64 || "");
+  const onlyBase64 = cleaned.includes(",") ? cleaned.split(",").pop() : cleaned;
+  if (!onlyBase64) return Buffer.alloc(0);
+  return Buffer.from(onlyBase64, "base64");
+}
+
 function htmlToText(html) {
   const raw = String(html || "");
   return cleanImportedText(
@@ -918,6 +925,141 @@ function htmlToText(html) {
       .replace(/&quot;/g, '"')
       .replace(/[ \t]+/g, " ")
   );
+}
+
+function decodePdfEscapedString(v) {
+  return String(v || "")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\\(/g, "(")
+    .replace(/\\\)/g, ")")
+    .replace(/\\\\/g, "\\");
+}
+
+function extractTextFromPdfBuffer(buffer) {
+  const streams = [];
+  const raw = buffer.toString("latin1");
+  const streamRe = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+  let m;
+  while ((m = streamRe.exec(raw)) !== null) streams.push(m[1]);
+
+  const candidates = [raw];
+  for (const s of streams) {
+    try {
+      const inflated = require("zlib").inflateSync(Buffer.from(s, "latin1")).toString("latin1");
+      candidates.push(inflated);
+    } catch {
+      // Some streams are not flate encoded.
+    }
+  }
+
+  const pieces = [];
+  for (const text of candidates) {
+    const tj = text.match(/\((?:\\.|[^\\)])*\)\s*Tj/g) || [];
+    for (const token of tj) {
+      const inner = token.replace(/\)\s*Tj$/, "").replace(/^\(/, "");
+      pieces.push(decodePdfEscapedString(inner));
+    }
+    const tjArray = text.match(/\[(.*?)\]\s*TJ/gs) || [];
+    for (const arr of tjArray) {
+      const inner = arr.replace(/\]\s*TJ$/s, "").replace(/^\[/, "");
+      const parts = inner.match(/\((?:\\.|[^\\)])*\)/g) || [];
+      for (const part of parts) {
+        pieces.push(decodePdfEscapedString(part.slice(1, -1)));
+      }
+    }
+  }
+
+  return cleanImportedText(pieces.join(" "));
+}
+
+function extractYoutubeVideoId(inputUrl) {
+  try {
+    const u = new URL(String(inputUrl || ""));
+    const host = u.hostname.toLowerCase();
+    if (host.includes("youtu.be")) {
+      return u.pathname.replaceAll("/", "").trim() || null;
+    }
+    if (host.includes("youtube.com")) {
+      const v = u.searchParams.get("v");
+      if (v) return v.trim();
+      const parts = u.pathname.split("/").filter(Boolean);
+      const idx = parts.findIndex((p) => p === "shorts" || p === "embed" || p === "live");
+      if (idx >= 0 && parts[idx + 1]) return parts[idx + 1];
+    }
+  } catch {
+    // Ignore parse errors.
+  }
+  return null;
+}
+
+function parseYoutubeCaptionsFromWatchHtml(html) {
+  const text = String(html || "");
+  const marker = "ytInitialPlayerResponse = ";
+  const idx = text.indexOf(marker);
+  if (idx >= 0) {
+    const start = idx + marker.length;
+    const end = text.indexOf(";</script>", start);
+    if (end > start) {
+      const rawJson = text.slice(start, end).trim();
+      try {
+        return JSON.parse(rawJson);
+      } catch {
+        // Fallback below.
+      }
+    }
+  }
+
+  const jsonMatch = text.match(/"captions":\s*(\{[\s\S]*?\})\s*,\s*"videoDetails":/);
+  if (!jsonMatch) return null;
+  try {
+    return { captions: JSON.parse(jsonMatch[1]) };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchYoutubeTranscript(url) {
+  const videoId = extractYoutubeVideoId(url);
+  if (!videoId) throw new Error("Invalid YouTube URL");
+
+  const watch = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; NotematicaBot/1.0)"
+    }
+  });
+  if (!watch.ok) throw new Error(`Could not load YouTube page (${watch.status})`);
+  const html = await watch.text();
+  const player = parseYoutubeCaptionsFromWatchHtml(html);
+  const tracks = player?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+  if (!Array.isArray(tracks) || !tracks.length) {
+    throw new Error("No captions available for this YouTube video");
+  }
+
+  const preferred =
+    tracks.find((t) => String(t.languageCode || "").startsWith("en")) ||
+    tracks[0];
+  const baseUrl = String(preferred.baseUrl || "");
+  if (!baseUrl) throw new Error("Caption track unavailable");
+
+  const transcriptRes = await fetch(`${baseUrl}&fmt=json3`, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; NotematicaBot/1.0)"
+    }
+  });
+  if (!transcriptRes.ok) throw new Error(`Could not load captions (${transcriptRes.status})`);
+  const json = await transcriptRes.json().catch(() => ({}));
+  const events = Array.isArray(json.events) ? json.events : [];
+  const lines = [];
+  for (const ev of events) {
+    const segs = Array.isArray(ev.segs) ? ev.segs : [];
+    const textLine = segs.map((s) => String(s.utf8 || "")).join("").trim();
+    if (textLine) lines.push(textLine);
+  }
+  const textOut = cleanImportedText(lines.join("\n"));
+  if (!textOut) throw new Error("Caption text was empty");
+  return textOut;
 }
 
 async function fetchUrlAsSource(url) {
@@ -959,6 +1101,31 @@ async function importSources(body) {
 
   for (const src of fileSources.slice(0, 20)) {
     const name = String(src?.name || "source.txt").slice(0, 120);
+    const kind = String(src?.kind || "text");
+
+    if (kind === "pdf") {
+      const pdfBuffer = decodeBase64Payload(src?.base64);
+      if (!pdfBuffer.length) continue;
+      if (pdfBuffer.length > 20 * 1024 * 1024) throw new Error(`PDF too large: ${name}`);
+      const content = extractTextFromPdfBuffer(pdfBuffer).slice(0, 140000);
+      if (!content) throw new Error(`Could not extract readable text from PDF: ${name}`);
+      out.push({ name, kind: "pdf", content });
+      continue;
+    }
+
+    if (kind === "media") {
+      const base64 = String(src?.base64 || "");
+      const mimeType = String(src?.mimeType || "audio/webm");
+      const mediaBuffer = decodeBase64Payload(base64);
+      if (!mediaBuffer.length) continue;
+      if (mediaBuffer.length > 24 * 1024 * 1024) throw new Error(`Video/audio too large: ${name}`);
+      const transcript = await transcribeAudio(base64, mimeType);
+      const content = cleanImportedText(transcript).slice(0, 140000);
+      if (!content) throw new Error(`No transcript returned for media: ${name}`);
+      out.push({ name, kind: "media", content });
+      continue;
+    }
+
     const content = cleanImportedText(String(src?.content || "").slice(0, 140000));
     if (!content) continue;
     out.push({
@@ -971,10 +1138,10 @@ async function importSources(body) {
   for (const raw of urls.slice(0, 8)) {
     const url = String(raw || "").trim();
     if (!url) continue;
-    const content = await fetchUrlAsSource(url);
+    const content = extractYoutubeVideoId(url) ? await fetchYoutubeTranscript(url) : await fetchUrlAsSource(url);
     out.push({
       name: url.slice(0, 120),
-      kind: "url",
+      kind: extractYoutubeVideoId(url) ? "youtube" : "url",
       content
     });
   }
