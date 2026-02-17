@@ -111,6 +111,12 @@ let adsenseCfg = null;
 let adFree = false;
 let billingLoaded = false;
 
+function syncBottomAdSafeArea() {
+  const shown = adBottomBarEl && !adBottomBarEl.classList.contains("hidden");
+  const height = shown ? Math.ceil(adBottomBarEl.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty("--bottom-ad-height", `${height}px`);
+}
+
 let token = localStorage.getItem("ai_notes_token") || "";
 let me = null;
 let notes = [];
@@ -784,14 +790,24 @@ function renderAdInto(container, { client, slot }, { responsive = true } = {}) {
 }
 
 async function initAdsense() {
-  if (adFree) return;
-  if (!adsenseCfg?.enabled) return;
-  if (!adsenseCfg.client || !adsenseCfg.bottomSlot) return;
+  if (adFree) {
+    syncBottomAdSafeArea();
+    return;
+  }
+  if (!adsenseCfg?.enabled || !adsenseCfg.client || !adsenseCfg.bottomSlot) {
+    adBottomBarEl.classList.add("hidden");
+    adBottomBarEl.setAttribute("aria-hidden", "true");
+    syncBottomAdSafeArea();
+    return;
+  }
 
   await loadAdSenseScript(adsenseCfg.client);
   adBottomBarEl.classList.remove("hidden");
   adBottomBarEl.setAttribute("aria-hidden", "false");
   renderAdInto(adBottomSlotEl, { client: adsenseCfg.client, slot: adsenseCfg.bottomSlot }, { responsive: true });
+  syncBottomAdSafeArea();
+  // Re-measure after the ad slot has a chance to size itself.
+  setTimeout(syncBottomAdSafeArea, 600);
 }
 
 function setBillingStatus(msg, isError = false) {
@@ -810,6 +826,7 @@ async function loadBillingStatus() {
       // Hide ads immediately if they were already shown.
       adBottomBarEl.classList.add("hidden");
       adBottomBarEl.setAttribute("aria-hidden", "true");
+      syncBottomAdSafeArea();
     } else {
       setBillingStatus("Free plan (ads enabled).");
       initAdsense().catch(() => {});
@@ -1943,6 +1960,8 @@ themeSelectEl.addEventListener("change", () => {
   await loadLearningPlan();
   await loadDashboard();
   await loadReferralCode();
+  // Keep safe area correct on resize/orientation changes (mobile Safari).
+  window.addEventListener("resize", () => syncBottomAdSafeArea());
   if (!onboardingSeen()) openOnboarding();
   else if (!tutorialSeen()) openTutorial();
 })();

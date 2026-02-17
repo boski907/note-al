@@ -38,7 +38,8 @@ body {
   background: radial-gradient(circle at 15% 20%, #cffafe 0%, transparent 25%),
     radial-gradient(circle at 85% 80%, #fed7aa 0%, transparent 22%),
     linear-gradient(135deg, var(--bg-a), var(--bg-b));
-  padding-bottom: 92px;
+  /* Dynamically adjusted when the bottom ad is shown to avoid covering content. */
+  padding-bottom: calc(20px + var(--bottom-ad-height, 0px));
   overflow-x: hidden;
 }
 
@@ -375,7 +376,8 @@ h1 {
   display: grid;
   place-items: center;
   padding: 1rem;
-  z-index: 50;
+  /* Overlays must sit above the bottom ad bar. */
+  z-index: 100;
 }
 
 .ad-bottom {
