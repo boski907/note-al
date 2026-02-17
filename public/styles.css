@@ -126,6 +126,11 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.learning-block {
+  display: grid;
+  gap: 0.45rem;
+}
+
 .workspace {
   display: grid;
   gap: 1rem;

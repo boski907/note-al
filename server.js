@@ -853,6 +853,84 @@ async function deleteFlashcard(user, id) {
   );
 }
 
+function computeCardDifficulty(card) {
+  const ease = Number(card.ease || 2.5);
+  const lapses = Number(card.lapses || 0);
+  const reps = Number(card.reps || 0);
+  const interval = Number(card.intervalDays || 0);
+  let score = 0;
+  if (ease < 2.2) score += 2;
+  if (ease < 1.8) score += 2;
+  if (lapses >= 1) score += 1;
+  if (lapses >= 3) score += 2;
+  if (reps <= 1) score += 1;
+  if (interval <= 1) score += 1;
+  return score;
+}
+
+function estimateMastery(cards) {
+  if (!cards.length) return 0;
+  const total = cards.reduce((sum, c) => {
+    const easeNorm = Math.max(0, Math.min(1, (Number(c.ease || 2.5) - 1.3) / (2.8 - 1.3)));
+    const lapsePenalty = Math.min(0.45, Number(c.lapses || 0) * 0.08);
+    const repBoost = Math.min(0.25, Number(c.reps || 0) * 0.03);
+    return sum + Math.max(0, Math.min(1, easeNorm - lapsePenalty + repBoost));
+  }, 0);
+  return Math.round((100 * total) / cards.length);
+}
+
+async function buildLearningPlan(user) {
+  const cards = await listFlashcards(user, { dueOnly: false, limit: 5000 });
+  const dueCards = await listFlashcards(user, { dueOnly: true, limit: 2000 });
+  const notes = await listNotes(user);
+
+  const weakTagMap = new Map();
+  for (const c of cards) {
+    const tags = Array.isArray(c.tags) && c.tags.length ? c.tags : ["untagged"];
+    const diff = computeCardDifficulty(c);
+    for (const t of tags.slice(0, 6)) {
+      const key = String(t || "untagged").trim().toLowerCase() || "untagged";
+      const prev = weakTagMap.get(key) || { tag: key, score: 0, cards: 0, due: 0 };
+      prev.score += diff;
+      prev.cards += 1;
+      if (new Date(c.dueAt).getTime() <= Date.now()) prev.due += 1;
+      weakTagMap.set(key, prev);
+    }
+  }
+
+  const weakTags = [...weakTagMap.values()]
+    .sort((a, b) => b.score - a.score || b.due - a.due)
+    .slice(0, 3)
+    .map((x) => ({ tag: x.tag, score: x.score, cards: x.cards, due: x.due }));
+
+  const masteryScore = estimateMastery(cards);
+  const notesWithoutTags = notes.filter((n) => !Array.isArray(n.tags) || n.tags.length === 0).length;
+  const noCardsYet = cards.length === 0;
+
+  const actions = [];
+  if (noCardsYet) {
+    actions.push("Generate flashcards from your top 1-2 notes to start spaced review.");
+  } else {
+    if (dueCards.length > 0) actions.push(`Review ${dueCards.length} due card(s) first before creating new content.`);
+    if (weakTags.length > 0) actions.push(`Focus on weak topic: ${weakTags[0].tag}. Use feedback + test prep on that topic.`);
+    if (masteryScore < 55) actions.push("Run a short daily loop (15 minutes): study due cards, then 5-question practice test.");
+    else if (masteryScore < 75) actions.push("Run a medium daily loop (20 minutes): due cards + targeted practice test.");
+    else actions.push("Mastery is strong. Keep a light maintenance review and add new advanced notes.");
+  }
+  if (notesWithoutTags > 0) {
+    actions.push(`Tag ${notesWithoutTags} note(s) without tags for better personalized recommendations.`);
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    masteryScore,
+    totalCards: cards.length,
+    dueNow: dueCards.length,
+    weakTags,
+    nextActions: actions.slice(0, 4)
+  };
+}
+
 function scheduleReview(card, grade) {
   // grade: 0=again, 1=hard, 2=good, 3=easy
   const now = new Date();
@@ -1754,6 +1832,13 @@ const server = http.createServer(async (req, res) => {
         if (!user) return;
         const due = await listFlashcards(user, { dueOnly: true, limit: 1000 });
         return json(res, 200, { dueCount: due.length });
+      }
+
+      if (pathname === "/api/learning/plan" && req.method === "GET") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const plan = await buildLearningPlan(user);
+        return json(res, 200, plan);
       }
 
       if (pathname === "/api/ai" && req.method === "POST") {

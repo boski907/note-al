@@ -10,6 +10,12 @@ const metricTotalEl = document.getElementById("metric-total");
 const metricTopEventEl = document.getElementById("metric-top-event");
 const metricFlashcardsEl = document.getElementById("metric-flashcards");
 const metricAiEl = document.getElementById("metric-ai");
+const refreshLearningBtn = document.getElementById("refresh-learning-btn");
+const learningStatusEl = document.getElementById("learning-status");
+const learningMasteryEl = document.getElementById("learning-mastery");
+const learningDueEl = document.getElementById("learning-due");
+const learningFocusEl = document.getElementById("learning-focus");
+const learningNextEl = document.getElementById("learning-next");
 const adCheckBtn = document.getElementById("ad-check-btn");
 const adCheckStatusEl = document.getElementById("ad-check-status");
 
@@ -89,6 +95,18 @@ function formatEventName(name) {
   const raw = String(name || "").trim();
   if (!raw) return "-";
   return raw.replaceAll(".", " ");
+}
+
+function setLearningStatus(msg, isError = false) {
+  learningStatusEl.textContent = msg;
+  learningStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function clearLearningUi() {
+  setMetric(learningMasteryEl, "-");
+  setMetric(learningDueEl, "-");
+  learningFocusEl.textContent = "";
+  learningNextEl.textContent = "";
 }
 
 function onboardingSeen() {
@@ -362,6 +380,25 @@ async function loadAnalyticsSummary() {
   }
 }
 
+async function loadLearningPlan() {
+  if (!token) return;
+  try {
+    const plan = await api("/api/learning/plan", { method: "GET" });
+    setMetric(learningMasteryEl, `${plan.masteryScore ?? 0}%`);
+    setMetric(learningDueEl, plan.dueNow ?? 0);
+    const weak = Array.isArray(plan.weakTags) ? plan.weakTags : [];
+    learningFocusEl.textContent = weak.length
+      ? `Focus topics: ${weak.map((w) => `${w.tag} (${w.due} due)`).join(", ")}`
+      : "Focus topics: build cards from tagged notes to personalize recommendations.";
+    const next = Array.isArray(plan.nextActions) ? plan.nextActions : [];
+    learningNextEl.textContent = next.length ? `Next: ${next.join(" ")}` : "";
+    setLearningStatus(`Plan updated ${new Date(plan.generatedAt || Date.now()).toLocaleTimeString()}.`);
+  } catch (e) {
+    clearLearningUi();
+    setLearningStatus(`Learning plan error: ${e.message}`, true);
+  }
+}
+
 async function loadServerAdCheck() {
   if (!token) return null;
   try {
@@ -471,6 +508,8 @@ async function logout() {
   setMetric(metricTopEventEl, "-");
   setMetric(metricFlashcardsEl, "-");
   setMetric(metricAiEl, "-");
+  clearLearningUi();
+  setLearningStatus("");
   setSourceStatus("");
   if (sourceUrlsEl) sourceUrlsEl.value = "";
   if (sourceFilesEl) sourceFilesEl.value = "";
@@ -769,6 +808,7 @@ async function generateFlashcards() {
     const due = await fetchDueCount();
     aiOutputEl.textContent = `Created ${created.length} flashcards. Due now: ${due}.`;
     fireAndForgetTrack("flashcards.generate", { count: created.length });
+    loadLearningPlan().catch(() => {});
   } catch (e) {
     aiOutputEl.textContent = `Flashcards error: ${e.message}`;
   }
@@ -867,6 +907,7 @@ async function renderStudyDue() {
             body: JSON.stringify({ id: c.id, grade })
           });
           fireAndForgetTrack("flashcards.review", { grade });
+          loadLearningPlan().catch(() => {});
           idx += 1;
           reviewed += 1;
           showBack = false;
@@ -1144,6 +1185,7 @@ onboardingStudyEl.addEventListener("click", () => {
 });
 onboardingEmailSaveEl.addEventListener("click", () => saveOnboardingEmail());
 adCheckBtn.addEventListener("click", () => runAdDiagnostics());
+refreshLearningBtn.addEventListener("click", () => loadLearningPlan());
 
 (async function init() {
   if (!token) {
@@ -1160,6 +1202,7 @@ adCheckBtn.addEventListener("click", () => runAdDiagnostics());
   await loadNotes();
   await loadBillingStatus();
   await loadAnalyticsSummary();
+  await loadLearningPlan();
   if (!onboardingSeen()) openOnboarding();
 })();
 
