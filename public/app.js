@@ -1,6 +1,7 @@
 const authCardEl = document.getElementById("auth-card");
 const workspaceEl = document.getElementById("workspace");
 const logoutBtn = document.getElementById("logout-btn");
+const startTutorialBtn = document.getElementById("start-tutorial-btn");
 const authStatusEl = document.getElementById("auth-status");
 const cloudBadgeEl = document.getElementById("cloud-badge");
 const themeSelectEl = document.getElementById("theme-select");
@@ -89,6 +90,13 @@ const onboardingEmailEl = document.getElementById("onboarding-email");
 const onboardingEmailSaveEl = document.getElementById("onboarding-email-save");
 const onboardingEmailStatusEl = document.getElementById("onboarding-email-status");
 const onboardingTipsEl = document.getElementById("onboarding-tips");
+const tutorialOverlayEl = document.getElementById("tutorial-overlay");
+const tutorialTitleEl = document.getElementById("tutorial-title");
+const tutorialTextEl = document.getElementById("tutorial-text");
+const tutorialProgressEl = document.getElementById("tutorial-progress");
+const tutorialBackEl = document.getElementById("tutorial-back");
+const tutorialNextEl = document.getElementById("tutorial-next");
+const tutorialSkipEl = document.getElementById("tutorial-skip");
 
 const adBottomBarEl = document.getElementById("ad-bottom-bar");
 const adBottomSlotEl = document.getElementById("ad-bottom-slot");
@@ -118,6 +126,39 @@ let lastInterstitialAt = 0;
 let interstitialsThisSession = 0;
 let sessionUpgradedAt = 0;
 let lastTypingAt = 0;
+let tutorialStepIndex = 0;
+const tutorialSteps = [
+  {
+    title: "Your workspace",
+    text: "Use this left panel to browse and search notes quickly.",
+    selector: ".panel.left"
+  },
+  {
+    title: "Write and save",
+    text: "Edit your note here, then click Save to sync changes.",
+    selector: "#note-editor"
+  },
+  {
+    title: "AI tools",
+    text: "Run summarize, improve, feedback, and tutor actions from this section.",
+    selector: ".ai-tools"
+  },
+  {
+    title: "Study mode",
+    text: "Generate flashcards and run practice tests from these buttons.",
+    selector: "#gen-cards-btn"
+  },
+  {
+    title: "Progress",
+    text: "Track mastery, streak, XP, and dashboard activity here.",
+    selector: "#learning-mastery"
+  },
+  {
+    title: "Reminders and sharing",
+    text: "Set reminders, share notes, and export when ready.",
+    selector: "#save-reminder-btn"
+  }
+];
 
 function setDisabled(el, disabled, title = "") {
   if (!el) return;
@@ -302,6 +343,14 @@ function onboardingSeen() {
 
 function markOnboardingSeen() {
   localStorage.setItem(authScopedKey("onboarding_seen_v1"), "1");
+}
+
+function tutorialSeen() {
+  return localStorage.getItem(authScopedKey("tutorial_seen_v1")) === "1";
+}
+
+function markTutorialSeen() {
+  localStorage.setItem(authScopedKey("tutorial_seen_v1"), "1");
 }
 
 function escapeHtml(v) {
@@ -855,6 +904,7 @@ async function logout() {
   sessionUpgradedAt = 0;
   sessionStorage.removeItem(upgradedKey);
   closeOutputAdsOverlay();
+  closeTutorial(false);
   clearLearningUi();
   streakDaysEl.textContent = "0 days";
   xpLevelEl.textContent = "Lv 1";
@@ -1227,6 +1277,43 @@ function closeOnboarding() {
   onboardingOverlayEl.classList.add("hidden");
   onboardingOverlayEl.setAttribute("aria-hidden", "true");
   markOnboardingSeen();
+  if (!tutorialSeen()) {
+    setTimeout(() => openTutorial(), 120);
+  }
+}
+
+function clearTutorialFocus() {
+  document.querySelectorAll(".tutorial-focus").forEach((el) => el.classList.remove("tutorial-focus"));
+}
+
+function renderTutorialStep() {
+  const step = tutorialSteps[tutorialStepIndex];
+  if (!step) return;
+  tutorialTitleEl.textContent = step.title;
+  tutorialTextEl.textContent = step.text;
+  tutorialProgressEl.textContent = `Step ${tutorialStepIndex + 1} of ${tutorialSteps.length}`;
+  tutorialBackEl.disabled = tutorialStepIndex === 0;
+  tutorialNextEl.textContent = tutorialStepIndex === tutorialSteps.length - 1 ? "Finish" : "Next";
+  clearTutorialFocus();
+  const target = document.querySelector(step.selector);
+  if (target) {
+    target.classList.add("tutorial-focus");
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
+
+function openTutorial() {
+  tutorialStepIndex = 0;
+  tutorialOverlayEl.classList.remove("hidden");
+  tutorialOverlayEl.setAttribute("aria-hidden", "false");
+  renderTutorialStep();
+}
+
+function closeTutorial(markSeen = true) {
+  tutorialOverlayEl.classList.add("hidden");
+  tutorialOverlayEl.setAttribute("aria-hidden", "true");
+  clearTutorialFocus();
+  if (markSeen) markTutorialSeen();
 }
 
 function setOnboardingEmailStatus(msg, isError = false) {
@@ -1720,6 +1807,23 @@ refreshLearningBtn.addEventListener("click", () => loadLearningPlan());
 upgradeLearningBtn.addEventListener("click", () => startCheckout());
 upgradeSourcesBtn.addEventListener("click", () => startCheckout());
 upgradeAiBtn.addEventListener("click", () => startCheckout());
+startTutorialBtn.addEventListener("click", () => openTutorial());
+tutorialSkipEl.addEventListener("click", () => closeTutorial(true));
+tutorialBackEl.addEventListener("click", () => {
+  tutorialStepIndex = Math.max(0, tutorialStepIndex - 1);
+  renderTutorialStep();
+});
+tutorialNextEl.addEventListener("click", () => {
+  if (tutorialStepIndex >= tutorialSteps.length - 1) {
+    closeTutorial(true);
+    return;
+  }
+  tutorialStepIndex += 1;
+  renderTutorialStep();
+});
+tutorialOverlayEl.addEventListener("click", (e) => {
+  if (e.target === tutorialOverlayEl) closeTutorial(true);
+});
 themeSelectEl.addEventListener("change", () => {
   const t = String(themeSelectEl.value || "bold");
   applyTheme(t);
@@ -1762,6 +1866,7 @@ themeSelectEl.addEventListener("change", () => {
   await loadDashboard();
   await loadReferralCode();
   if (!onboardingSeen()) openOnboarding();
+  else if (!tutorialSeen()) openTutorial();
 })();
 
 subscribeBtn.addEventListener("click", () => startCheckout());

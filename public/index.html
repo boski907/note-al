@@ -31,6 +31,7 @@
         <p class="muted">Signed in account and subscription settings.</p>
         <div id="auth-status" class="status"></div>
         <div class="row wrap">
+          <button id="start-tutorial-btn" class="ghost">Start tutorial</button>
           <button id="logout-btn" class="ghost">Logout</button>
         </div>
         <div class="divider"></div>
@@ -287,6 +288,23 @@
           <div class="row wrap">
             <button id="onboarding-start">Start writing</button>
             <button id="onboarding-study" class="ghost">Open study mode</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tutorial-overlay" class="overlay hidden" aria-hidden="true">
+      <div class="overlay-card">
+        <header class="overlay-head">
+          <strong id="tutorial-title">Tutorial</strong>
+          <button id="tutorial-skip" class="ghost">Skip</button>
+        </header>
+        <div class="overlay-body">
+          <p id="tutorial-text" class="muted"></p>
+          <div id="tutorial-progress" class="status"></div>
+          <div class="row wrap">
+            <button id="tutorial-back" class="ghost">Back</button>
+            <button id="tutorial-next">Next</button>
           </div>
         </div>
       </div>
