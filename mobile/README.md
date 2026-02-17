@@ -50,3 +50,6 @@ npm run cap:open:android
 - The web app detects the native wrapper and disables AdSense + hides Stripe purchase/portal buttons (store-safe). Users can still be Premium if they subscribed on the web.
 - For store submission, you still need Apple Developer + Google Play developer accounts and store listing assets (screenshots, description, privacy policy URL).
 - Android builds require a JDK (recommend JDK 17) and Android Studio SDK setup.
+  - Homebrew JDK 17 path:
+    - `JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home`
+  - In Android Studio: Settings -> Build, Execution, Deployment -> Build Tools -> Gradle -> Gradle JDK -> point it at that `JAVA_HOME`.
