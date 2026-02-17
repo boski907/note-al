@@ -63,6 +63,7 @@ function safeJsonParse(txt) {
 }
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const OPENAI_BUILDER_MODEL = process.env.OPENAI_BUILDER_MODEL || OPENAI_MODEL;
 const OPENAI_TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
@@ -2070,6 +2071,71 @@ async function runAiAction(action, noteText, selectedText, sources = []) {
   return output.trim();
 }
 
+function sanitizeChatMessages(messages, { maxMessages = 12, maxChars = 2000 } = {}) {
+  const arr = Array.isArray(messages) ? messages : [];
+  const out = [];
+  for (const m of arr.slice(-maxMessages)) {
+    const roleRaw = String(m?.role || "").toLowerCase().trim();
+    const role = roleRaw === "assistant" ? "assistant" : "user";
+    const content = String(m?.content || "").trim().slice(0, maxChars);
+    if (!content) continue;
+    out.push({ role, content });
+  }
+  return out;
+}
+
+async function runBuilderAssistantChat(user, messages, clientContext = {}) {
+  if (!OPENAI_API_KEY) throw new Error("Missing OPENAI_API_KEY");
+
+  const safeClient = clientContext && typeof clientContext === "object" ? clientContext : {};
+  const origin = String(safeClient.origin || "").slice(0, 200);
+  const nativeShell = Boolean(safeClient.nativeShell);
+  const clientAdFree = Boolean(safeClient.adFree);
+
+  const sys = [
+    "You are Notematica's Builder Chat: a pragmatic app-building assistant.",
+    "Goal: help the developer finish and ship the app. Give step-by-step instructions and checklists.",
+    "Do not ask for or accept API keys, passwords, tokens, secret keys, or full config dumps. If the user pastes secrets, tell them to rotate them.",
+    "When you suggest changes, prefer small, safe steps and mention where (Render, Supabase, Stripe, AdSense, Apple/Google consoles).",
+    "If you are uncertain, ask 1-2 clarifying questions at the end.",
+    "",
+    "Known app facts:",
+    `- Server: Node (single server.js). Supabase mode: ${USE_SUPABASE ? "on" : "off"}.`,
+    `- Billing: Stripe web subscription exists (ad-free).`,
+    `- Ads: AdSense web units; should not run in native shells.`,
+    `- Usage limits: enabled=${USAGE_LIMITS_ENABLED}.`,
+    `- Client origin: ${origin || "unknown"}. Native shell: ${nativeShell ? "yes" : "no"}. Client says ad-free: ${clientAdFree ? "yes" : "no"}.`,
+    "",
+    "Output format:",
+    "- Start with the immediate next 1-3 steps.",
+    "- Then include a short checklist (max 8 bullets).",
+    "- Keep it concise and actionable."
+  ].join("\n");
+
+  const input = [{ role: "system", content: sys }, ...sanitizeChatMessages(messages)];
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+    body: JSON.stringify({
+      model: OPENAI_BUILDER_MODEL,
+      input
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`OpenAI API error ${response.status}: ${errText}`);
+  }
+
+  const data = await response.json();
+  const text =
+    data.output_text ||
+    data.output?.map((o) => o?.content?.map((c) => c?.text).join("")).join("\n") ||
+    "";
+  return String(text || "").trim();
+}
+
 async function transcribeAudio(audioBase64, mimeType) {
   if (!OPENAI_API_KEY) throw new Error("Missing OPENAI_API_KEY");
 
@@ -2611,6 +2677,31 @@ const server = http.createServer(async (req, res) => {
         const sources = normalizeImportedSources(body.sources, { maxSources: 6, maxCharsPerSource: 18000 });
         const answer = await runTutorAnswer(noteText, question, sources);
         return json(res, 200, { answer, citations: citationsFromSources(sources) });
+      }
+
+      if (pathname === "/api/assistant/chat" && req.method === "POST") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
+        if (!rateLimitOr429(res, `ip:${ip}:ai:assistant`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
+        if (!rateLimitOr429(res, `user:${user.id}:ai:assistant`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        const tier = await getCachedEntitlements(user);
+        const limits = usageLimitsForTier(tier);
+        if (
+          !(await enforceUsageOr429(res, user, {
+            scope: "ai_output",
+            inc: 1,
+            limit: limits.ai_output,
+            message: "Daily chat limit reached. Try again tomorrow or upgrade."
+          }))
+        )
+          return;
+        const body = parseJsonBody(await readBody(req));
+        const messages = sanitizeChatMessages(body.messages, { maxMessages: 12, maxChars: 2000 });
+        const clientContext = body.clientContext && typeof body.clientContext === "object" ? body.clientContext : {};
+        const answer = await runBuilderAssistantChat(user, messages, clientContext);
+        await trackEvent(user, "assistant.chat", { messages: messages.length });
+        return json(res, 200, { answer });
       }
 
       if (pathname === "/api/share/create" && req.method === "POST") {

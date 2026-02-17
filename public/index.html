@@ -317,6 +317,31 @@
       </div>
     </div>
 
+    <button id="builder-chat-toggle" class="builder-chat-toggle" type="button" aria-label="Open help chat">
+      Help
+    </button>
+
+    <div id="builder-chat" class="builder-chat hidden" aria-hidden="true">
+      <header class="builder-chat-head">
+        <strong>Builder chat</strong>
+        <button id="builder-chat-close" class="ghost" type="button" aria-label="Close help chat">Close</button>
+      </header>
+      <div id="builder-chat-messages" class="builder-chat-messages" aria-live="polite"></div>
+      <div class="builder-chat-quick">
+        <button class="ghost" type="button" data-builder-chip="Deploy to Render">Deploy</button>
+        <button class="ghost" type="button" data-builder-chip="Fix Supabase migration or RLS">Supabase</button>
+        <button class="ghost" type="button" data-builder-chip="Get ready for Apple App Store submission">Apple Store</button>
+        <button class="ghost" type="button" data-builder-chip="Get ready for Google Play submission">Google Play</button>
+        <button class="ghost" type="button" data-builder-chip="Ads and AdSense troubleshooting">Ads</button>
+        <button class="ghost" type="button" data-builder-chip="Premium billing troubleshooting">Billing</button>
+      </div>
+      <form id="builder-chat-form" class="builder-chat-form">
+        <input id="builder-chat-input" placeholder="Ask what to do next..." autocomplete="off" />
+        <button id="builder-chat-send" type="submit">Send</button>
+      </form>
+      <div id="builder-chat-status" class="status"></div>
+    </div>
+
     <footer class="legal-links">
       <a href="/privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
       <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a>

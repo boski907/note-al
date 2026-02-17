@@ -198,6 +198,112 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.builder-chat-toggle {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + var(--bottom-ad-height, 0px));
+  z-index: 1300;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 118, 110, 0.4);
+  background: linear-gradient(180deg, rgba(15, 118, 110, 0.95), rgba(14, 116, 144, 0.92));
+  color: white;
+  font-weight: 800;
+  padding: 0.55rem 0.9rem;
+  box-shadow: var(--shadow-strong);
+}
+
+.builder-chat {
+  position: fixed;
+  right: 16px;
+  bottom: calc(72px + var(--bottom-ad-height, 0px));
+  width: min(420px, calc(100vw - 32px));
+  height: min(560px, calc(100vh - 140px));
+  z-index: 1300;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow-strong);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto auto;
+}
+
+.builder-chat.hidden {
+  display: none;
+}
+
+.builder-chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.22), rgba(249, 115, 22, 0.18));
+}
+
+.builder-chat-messages {
+  padding: 0.75rem;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.builder-msg {
+  max-width: 92%;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.6rem 0.65rem;
+  white-space: pre-wrap;
+  line-height: 1.25rem;
+}
+
+.builder-msg.user {
+  align-self: flex-end;
+  background: rgba(15, 118, 110, 0.12);
+  border-color: rgba(15, 118, 110, 0.25);
+}
+
+.builder-msg.assistant {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.builder-chat-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.6rem 0.75rem;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.builder-chat-quick button.ghost {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+}
+
+.builder-chat-form {
+  padding: 0.6rem 0.75rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+}
+
+.builder-chat-form input {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.55rem 0.65rem;
+  background: rgba(255, 255, 255, 0.75);
+  font-family: inherit;
+}
+
+.builder-chat-form button {
+  border-radius: 12px;
+}
+
 .learning-block {
   display: grid;
   gap: 0.45rem;

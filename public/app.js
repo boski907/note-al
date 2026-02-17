@@ -107,6 +107,15 @@ const outputAdSlotCEl = document.getElementById("output-ad-slot-c");
 const outputAdsContinueEl = document.getElementById("output-ads-continue");
 const outputAdsCloseEl = document.getElementById("output-ads-close");
 
+const builderChatToggleEl = document.getElementById("builder-chat-toggle");
+const builderChatEl = document.getElementById("builder-chat");
+const builderChatCloseEl = document.getElementById("builder-chat-close");
+const builderChatMessagesEl = document.getElementById("builder-chat-messages");
+const builderChatFormEl = document.getElementById("builder-chat-form");
+const builderChatInputEl = document.getElementById("builder-chat-input");
+const builderChatStatusEl = document.getElementById("builder-chat-status");
+const builderChatChipEls = [...document.querySelectorAll("[data-builder-chip]")];
+
 let adsenseCfg = null;
 let adFree = false;
 let billingLoaded = false;
@@ -750,6 +759,123 @@ function formatQuotaError(e, fallback) {
     if (!Number.isNaN(dt.getTime())) resetText = ` Resets: ${dt.toLocaleString()}.`;
   }
   return `${fallback || "Daily limit reached."}${resetText}`;
+}
+
+const BUILDER_CHAT_KEY = "notematica_builder_chat_v1";
+
+function loadBuilderChat() {
+  try {
+    const raw = localStorage.getItem(BUILDER_CHAT_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((m) => ({
+        role: m && m.role === "assistant" ? "assistant" : "user",
+        content: String(m && m.content ? m.content : "").slice(0, 8000)
+      }))
+      .filter((m) => m.content.trim())
+      .slice(-30);
+  } catch {
+    return [];
+  }
+}
+
+function saveBuilderChat(messages) {
+  try {
+    localStorage.setItem(BUILDER_CHAT_KEY, JSON.stringify((messages || []).slice(-60)));
+  } catch {
+    // ignore storage issues
+  }
+}
+
+let builderChatMessages = loadBuilderChat();
+
+function setBuilderChatStatus(msg, isError = false) {
+  if (!builderChatStatusEl) return;
+  builderChatStatusEl.textContent = msg || "";
+  builderChatStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function renderBuilderChatMessages() {
+  if (!builderChatMessagesEl) return;
+  builderChatMessagesEl.innerHTML = "";
+
+  const msgs = builderChatMessages.length
+    ? builderChatMessages
+    : [
+        {
+          role: "assistant",
+          content:
+            "Ask me what to do next and I’ll give you step-by-step instructions for Notematica (Render, Supabase, Stripe, AdSense, app store builds). Don’t paste API keys or secrets."
+        }
+      ];
+
+  for (const m of msgs) {
+    const div = document.createElement("div");
+    div.className = `builder-msg ${m.role === "assistant" ? "assistant" : "user"}`;
+    div.textContent = String(m.content || "");
+    builderChatMessagesEl.appendChild(div);
+  }
+
+  builderChatMessagesEl.scrollTop = builderChatMessagesEl.scrollHeight;
+}
+
+function openBuilderChat() {
+  if (!builderChatEl) return;
+  builderChatEl.classList.remove("hidden");
+  builderChatEl.setAttribute("aria-hidden", "false");
+  renderBuilderChatMessages();
+  setBuilderChatStatus("");
+  setTimeout(() => builderChatInputEl && builderChatInputEl.focus(), 30);
+}
+
+function closeBuilderChat() {
+  if (!builderChatEl) return;
+  builderChatEl.classList.add("hidden");
+  builderChatEl.setAttribute("aria-hidden", "true");
+  setBuilderChatStatus("");
+}
+
+async function sendBuilderChatMessage(text) {
+  const msg = String(text || "").trim();
+  if (!msg) return;
+  if (!token) {
+    setBuilderChatStatus("Sign in first, then ask here.", true);
+    return;
+  }
+  if (!navigator.onLine) {
+    setBuilderChatStatus("You look offline. Reconnect and try again.", true);
+    return;
+  }
+
+  builderChatMessages.push({ role: "user", content: msg });
+  builderChatMessages = builderChatMessages.slice(-30);
+  saveBuilderChat(builderChatMessages);
+  renderBuilderChatMessages();
+
+  setBuilderChatStatus("Thinking...");
+  try {
+    const out = await api("/api/assistant/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        messages: builderChatMessages.slice(-12),
+        clientContext: {
+          origin: String(location.origin || ""),
+          nativeShell: Boolean(IS_NATIVE_SHELL),
+          adFree: Boolean(adFree)
+        }
+      })
+    });
+    const answer = String(out.answer || "").trim() || "(No answer)";
+    builderChatMessages.push({ role: "assistant", content: answer });
+    builderChatMessages = builderChatMessages.slice(-30);
+    saveBuilderChat(builderChatMessages);
+    renderBuilderChatMessages();
+    setBuilderChatStatus("");
+  } catch (e) {
+    const quota = formatQuotaError(e, "Chat limit reached.");
+    setBuilderChatStatus(quota ? quota : `Chat error: ${e.message}`, true);
+  }
 }
 
 async function trackEvent(eventName, payload = {}) {
@@ -2515,6 +2641,37 @@ importUrlsBtn.addEventListener("click", async () => {
     return;
   }
   await importSources({ sources: [], urls });
+});
+
+if (builderChatToggleEl) {
+  builderChatToggleEl.addEventListener("click", () => {
+    const open = builderChatEl && !builderChatEl.classList.contains("hidden");
+    if (open) closeBuilderChat();
+    else openBuilderChat();
+  });
+}
+if (builderChatCloseEl) builderChatCloseEl.addEventListener("click", () => closeBuilderChat());
+if (builderChatFormEl) {
+  builderChatFormEl.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = String(builderChatInputEl?.value || "").trim();
+    if (!v) return;
+    if (builderChatInputEl) builderChatInputEl.value = "";
+    sendBuilderChatMessage(v).catch(() => {});
+  });
+}
+builderChatChipEls.forEach((b) => {
+  b.addEventListener("click", () => {
+    const text = String(b.dataset.builderChip || "").trim();
+    if (!text) return;
+    openBuilderChat();
+    sendBuilderChatMessage(text).catch(() => {});
+  });
+});
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const open = builderChatEl && !builderChatEl.classList.contains("hidden");
+  if (open) closeBuilderChat();
 });
 
 onboardingCloseEl.addEventListener("click", closeOnboarding);
