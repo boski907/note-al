@@ -1324,6 +1324,8 @@ async function runAiAction(action, noteText, selectedText) {
       "Summarize this note in 4-6 concise bullet points. Keep key facts and decisions.",
     improve:
       "Rewrite this note to be clearer and tighter while preserving meaning.",
+    feedback:
+      "Give actionable feedback on this note. Return three sections: Strengths, Gaps/risks, and Next improvements (3-5 bullets). Be specific and concise.",
     tasks:
       "Extract actionable tasks from this note as a markdown checklist. If none, say 'No clear tasks found.'"
   };
