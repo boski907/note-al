@@ -1209,6 +1209,49 @@ function extractJsonArray(text) {
   return s;
 }
 
+function normalizeImportedSources(rawSources, { maxSources = 6, maxCharsPerSource = 18000 } = {}) {
+  const arr = Array.isArray(rawSources) ? rawSources : [];
+  const out = [];
+  let idx = 0;
+  for (const s of arr) {
+    if (out.length >= maxSources) break;
+    const content = String(s?.content || "").trim();
+    if (!content) continue;
+    idx += 1;
+    const id = `S${idx}`;
+    const name = String(s?.name || "").trim().slice(0, 160) || id;
+    const url = /^https?:\/\//i.test(String(s?.url || "").trim())
+      ? String(s.url).trim()
+      : /^https?:\/\//i.test(name)
+        ? name
+        : "";
+    out.push({
+      id,
+      name,
+      url,
+      kind: String(s?.kind || "").trim().slice(0, 40),
+      content: content.slice(0, maxCharsPerSource)
+    });
+  }
+  return out;
+}
+
+function formatSourcesForPrompt(sources) {
+  const srcs = Array.isArray(sources) ? sources : [];
+  if (!srcs.length) return "";
+  const parts = [];
+  for (const s of srcs) {
+    const head = `${s.id} | ${s.name}${s.url ? ` (${s.url})` : ""}`.trim();
+    parts.push(`[${head}]\n${String(s.content || "").trim()}`);
+  }
+  return parts.join("\n\n");
+}
+
+function citationsFromSources(sources) {
+  const srcs = Array.isArray(sources) ? sources : [];
+  return srcs.map((s) => ({ id: s.id, name: s.name, url: s.url || "" }));
+}
+
 function cleanImportedText(value) {
   return String(value || "")
     .replace(/\r/g, "")
@@ -1627,8 +1670,9 @@ async function importSources(body) {
   return out;
 }
 
-async function generateFlashcardsFromText(noteText, count = 10) {
+async function generateFlashcardsFromText(noteText, count = 10, sources = []) {
   const n = Math.max(1, Math.min(25, Number(count) || 10));
+  const srcBlock = formatSourcesForPrompt(sources);
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
@@ -1638,9 +1682,12 @@ async function generateFlashcardsFromText(noteText, count = 10) {
         {
           role: "system",
           content:
-            "Generate high-quality study flashcards. Output ONLY valid JSON (no markdown). Return an array of objects: {front: string, back: string, tags: string[]}."
+            "Generate high-quality study flashcards grounded ONLY in the provided context. Output ONLY valid JSON (no markdown). Return an array of objects: {front: string, back: string, tags: string[], citations?: string[]} where citations are like [\"S1\",\"S2\"]. If the context is insufficient, do not invent facts; keep the card general and omit citations."
         },
-        { role: "user", content: `Create ${n} flashcards from this note:\n\n${noteText}` }
+        {
+          role: "user",
+          content: `Create ${n} flashcards from the context below.\n\nNote:\n${noteText}\n\n${srcBlock ? `Sources:\n${srcBlock}\n\n` : ""}Rules: Use only the note+sources. Add citations like [S1] in citations array when applicable.`
+        }
       ]
     })
   });
@@ -1662,14 +1709,16 @@ async function generateFlashcardsFromText(noteText, count = 10) {
     .map((c) => ({
       front: String(c.front || "").trim(),
       back: String(c.back || "").trim(),
-      tags: sanitizeTags(c.tags || [])
+      tags: sanitizeTags(c.tags || []),
+      citations: Array.isArray(c.citations) ? c.citations.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 6) : []
     }))
     .filter((c) => c.front && c.back)
     .slice(0, n);
 }
 
-async function generateTestPrep(noteText, numQuestions = 8, mode = "standard") {
+async function generateTestPrep(noteText, numQuestions = 8, mode = "standard", sources = []) {
   const n = Math.max(3, Math.min(20, Number(numQuestions) || 8));
+  const srcBlock = formatSourcesForPrompt(sources);
   const modeHint =
     mode === "timed"
       ? "Favor concise, high-pressure exam questions."
@@ -1685,9 +1734,12 @@ async function generateTestPrep(noteText, numQuestions = 8, mode = "standard") {
         {
           role: "system",
           content:
-            "Create exam-style practice questions. Output ONLY valid JSON (no markdown). Return {questions:[{type:\"mcq\"|\"short\",question:string,choices?:string[],answer:string,explanation:string}]}."
+            "Create exam-style practice questions grounded ONLY in the provided context. Output ONLY valid JSON (no markdown). Return {questions:[{type:\"mcq\"|\"short\",question:string,choices?:string[],answer:string,explanation:string,citations?:string[]}]} where citations are like [\"S1\",\"S2\"] and refer to the provided sources. If not supported by context, do not invent; keep it conceptual and omit citations."
         },
-        { role: "user", content: `Create ${n} questions from this note. ${modeHint}\n\n${noteText}` }
+        {
+          role: "user",
+          content: `Create ${n} questions from the context below. ${modeHint}\n\nNote:\n${noteText}\n\n${srcBlock ? `Sources:\n${srcBlock}\n\n` : ""}Rules: Use only the note+sources. Include citations array when applicable.`
+        }
       ]
     })
   });
@@ -1712,7 +1764,8 @@ async function generateTestPrep(noteText, numQuestions = 8, mode = "standard") {
         question: String(q.question || "").trim(),
         choices: Array.isArray(q.choices) ? q.choices.map((c) => String(c || "").trim()).filter(Boolean) : undefined,
         answer: String(q.answer || "").trim(),
-        explanation: String(q.explanation || "").trim()
+        explanation: String(q.explanation || "").trim(),
+        citations: Array.isArray(q.citations) ? q.citations.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 6) : []
       }))
       .filter((q) => q.question && q.answer)
       .slice(0, n)
@@ -1747,8 +1800,9 @@ async function generateStudyPlan(user, days = 7, minutesPerDay = 20) {
   };
 }
 
-async function runTutorAnswer(noteText, question) {
+async function runTutorAnswer(noteText, question, sources = []) {
   if (!OPENAI_API_KEY) throw new Error("Missing OPENAI_API_KEY");
+  const srcBlock = formatSourcesForPrompt(sources);
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -1761,11 +1815,11 @@ async function runTutorAnswer(noteText, question) {
         {
           role: "system",
           content:
-            "You are a study tutor. Use only the provided note context. If uncertain, say what is missing."
+            "You are a study tutor. Use ONLY the provided context (note + sources). If uncertain, say what is missing. When you state a factual claim derived from sources, add bracket citations like [S1] inline."
         },
         {
           role: "user",
-          content: `Context note:\n${noteText}\n\nStudent question:\n${question}\n\nRespond with: direct answer, short explanation, and one follow-up question.`
+          content: `Context note:\n${noteText}\n\n${srcBlock ? `Sources:\n${srcBlock}\n\n` : ""}Student question:\n${question}\n\nRespond with: direct answer, short explanation, and one follow-up question.`
         }
       ]
     })
@@ -1784,7 +1838,7 @@ async function runTutorAnswer(noteText, question) {
   ).trim();
 }
 
-async function runAiAction(action, noteText, selectedText) {
+async function runAiAction(action, noteText, selectedText, sources = []) {
   if (!OPENAI_API_KEY) throw new Error("Missing OPENAI_API_KEY");
 
   const prompts = {
@@ -1800,6 +1854,7 @@ async function runAiAction(action, noteText, selectedText) {
 
   const instruction = prompts[action] || prompts.summarize;
   const target = selectedText?.trim() ? selectedText.trim() : noteText.trim();
+  const srcBlock = formatSourcesForPrompt(sources);
 
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -1810,8 +1865,15 @@ async function runAiAction(action, noteText, selectedText) {
     body: JSON.stringify({
       model: OPENAI_MODEL,
       input: [
-        { role: "system", content: "You help users refine personal notes." },
-        { role: "user", content: `${instruction}\n\nNote:\n${target}` }
+        {
+          role: "system",
+          content:
+            "You help users refine notes. Use ONLY the provided context (note + sources). If you make factual claims derived from sources, add bracket citations like [S1] inline. If context is missing, say what is missing."
+        },
+        {
+          role: "user",
+          content: `${instruction}\n\nNote:\n${target}\n\n${srcBlock ? `Sources:\n${srcBlock}\n\n` : ""}`
+        }
       ]
     })
   });
@@ -2237,14 +2299,18 @@ const server = http.createServer(async (req, res) => {
         const count = Number(body.count || 10);
         if (!noteText.trim()) return json(res, 400, { error: "noteText is required" });
 
-        const gen = await generateFlashcardsFromText(noteText, count);
+        const sources = normalizeImportedSources(body.sources, { maxSources: 6, maxCharsPerSource: 18000 });
+        const gen = await generateFlashcardsFromText(noteText, count, sources);
         const created = [];
         for (const c of gen) {
+          const citations = Array.isArray(c.citations) ? c.citations : [];
+          const backWithCitations =
+            citations.length > 0 ? `${c.back}\n\nSources: ${citations.map((x) => `[${x}]`).join(" ")}` : c.back;
           created.push(
             await upsertFlashcard(user, {
               noteId,
               front: c.front,
-              back: c.back,
+              back: backWithCitations,
               tags: c.tags,
               dueAt: new Date().toISOString(),
               ease: 2.5,
@@ -2254,7 +2320,7 @@ const server = http.createServer(async (req, res) => {
             })
           );
         }
-        return json(res, 200, { created });
+        return json(res, 200, { created, citations: citationsFromSources(sources) });
       }
 
       if (pathname === "/api/flashcards/review" && req.method === "POST") {
@@ -2300,6 +2366,7 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/ai" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
+        if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
         if (!rateLimitOr429(res, `ip:${ip}:ai:generic`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
         if (!rateLimitOr429(res, `user:${user.id}:ai:generic`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
         const body = parseJsonBody(await readBody(req));
@@ -2309,21 +2376,24 @@ const server = http.createServer(async (req, res) => {
 
         if (!noteText.trim()) return json(res, 400, { error: "noteText is required" });
 
-        const output = await runAiAction(action, noteText, selectedText);
-        return json(res, 200, { output });
+        const sources = normalizeImportedSources(body.sources, { maxSources: 6, maxCharsPerSource: 18000 });
+        const output = await runAiAction(action, noteText, selectedText, sources);
+        return json(res, 200, { output, citations: citationsFromSources(sources) });
       }
 
       if (pathname === "/api/tutor" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
+        if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
         if (!rateLimitOr429(res, `ip:${ip}:ai:tutor`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
         if (!rateLimitOr429(res, `user:${user.id}:ai:tutor`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
         const body = parseJsonBody(await readBody(req));
         const noteText = String(body.noteText || "");
         const question = String(body.question || "");
         if (!noteText.trim() || !question.trim()) return json(res, 400, { error: "noteText and question are required" });
-        const answer = await runTutorAnswer(noteText, question);
-        return json(res, 200, { answer });
+        const sources = normalizeImportedSources(body.sources, { maxSources: 6, maxCharsPerSource: 18000 });
+        const answer = await runTutorAnswer(noteText, question, sources);
+        return json(res, 200, { answer, citations: citationsFromSources(sources) });
       }
 
       if (pathname === "/api/share/create" && req.method === "POST") {
@@ -2374,8 +2444,9 @@ const server = http.createServer(async (req, res) => {
         const numQuestions = Number(body.numQuestions || 8);
         const mode = String(body.mode || "standard");
         if (!noteText.trim()) return json(res, 400, { error: "noteText is required" });
-        const out = await generateTestPrep(noteText, numQuestions, mode);
-        return json(res, 200, out);
+        const sources = normalizeImportedSources(body.sources, { maxSources: 6, maxCharsPerSource: 18000 });
+        const out = await generateTestPrep(noteText, numQuestions, mode, sources);
+        return json(res, 200, { ...out, citations: citationsFromSources(sources) });
       }
 
       return json(res, 404, { error: "Not found" });

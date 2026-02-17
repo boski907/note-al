@@ -7,6 +7,11 @@ const cloudBadgeEl = document.getElementById("cloud-badge");
 
 let token = localStorage.getItem("ai_notes_token") || "";
 
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
 function setStatus(msg, isError = false) {
   authStatusEl.textContent = msg;
   authStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
@@ -99,6 +104,7 @@ passwordEl.addEventListener("keydown", (e) => {
 });
 
 (async function init() {
+  registerServiceWorker();
   await loadConfig();
   await checkExistingSession();
 })();

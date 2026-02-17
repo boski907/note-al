@@ -129,6 +129,11 @@ function syncBottomAdSafeArea() {
   document.documentElement.style.setProperty("--bottom-ad-height", `${height}px`);
 }
 
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
 let token = localStorage.getItem("ai_notes_token") || "";
 let me = null;
 let notes = [];
@@ -1160,6 +1165,111 @@ function renderImportedSources(imported = []) {
   appendToEditor(blocks.join("\n\n"));
 }
 
+function sourcesKeyForCurrentNote() {
+  return authScopedKey(`note_sources_v1_${currentId || "draft"}`);
+}
+
+function loadSourcesForCurrentNote() {
+  try {
+    const raw = localStorage.getItem(sourcesKeyForCurrentNote()) || "[]";
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveSourcesForCurrentNote(sources) {
+  try {
+    localStorage.setItem(sourcesKeyForCurrentNote(), JSON.stringify(sources || []));
+  } catch {
+    // ignore
+  }
+}
+
+function mergeImportedSourcesIntoCurrent(imported = []) {
+  if (!Array.isArray(imported) || imported.length === 0) return;
+  const existing = loadSourcesForCurrentNote();
+  const now = Date.now();
+  const next = [...existing];
+  for (const s of imported) {
+    const name = String(s?.name || "").trim().slice(0, 200);
+    const content = String(s?.content || "").trim();
+    if (!name || !content) continue;
+    const url = /^https?:\/\//i.test(name) ? name : "";
+    next.push({
+      name,
+      url,
+      kind: String(s?.kind || "").trim().slice(0, 40),
+      content: content.slice(0, 140000),
+      addedAt: now
+    });
+  }
+  // De-dupe by (name+first 120 chars) to avoid repeated imports.
+  const seen = new Set();
+  const deduped = [];
+  for (const s of next.slice(-40)) {
+    const key = `${s.name}::${String(s.content || "").slice(0, 120)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(s);
+  }
+  saveSourcesForCurrentNote(deduped);
+}
+
+function getAiSourcesForRequest(maxSources = 6) {
+  const all = loadSourcesForCurrentNote();
+  const sorted = [...all].sort((a, b) => Number(b.addedAt || 0) - Number(a.addedAt || 0));
+  return sorted.slice(0, maxSources).map((s) => ({
+    name: s.name,
+    url: s.url || "",
+    kind: s.kind || "",
+    content: String(s.content || "").slice(0, 18000)
+  }));
+}
+
+function renderCitationsInline(citations = []) {
+  const arr = Array.isArray(citations) ? citations : [];
+  if (!arr.length) return null;
+  const wrap = document.createElement("div");
+  wrap.className = "muted";
+  wrap.style.marginTop = "0.75rem";
+  wrap.style.fontSize = "0.78rem";
+  wrap.textContent = "Sources: ";
+  arr.forEach((c, i) => {
+    const id = String(c?.id || "").trim();
+    const url = String(c?.url || "").trim();
+    const name = String(c?.name || "").trim();
+    const label = id || `S${i + 1}`;
+    const a = document.createElement("a");
+    a.textContent = `[${label}]`;
+    a.style.marginRight = "0.45rem";
+    a.style.fontWeight = "800";
+    a.style.color = "#164e63";
+    a.href = url || "#";
+    if (url) {
+      a.target = "_blank";
+      a.rel = "noreferrer";
+      a.title = name || url;
+    } else {
+      a.addEventListener("click", (e) => e.preventDefault());
+      a.title = name || label;
+    }
+    wrap.appendChild(a);
+  });
+  return wrap;
+}
+
+function setOutputWithCitations(el, text, citations = []) {
+  if (!el) return;
+  el.innerHTML = "";
+  const main = document.createElement("div");
+  main.textContent = String(text || "");
+  el.appendChild(main);
+  const cit = renderCitationsInline(citations);
+  if (cit) el.appendChild(cit);
+}
+
 async function importSources({ sources = [], urls = [] } = {}) {
   if (!token) return;
   if (!sources.length && !urls.length) {
@@ -1173,6 +1283,7 @@ async function importSources({ sources = [], urls = [] } = {}) {
       body: JSON.stringify({ sources, urls })
     });
     renderImportedSources(out.imported || []);
+    mergeImportedSourcesIntoCurrent(out.imported || []);
     setSourceStatus(`Imported ${out.imported?.length || 0} source(s) into this note.`);
     fireAndForgetTrack("sources.import_client", { count: out.imported?.length || 0 });
     awardXp("import", 6);
@@ -1191,9 +1302,9 @@ async function askTutor() {
   try {
     const out = await api("/api/tutor", {
       method: "POST",
-      body: JSON.stringify({ question, noteText })
+      body: JSON.stringify({ question, noteText, sources: getAiSourcesForRequest(6) })
     });
-    tutorOutputEl.textContent = out.answer || "No tutor response.";
+    setOutputWithCitations(tutorOutputEl, out.answer || "No tutor response.", out.citations || []);
     awardXp("tutor", 8);
     await countOutputAndMaybeShowAds("tutor.ask");
   } catch (e) {
@@ -1355,9 +1466,9 @@ async function runAi(action) {
     const selectedText = getSelectionTextWithinEditor();
     const data = await api("/api/ai", {
       method: "POST",
-      body: JSON.stringify({ action, noteText, selectedText })
+      body: JSON.stringify({ action, noteText, selectedText, sources: getAiSourcesForRequest(6) })
     });
-    aiOutputEl.textContent = data.output || "(No output)";
+    setOutputWithCitations(aiOutputEl, data.output || "(No output)", data.citations || []);
     fireAndForgetTrack("ai.action", { action });
     awardXp(action, 5);
     await countOutputAndMaybeShowAds(`ai.${action}`);
@@ -1642,6 +1753,108 @@ async function fetchDueCount() {
   return Number(data.dueCount || 0);
 }
 
+function offlineDueCardsKey() {
+  return authScopedKey("offline_due_cards_v1");
+}
+
+function saveOfflineDueCards(cards) {
+  try {
+    const slim = (Array.isArray(cards) ? cards : []).slice(0, 200).map((c) => ({
+      id: c.id,
+      front: c.front,
+      back: c.back,
+      tags: c.tags || [],
+      dueAt: c.dueAt || ""
+    }));
+    localStorage.setItem(offlineDueCardsKey(), JSON.stringify({ savedAt: Date.now(), cards: slim }));
+  } catch {
+    // ignore
+  }
+}
+
+function loadOfflineDueCards() {
+  try {
+    const raw = localStorage.getItem(offlineDueCardsKey()) || "";
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const cards = Array.isArray(parsed?.cards) ? parsed.cards : [];
+    return cards;
+  } catch {
+    return [];
+  }
+}
+
+function flashcardReviewQueueKey() {
+  return authScopedKey("offline_flashcard_reviews_v1");
+}
+
+function loadFlashcardReviewQueue() {
+  try {
+    const raw = localStorage.getItem(flashcardReviewQueueKey()) || "[]";
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveFlashcardReviewQueue(items) {
+  try {
+    localStorage.setItem(flashcardReviewQueueKey(), JSON.stringify(items || []));
+  } catch {
+    // ignore
+  }
+}
+
+function isLikelyOfflineError(e) {
+  const msg = String(e?.message || "");
+  // Browser fetch failures typically look like this.
+  return !navigator.onLine || msg.includes("Failed to fetch") || msg.includes("NetworkError");
+}
+
+async function submitFlashcardReviewOrQueue(id, grade) {
+  try {
+    const out = await api("/api/flashcards/review", {
+      method: "POST",
+      body: JSON.stringify({ id, grade })
+    });
+    return { queued: false, flashcard: out.flashcard || null };
+  } catch (e) {
+    if (!isLikelyOfflineError(e)) throw e;
+    const q = loadFlashcardReviewQueue();
+    q.push({ id: String(id || ""), grade: Number(grade), queuedAt: Date.now() });
+    // Keep bounded.
+    saveFlashcardReviewQueue(q.slice(-500));
+    return { queued: true, flashcard: null };
+  }
+}
+
+async function flushFlashcardReviewQueue() {
+  if (!token) return;
+  const q = loadFlashcardReviewQueue();
+  if (!q.length) return;
+  if (!navigator.onLine) return;
+
+  const remaining = [];
+  for (let i = 0; i < q.length; i += 1) {
+    const item = q[i];
+    try {
+      await api("/api/flashcards/review", {
+        method: "POST",
+        body: JSON.stringify({ id: item.id, grade: item.grade })
+      });
+    } catch (e) {
+      // Stop flushing if network looks down again; keep remaining.
+      if (isLikelyOfflineError(e)) {
+        remaining.push(item, ...q.slice(i + 1));
+        break;
+      }
+      // For non-network errors, drop the item to avoid permanent stuck queues.
+    }
+  }
+  saveFlashcardReviewQueue(remaining);
+}
+
 async function generateFlashcards() {
   const noteText = editorEl.innerText.trim();
   if (!noteText) {
@@ -1652,11 +1865,15 @@ async function generateFlashcards() {
   try {
     const data = await api("/api/flashcards/generate", {
       method: "POST",
-      body: JSON.stringify({ noteId: currentId, noteText, count: 10 })
+      body: JSON.stringify({ noteId: currentId, noteText, count: 10, sources: getAiSourcesForRequest(6) })
     });
     const created = data.created || [];
     const due = await fetchDueCount();
-    aiOutputEl.textContent = `Created ${created.length} flashcards. Due now: ${due}.`;
+    setOutputWithCitations(
+      aiOutputEl,
+      `Created ${created.length} flashcards. Due now: ${due}.`,
+      data.citations || []
+    );
     fireAndForgetTrack("flashcards.generate", { count: created.length });
     awardXp("flashcards", 8);
     loadLearningPlan().catch(() => {});
@@ -1670,8 +1887,17 @@ async function renderStudyDue() {
   openOverlay("Study due flashcards");
   overlayBodyEl.innerHTML = `<div class="muted">Loading due cards...</div>`;
 
-  const data = await api("/api/flashcards?due=1&limit=50", { method: "GET" });
-  const cards = data.flashcards || [];
+  let cards = [];
+  try {
+    const data = await api("/api/flashcards?due=1&limit=50", { method: "GET" });
+    cards = data.flashcards || [];
+    if (cards.length) saveOfflineDueCards(cards);
+  } catch (e) {
+    cards = loadOfflineDueCards();
+    if (!cards.length) throw e;
+    // Show a subtle offline hint.
+    aiOutputEl.textContent = "Offline mode: using your last saved due cards.";
+  }
 
   if (!cards.length) {
     overlayBodyEl.innerHTML = `<div class="muted">No cards due right now. Generate more from a note.</div>`;
@@ -1843,10 +2069,7 @@ async function renderStudyDue() {
         b.className = cls;
         b.textContent = label;
         b.addEventListener("click", async () => {
-          await api("/api/flashcards/review", {
-            method: "POST",
-            body: JSON.stringify({ id: c.id, grade })
-          });
+          await submitFlashcardReviewOrQueue(c.id, grade);
           fireAndForgetTrack("flashcards.review", { grade });
           loadLearningPlan().catch(() => {});
           idx += 1;
@@ -1893,7 +2116,7 @@ async function renderTestPrep() {
 
   const out = await api("/api/testprep/generate", {
     method: "POST",
-    body: JSON.stringify({ noteText, numQuestions: 8, mode: examMode })
+    body: JSON.stringify({ noteText, numQuestions: 8, mode: examMode, sources: getAiSourcesForRequest(6) })
   });
 
   const questions = out.questions || [];
@@ -1965,23 +2188,113 @@ async function renderTestPrep() {
     form.appendChild(block);
   });
 
+  const scoreRow = document.createElement("div");
+  scoreRow.className = "muted";
+  scoreRow.style.marginBottom = "0.6rem";
+  scoreRow.textContent = "Answer what you can, then grade.";
+
+  function norm(s) {
+    return String(s || "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function getMcqSelected(i) {
+    const checked = form.querySelector(`input[type="radio"][name="q_${i}"]:checked`);
+    return checked ? String(checked.value || "") : "";
+  }
+
+  function getShortAnswer(i) {
+    const input = form.querySelector(`textarea[data-q-index="${i}"]`);
+    return input ? String(input.value || "") : "";
+  }
+
+  function resolveMcqCorrect(q) {
+    const choices = Array.isArray(q.choices) ? q.choices : [];
+    const ans = String(q.answer || "");
+    const ansN = norm(ans);
+    if (!choices.length) return ans;
+    const exact = choices.find((c) => norm(c) === ansN);
+    if (exact) return exact;
+    if (/^[a-d]$/i.test(ansN)) {
+      const idx = "abcd".indexOf(ansN.toLowerCase());
+      return choices[idx] || ans;
+    }
+    return ans;
+  }
+
   const gradeBtn = document.createElement("button");
-  gradeBtn.textContent = "Show answers";
+  gradeBtn.textContent = "Grade test";
   gradeBtn.addEventListener("click", () => {
     const blocks = [...form.querySelectorAll(".card-face")];
+    let correct = 0;
+    let total = questions.length;
+
     blocks.forEach((b, i) => {
-      const ans = document.createElement("div");
-      ans.className = "mono";
-      ans.style.marginTop = "0.8rem";
-      ans.textContent = `Answer: ${questions[i].answer}\n\nExplanation: ${questions[i].explanation || ""}`.trim();
-      b.appendChild(ans);
+      const q = questions[i] || {};
+      const type = q.type || "short";
+      let ok = false;
+
+      if (type === "mcq") {
+        const picked = getMcqSelected(i);
+        const correctChoice = resolveMcqCorrect(q);
+        ok = norm(picked) && norm(picked) === norm(correctChoice);
+      } else {
+        const typed = getShortAnswer(i);
+        // We don't auto-grade free-response reliably; show model answer and let students self-check.
+        ok = false;
+      }
+
+      if (type === "mcq" && ok) correct += 1;
+
+      const marker = document.createElement("div");
+      marker.className = "muted";
+      marker.style.marginTop = "0.6rem";
+      marker.style.fontWeight = "800";
+      marker.style.color = type === "mcq" ? (ok ? "#166534" : "#b91c1c") : "#0f172a";
+      marker.textContent = type === "mcq" ? (ok ? "Correct" : "Incorrect") : "Free response (self-check)";
+      b.appendChild(marker);
     });
+
+    const mcqCount = questions.filter((q) => q.type === "mcq").length;
+    const msg =
+      mcqCount > 0
+        ? `Score (MCQ only): ${correct}/${mcqCount}. Free-response is self-check.`
+        : "No MCQ questions to auto-grade. Use self-check.";
+    scoreRow.textContent = msg;
     gradeBtn.disabled = true;
   });
 
+  const showBtn = document.createElement("button");
+  showBtn.className = "ghost";
+  showBtn.textContent = "Show answers";
+  showBtn.addEventListener("click", () => {
+    const blocks = [...form.querySelectorAll(".card-face")];
+    blocks.forEach((b, i) => {
+      if (b.querySelector(".testprep-answer")) return;
+      const ans = document.createElement("div");
+      ans.className = "mono testprep-answer";
+      ans.style.marginTop = "0.8rem";
+      ans.textContent = `Answer: ${questions[i].answer}\n\nExplanation: ${questions[i].explanation || ""}`.trim();
+      b.appendChild(ans);
+
+      const cites = Array.isArray(questions[i].citations) ? questions[i].citations : [];
+      if (cites.length && Array.isArray(out.citations)) {
+        const mapped = out.citations.filter((c) => cites.includes(String(c.id || "").trim()));
+        const citEl = renderCitationsInline(mapped);
+        if (citEl) b.appendChild(citEl);
+      }
+    });
+    showBtn.disabled = true;
+  });
+
   overlayBodyEl.innerHTML = "";
+  overlayBodyEl.appendChild(scoreRow);
   overlayBodyEl.appendChild(form);
-  overlayBodyEl.appendChild(buttonRow([gradeBtn]));
+  const globalCites = renderCitationsInline(out.citations || []);
+  overlayBodyEl.appendChild(buttonRow([gradeBtn, showBtn]));
+  if (globalCites) overlayBodyEl.appendChild(globalCites);
 }
 
 function blobToBase64(blob) {
@@ -2208,6 +2521,7 @@ themeSelectEl.addEventListener("change", () => {
     window.location.href = "/login.html";
     return;
   }
+  registerServiceWorker();
   await loadConfig();
   await loadMe();
   if (!me) {
@@ -2238,6 +2552,8 @@ themeSelectEl.addEventListener("change", () => {
   await loadLearningPlan();
   await loadDashboard();
   await loadReferralCode();
+  flushFlashcardReviewQueue().catch(() => {});
+  window.addEventListener("online", () => flushFlashcardReviewQueue().catch(() => {}));
   if (IS_NATIVE_SHELL) {
     // Store wrappers: avoid showing any purchase/upgrade CTAs or external billing portals.
     setHidden(subscribeBtn, true);
