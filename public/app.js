@@ -3,6 +3,7 @@ const workspaceEl = document.getElementById("workspace");
 const logoutBtn = document.getElementById("logout-btn");
 const authStatusEl = document.getElementById("auth-status");
 const cloudBadgeEl = document.getElementById("cloud-badge");
+const themeSelectEl = document.getElementById("theme-select");
 const subscribeBtn = document.getElementById("subscribe-btn");
 const manageBtn = document.getElementById("manage-btn");
 const billingStatusEl = document.getElementById("billing-status");
@@ -132,6 +133,25 @@ function setHidden(el, hidden) {
 
 function authScopedKey(prefix) {
   return `${prefix}_${me?.id || "anon"}`;
+}
+
+function getThemeKey() {
+  return authScopedKey("theme_v1");
+}
+
+function applyTheme(theme) {
+  const t = theme === "clean" ? "clean" : "bold";
+  document.body.setAttribute("data-theme", t);
+  if (themeSelectEl) themeSelectEl.value = t;
+}
+
+function loadTheme() {
+  const saved = localStorage.getItem(getThemeKey()) || "bold";
+  applyTheme(saved);
+}
+
+function saveTheme(theme) {
+  localStorage.setItem(getThemeKey(), theme);
 }
 
 function setAnalyticsStatus(msg, isError = false) {
@@ -1700,6 +1720,11 @@ refreshLearningBtn.addEventListener("click", () => loadLearningPlan());
 upgradeLearningBtn.addEventListener("click", () => startCheckout());
 upgradeSourcesBtn.addEventListener("click", () => startCheckout());
 upgradeAiBtn.addEventListener("click", () => startCheckout());
+themeSelectEl.addEventListener("change", () => {
+  const t = String(themeSelectEl.value || "bold");
+  applyTheme(t);
+  saveTheme(t);
+});
 
 (async function init() {
   if (!token) {
@@ -1712,6 +1737,7 @@ upgradeAiBtn.addEventListener("click", () => startCheckout());
     window.location.href = "/login.html";
     return;
   }
+  loadTheme();
   loadOutputCounter();
   const upgradedKey = authScopedKey("upgraded_at_v1");
   const upgradedAtRaw = sessionStorage.getItem(upgradedKey) || "0";
