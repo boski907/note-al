@@ -103,6 +103,13 @@ function sendFile(res, filePath) {
               ? "image/svg+xml"
               : "application/octet-stream";
 
+    if (filePath === path.join(PUBLIC_DIR, "index.html")) {
+      const html = data.toString("utf8").replaceAll("__ADSENSE_CLIENT__", ADSENSE_CLIENT || "");
+      res.writeHead(200, { "Content-Type": contentType });
+      res.end(html);
+      return;
+    }
+
     res.writeHead(200, { "Content-Type": contentType });
     res.end(data);
   });
