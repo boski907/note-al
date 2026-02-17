@@ -428,6 +428,21 @@ h1 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.8rem;
   margin-bottom: 0.8rem;
+  position: relative;
+  z-index: 1;
+}
+
+.output-ads-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  padding-top: 0.75rem;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0.92) 35%,
+    rgba(255, 255, 255, 0.98)
+  );
 }
 
 .legal-links {
@@ -473,6 +488,7 @@ h1 {
 }
 
 .overlay-card {
+  position: relative;
   width: min(920px, 100%);
   max-height: min(86vh, 900px);
   overflow: hidden;
@@ -494,9 +510,15 @@ h1 {
   gap: 0.6rem;
 }
 
+.overlay-head-left {
+  display: grid;
+  gap: 0.15rem;
+}
+
 .overlay-body {
   padding: 1rem;
   overflow: auto;
+  position: relative;
 }
 
 .card-face {

@@ -105,6 +105,7 @@ const outputAdSlotAEl = document.getElementById("output-ad-slot-a");
 const outputAdSlotBEl = document.getElementById("output-ad-slot-b");
 const outputAdSlotCEl = document.getElementById("output-ad-slot-c");
 const outputAdsContinueEl = document.getElementById("output-ads-continue");
+const outputAdsCloseEl = document.getElementById("output-ads-close");
 
 let adsenseCfg = null;
 let adFree = false;
@@ -286,6 +287,33 @@ async function showAdInterstitial(adCount = 2) {
   setHidden(outputAdSlotCEl, !showThree);
   openOutputAdsOverlay();
 
+  const gateSeconds = 6;
+  let remaining = gateSeconds;
+  const originalContinueText = outputAdsContinueEl.textContent || "Continue";
+  const originalCloseText = outputAdsCloseEl ? outputAdsCloseEl.textContent || "Close" : "";
+  setDisabled(outputAdsContinueEl, true);
+  if (outputAdsCloseEl) setDisabled(outputAdsCloseEl, true);
+
+  const updateGateLabels = () => {
+    if (remaining > 0) {
+      outputAdsContinueEl.textContent = `${originalContinueText} (${remaining})`;
+      if (outputAdsCloseEl) outputAdsCloseEl.textContent = `${originalCloseText} (${remaining})`;
+    } else {
+      outputAdsContinueEl.textContent = originalContinueText;
+      if (outputAdsCloseEl) outputAdsCloseEl.textContent = originalCloseText;
+    }
+  };
+  updateGateLabels();
+  const gateTimer = setInterval(() => {
+    remaining = Math.max(0, remaining - 1);
+    updateGateLabels();
+    if (remaining <= 0) {
+      clearInterval(gateTimer);
+      setDisabled(outputAdsContinueEl, false);
+      if (outputAdsCloseEl) setDisabled(outputAdsCloseEl, false);
+    }
+  }, 1000);
+
   if (adsenseCfg?.enabled && adsenseCfg.client && adsenseCfg.bottomSlot) {
     try {
       await loadAdSenseScript(adsenseCfg.client);
@@ -307,12 +335,62 @@ async function showAdInterstitial(adCount = 2) {
   }
 
   await new Promise((resolve) => {
-    const onContinue = () => {
+    let settled = false;
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
       outputAdsContinueEl.removeEventListener("click", onContinue);
+      if (outputAdsCloseEl) outputAdsCloseEl.removeEventListener("click", onClose);
+      document.removeEventListener("keydown", onKeyDown);
+      outputAdsOverlayEl.removeEventListener("click", onBackdrop);
+      try {
+        clearInterval(gateTimer);
+      } catch {
+        // ignore
+      }
+      outputAdsContinueEl.textContent = originalContinueText;
+      setDisabled(outputAdsContinueEl, false);
+      if (outputAdsCloseEl) {
+        outputAdsCloseEl.textContent = originalCloseText;
+        setDisabled(outputAdsCloseEl, false);
+      }
+    };
+
+    const finish = () => {
+      cleanup();
       closeOutputAdsOverlay();
       resolve();
     };
+
+    const onContinue = (e) => {
+      e.preventDefault();
+      if (outputAdsContinueEl.disabled) return;
+      finish();
+    };
+
+    const onClose = (e) => {
+      e.preventDefault();
+      if (outputAdsCloseEl && outputAdsCloseEl.disabled) return;
+      finish();
+    };
+
+    const onKeyDown = (e) => {
+      if (e.key !== "Escape") return;
+      if (outputAdsContinueEl.disabled) return;
+      finish();
+    };
+
+    const onBackdrop = (e) => {
+      // Allow click-outside-to-close after the gate is done.
+      if (e.target !== outputAdsOverlayEl) return;
+      if (outputAdsContinueEl.disabled) return;
+      finish();
+    };
+
     outputAdsContinueEl.addEventListener("click", onContinue);
+    if (outputAdsCloseEl) outputAdsCloseEl.addEventListener("click", onClose);
+    document.addEventListener("keydown", onKeyDown);
+    outputAdsOverlayEl.addEventListener("click", onBackdrop);
   });
   lastInterstitialAt = Date.now();
   interstitialsThisSession += 1;
