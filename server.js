@@ -974,6 +974,77 @@ function extractTextFromPdfBuffer(buffer) {
   return cleanImportedText(pieces.join(" "));
 }
 
+function unzipDocxEntry(buffer, entryName) {
+  const sigLocal = 0x04034b50;
+  const sigCentral = 0x02014b50;
+  const sigEocd = 0x06054b50;
+
+  const eocdSearchStart = Math.max(0, buffer.length - 65557);
+  let eocdOffset = -1;
+  for (let i = buffer.length - 22; i >= eocdSearchStart; i -= 1) {
+    if (buffer.readUInt32LE(i) === sigEocd) {
+      eocdOffset = i;
+      break;
+    }
+  }
+  if (eocdOffset < 0) throw new Error("Invalid DOCX (EOCD not found)");
+
+  const centralDirOffset = buffer.readUInt32LE(eocdOffset + 16);
+  const totalEntries = buffer.readUInt16LE(eocdOffset + 10);
+  let ptr = centralDirOffset;
+
+  for (let n = 0; n < totalEntries; n += 1) {
+    if (ptr + 46 > buffer.length) break;
+    if (buffer.readUInt32LE(ptr) !== sigCentral) break;
+
+    const method = buffer.readUInt16LE(ptr + 10);
+    const compressedSize = buffer.readUInt32LE(ptr + 20);
+    const fileNameLen = buffer.readUInt16LE(ptr + 28);
+    const extraLen = buffer.readUInt16LE(ptr + 30);
+    const commentLen = buffer.readUInt16LE(ptr + 32);
+    const localHeaderOffset = buffer.readUInt32LE(ptr + 42);
+    const fileName = buffer.slice(ptr + 46, ptr + 46 + fileNameLen).toString("utf8");
+
+    ptr += 46 + fileNameLen + extraLen + commentLen;
+    if (fileName !== entryName) continue;
+
+    if (localHeaderOffset + 30 > buffer.length) throw new Error("Invalid DOCX local header");
+    if (buffer.readUInt32LE(localHeaderOffset) !== sigLocal) throw new Error("Invalid DOCX local signature");
+
+    const localNameLen = buffer.readUInt16LE(localHeaderOffset + 26);
+    const localExtraLen = buffer.readUInt16LE(localHeaderOffset + 28);
+    const dataStart = localHeaderOffset + 30 + localNameLen + localExtraLen;
+    const dataEnd = dataStart + compressedSize;
+    if (dataEnd > buffer.length) throw new Error("Invalid DOCX entry size");
+
+    const data = buffer.slice(dataStart, dataEnd);
+    if (method === 0) return data;
+    if (method === 8) return require("zlib").inflateRawSync(data);
+    throw new Error(`Unsupported DOCX compression method: ${method}`);
+  }
+
+  throw new Error(`DOCX entry not found: ${entryName}`);
+}
+
+function extractTextFromDocxBuffer(buffer) {
+  const xmlBuffer = unzipDocxEntry(buffer, "word/document.xml");
+  const xml = xmlBuffer.toString("utf8");
+  const text = xml
+    .replace(/<w:p\b[^>]*>/g, "\n")
+    .replace(/<\/w:p>/g, "\n")
+    .replace(/<w:tab\b[^>]*\/>/g, "\t")
+    .replace(/<w:br\b[^>]*\/>/g, "\n")
+    .replace(/<w:cr\b[^>]*\/>/g, "\n")
+    .replace(/<\/w:t>/g, " ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  return cleanImportedText(text);
+}
+
 function extractYoutubeVideoId(inputUrl) {
   try {
     const u = new URL(String(inputUrl || ""));
@@ -1110,6 +1181,16 @@ async function importSources(body) {
       const content = extractTextFromPdfBuffer(pdfBuffer).slice(0, 140000);
       if (!content) throw new Error(`Could not extract readable text from PDF: ${name}`);
       out.push({ name, kind: "pdf", content });
+      continue;
+    }
+
+    if (kind === "docx") {
+      const docxBuffer = decodeBase64Payload(src?.base64);
+      if (!docxBuffer.length) continue;
+      if (docxBuffer.length > 20 * 1024 * 1024) throw new Error(`DOCX too large: ${name}`);
+      const content = extractTextFromDocxBuffer(docxBuffer).slice(0, 140000);
+      if (!content) throw new Error(`Could not extract readable text from DOCX: ${name}`);
+      out.push({ name, kind: "docx", content });
       continue;
     }
 
