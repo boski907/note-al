@@ -113,6 +113,10 @@ let recordingMimeType = "";
 let monetizedOutputCount = 0;
 let sourceImportCount = 0;
 let reminderTimer = null;
+let lastInterstitialAt = 0;
+let interstitialsThisSession = 0;
+let sessionUpgradedAt = 0;
+let lastTypingAt = 0;
 
 function setDisabled(el, disabled, title = "") {
   if (!el) return;
@@ -204,8 +208,19 @@ function closeOutputAdsOverlay() {
   setHidden(outputAdSlotCEl, true);
 }
 
+function canShowInterstitial() {
+  if (adFree) return false;
+  const now = Date.now();
+  if (sessionUpgradedAt && now - sessionUpgradedAt < 30 * 60 * 1000) return false;
+  if (lastInterstitialAt && now - lastInterstitialAt < 3 * 60 * 1000) return false;
+  if (interstitialsThisSession >= 6) return false;
+  if (recorder) return false;
+  if (lastTypingAt && now - lastTypingAt < 10 * 1000) return false;
+  return true;
+}
+
 async function showAdInterstitial(adCount = 2) {
-  if (adFree) return;
+  if (!canShowInterstitial()) return false;
   const showThree = Number(adCount) >= 3;
   setHidden(outputAdSlotCEl, !showThree);
   openOutputAdsOverlay();
@@ -238,6 +253,9 @@ async function showAdInterstitial(adCount = 2) {
     };
     outputAdsContinueEl.addEventListener("click", onContinue);
   });
+  lastInterstitialAt = Date.now();
+  interstitialsThisSession += 1;
+  return true;
 }
 
 async function countOutputAndMaybeShowAds(eventName = "output.generic") {
@@ -245,8 +263,8 @@ async function countOutputAndMaybeShowAds(eventName = "output.generic") {
   monetizedOutputCount += 1;
   saveOutputCounter();
   if (monetizedOutputCount % 4 !== 0) return;
-  await showAdInterstitial(2);
-  fireAndForgetTrack("ads.double_interstitial_shown", { atOutput: monetizedOutputCount, trigger: eventName });
+  const shown = await showAdInterstitial(2);
+  if (shown) fireAndForgetTrack("ads.double_interstitial_shown", { atOutput: monetizedOutputCount, trigger: eventName });
 }
 
 async function countImportAndMaybeShowAds() {
@@ -254,8 +272,8 @@ async function countImportAndMaybeShowAds() {
   sourceImportCount += 1;
   saveImportCounter();
   if (sourceImportCount % 4 !== 0) return;
-  await showAdInterstitial(3);
-  fireAndForgetTrack("ads.triple_interstitial_shown", { atImport: sourceImportCount, trigger: "sources.import" });
+  const shown = await showAdInterstitial(3);
+  if (shown) fireAndForgetTrack("ads.triple_interstitial_shown", { atImport: sourceImportCount, trigger: "sources.import" });
 }
 
 function onboardingSeen() {
@@ -641,7 +659,7 @@ async function loadBillingStatus() {
     billingLoaded = true;
     adFree = Boolean(data.adFree);
     if (adFree) {
-      setBillingStatus("Ad-free active.");
+      setBillingStatus("Premium active.");
       // Hide ads immediately if they were already shown.
       adBottomBarEl.classList.add("hidden");
       adBottomBarEl.setAttribute("aria-hidden", "true");
@@ -721,7 +739,7 @@ async function runAdDiagnostics() {
     lines.push(`Server ad enabled: ${server.adsEnabled ? "yes" : "no"}`);
     lines.push(`Client configured: ${server.clientConfigured ? "yes" : "no"}`);
     lines.push(`Bottom slot configured: ${server.bottomSlotConfigured ? "yes" : "no"}`);
-    lines.push(`Ad-free plan active: ${server.adFree ? "yes" : "no"}`);
+    lines.push(`Premium plan active: ${server.adFree ? "yes" : "no"}`);
   }
 
   if (adFree) {
@@ -761,11 +779,11 @@ async function runAdDiagnostics() {
 
 async function startCheckout() {
   if (!token) return setBillingStatus("Log in first to subscribe.", true);
-  setBillingStatus("Opening checkout...");
+  setBillingStatus("Opening premium checkout...");
   try {
     const data = await api("/api/billing/create-checkout-session", { method: "POST" });
     if (!data.url) throw new Error("Missing checkout url");
-    fireAndForgetTrack("billing.checkout_start", { plan: "adfree_599_monthly" });
+    fireAndForgetTrack("billing.checkout_start", { plan: "premium_10_monthly" });
     window.location.href = data.url;
   } catch (e) {
     setBillingStatus(`Checkout error: ${e.message}`, true);
@@ -786,6 +804,7 @@ async function openPortal() {
 }
 
 async function logout() {
+  const upgradedKey = authScopedKey("upgraded_at_v1");
   try {
     await api("/api/auth/logout", { method: "POST" });
   } catch {
@@ -811,6 +830,10 @@ async function logout() {
   setMetric(metricAiEl, "-");
   monetizedOutputCount = 0;
   sourceImportCount = 0;
+  lastInterstitialAt = 0;
+  interstitialsThisSession = 0;
+  sessionUpgradedAt = 0;
+  sessionStorage.removeItem(upgradedKey);
   closeOutputAdsOverlay();
   clearLearningUi();
   streakDaysEl.textContent = "0 days";
@@ -1582,6 +1605,9 @@ clearFormatBtn.addEventListener("click", () => {
   document.execCommand("removeFormat");
   editorEl.focus();
 });
+editorEl.addEventListener("input", () => {
+  lastTypingAt = Date.now();
+});
 
 aiButtons.forEach((btn) => btn.addEventListener("click", () => runAi(btn.dataset.ai)));
 recordBtn.addEventListener("click", () => {
@@ -1687,6 +1713,14 @@ upgradeAiBtn.addEventListener("click", () => startCheckout());
     return;
   }
   loadOutputCounter();
+  const upgradedKey = authScopedKey("upgraded_at_v1");
+  const upgradedAtRaw = sessionStorage.getItem(upgradedKey) || "0";
+  sessionUpgradedAt = Number(upgradedAtRaw) || 0;
+  const billingState = new URLSearchParams(location.search).get("billing");
+  if (billingState === "success") {
+    sessionUpgradedAt = Date.now();
+    sessionStorage.setItem(upgradedKey, String(sessionUpgradedAt));
+  }
   refreshXpUi();
   const reminderCfgRaw = localStorage.getItem(authScopedKey("reminder_cfg_v1")) || "{}";
   try {

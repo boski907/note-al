@@ -18,7 +18,7 @@ AI note-taking app with:
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
    - (optional ads) `ADSENSE_CLIENT`, `ADSENSE_SLOT_BOTTOM`, `ADSENSE_SLOT_BREAK`
-   - (optional ad-free subscription) `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID_ADFREE_599`, `APP_BASE_URL`
+  - (optional premium subscription) `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID_PREMIUM_10`, `APP_BASE_URL`
    - (optional but recommended) `STRIPE_WEBHOOK_SECRET`
 4. Start the app:
 

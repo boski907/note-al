@@ -37,7 +37,8 @@ const ADSENSE_SLOT_BREAK = process.env.ADSENSE_SLOT_BREAK || "";
 
 const APP_BASE_URL = process.env.APP_BASE_URL || `http://${HOST}:${PORT}`;
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
-const STRIPE_PRICE_ID_ADFREE_599 = process.env.STRIPE_PRICE_ID_ADFREE_599 || "";
+const STRIPE_PRICE_ID_PREMIUM_10 =
+  process.env.STRIPE_PRICE_ID_PREMIUM_10 || process.env.STRIPE_PRICE_ID_ADFREE_599 || "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -1748,8 +1749,10 @@ const server = http.createServer(async (req, res) => {
         const user = await requireUser(req, res);
         if (!user) return;
         if (!USE_SUPABASE) return json(res, 400, { error: "Billing requires Supabase mode" });
-        if (!STRIPE_SECRET_KEY || !STRIPE_PRICE_ID_ADFREE_599) {
-          return json(res, 400, { error: "Stripe is not configured (missing STRIPE_SECRET_KEY or STRIPE_PRICE_ID_ADFREE_599)" });
+        if (!STRIPE_SECRET_KEY || !STRIPE_PRICE_ID_PREMIUM_10) {
+          return json(res, 400, {
+            error: "Stripe is not configured (missing STRIPE_SECRET_KEY or STRIPE_PRICE_ID_PREMIUM_10)"
+          });
         }
 
         const existing = await getBillingProfile(user);
@@ -1773,7 +1776,7 @@ const server = http.createServer(async (req, res) => {
           [`subscription_data[metadata][user_id]`]: user.id,
           success_url: `${APP_BASE_URL}/?billing=success`,
           cancel_url: `${APP_BASE_URL}/?billing=cancel`,
-          [`line_items[0][price]`]: STRIPE_PRICE_ID_ADFREE_599,
+          [`line_items[0][price]`]: STRIPE_PRICE_ID_PREMIUM_10,
           [`line_items[0][quantity]`]: 1,
           allow_promotion_codes: "true"
         });
