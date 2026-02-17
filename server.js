@@ -20,10 +20,12 @@ function loadEnvFile(filePath) {
 
 loadEnvFile(path.join(__dirname, ".env"));
 
-const HOST = process.env.HOST || "127.0.0.1";
-const PORT = Number(process.env.PORT || 3000);
 const NODE_ENV = process.env.NODE_ENV || "development";
 const IS_PROD = NODE_ENV === "production" || Boolean(process.env.RENDER_SERVICE_ID || process.env.RENDER);
+
+// On Render (and most PaaS), you must listen on 0.0.0.0, not 127.0.0.1.
+const HOST = process.env.HOST || (IS_PROD ? "0.0.0.0" : "127.0.0.1");
+const PORT = Number(process.env.PORT || 3000);
 
 // Security / abuse limits (keep these fairly generous; tune down once you have real traffic patterns).
 const DEFAULT_MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 12_000_000); // 12MB
