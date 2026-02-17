@@ -32,6 +32,12 @@ const overlayEl = document.getElementById("study-overlay");
 const overlayTitleEl = document.getElementById("overlay-title");
 const overlayBodyEl = document.getElementById("overlay-body");
 const overlayCloseEl = document.getElementById("overlay-close");
+const analyticsStatusEl = document.getElementById("analytics-status");
+
+const onboardingOverlayEl = document.getElementById("onboarding-overlay");
+const onboardingCloseEl = document.getElementById("onboarding-close");
+const onboardingStartEl = document.getElementById("onboarding-start");
+const onboardingStudyEl = document.getElementById("onboarding-study");
 
 const adBottomBarEl = document.getElementById("ad-bottom-bar");
 const adBottomSlotEl = document.getElementById("ad-bottom-slot");
@@ -49,6 +55,23 @@ let recorder = null;
 let recordingStream = null;
 let recordingChunks = [];
 let recordingMimeType = "";
+
+function authScopedKey(prefix) {
+  return `${prefix}_${me?.id || "anon"}`;
+}
+
+function setAnalyticsStatus(msg, isError = false) {
+  analyticsStatusEl.textContent = msg;
+  analyticsStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function onboardingSeen() {
+  return localStorage.getItem(authScopedKey("onboarding_seen_v1")) === "1";
+}
+
+function markOnboardingSeen() {
+  localStorage.setItem(authScopedKey("onboarding_seen_v1"), "1");
+}
 
 function escapeHtml(v) {
   return String(v)
@@ -173,6 +196,22 @@ async function api(path, options = {}) {
   return data;
 }
 
+async function trackEvent(eventName, payload = {}) {
+  if (!token || !eventName) return;
+  try {
+    await api("/api/analytics/event", {
+      method: "POST",
+      body: JSON.stringify({ eventName, payload })
+    });
+  } catch {
+    // Analytics must not break core UX.
+  }
+}
+
+function fireAndForgetTrack(eventName, payload = {}) {
+  trackEvent(eventName, payload).catch(() => {});
+}
+
 async function loadConfig() {
   try {
     const cfg = await api("/api/config", { method: "GET" });
@@ -261,12 +300,23 @@ async function loadBillingStatus() {
   }
 }
 
+async function loadAnalyticsSummary() {
+  if (!token) return;
+  try {
+    const data = await api("/api/analytics/summary?days=7", { method: "GET" });
+    setAnalyticsStatus(`Last 7d: ${data.total || 0} tracked actions`);
+  } catch (e) {
+    setAnalyticsStatus(`Analytics error: ${e.message}`, true);
+  }
+}
+
 async function startCheckout() {
   if (!token) return setBillingStatus("Log in first to subscribe.", true);
   setBillingStatus("Opening checkout...");
   try {
     const data = await api("/api/billing/create-checkout-session", { method: "POST" });
     if (!data.url) throw new Error("Missing checkout url");
+    fireAndForgetTrack("billing.checkout_start", { plan: "adfree_599_monthly" });
     window.location.href = data.url;
   } catch (e) {
     setBillingStatus(`Checkout error: ${e.message}`, true);
@@ -279,6 +329,7 @@ async function openPortal() {
   try {
     const data = await api("/api/billing/portal", { method: "POST" });
     if (!data.url) throw new Error("Missing portal url");
+    fireAndForgetTrack("billing.portal_open", {});
     window.location.href = data.url;
   } catch (e) {
     setBillingStatus(`Portal error: ${e.message}`, true);
@@ -300,6 +351,9 @@ async function register() {
     updateAuthUi();
     await loadNotes();
     await loadBillingStatus();
+    await loadAnalyticsSummary();
+    fireAndForgetTrack("auth.register", {});
+    if (!onboardingSeen()) openOnboarding();
   } catch (err) {
     setAuthStatus(err.message, true);
   }
@@ -320,6 +374,9 @@ async function login() {
     updateAuthUi();
     await loadNotes();
     await loadBillingStatus();
+    await loadAnalyticsSummary();
+    fireAndForgetTrack("auth.login", {});
+    if (!onboardingSeen()) openOnboarding();
   } catch (err) {
     setAuthStatus(err.message, true);
   }
@@ -343,6 +400,7 @@ async function logout() {
   adFree = false;
   billingLoaded = false;
   setBillingStatus("");
+  setAnalyticsStatus("");
 }
 
 async function loadMe() {
@@ -382,6 +440,7 @@ async function saveNote() {
   currentId = saved.id;
   renderNotes();
   aiOutputEl.textContent = "Saved.";
+  fireAndForgetTrack("notes.save", { noteId: saved.id });
 }
 
 async function deleteNote() {
@@ -393,6 +452,7 @@ async function deleteNote() {
   else clearEditor();
   renderNotes();
   aiOutputEl.textContent = "Deleted.";
+  fireAndForgetTrack("notes.delete", {});
 }
 
 async function runAi(action) {
@@ -410,6 +470,7 @@ async function runAi(action) {
       body: JSON.stringify({ action, noteText, selectedText })
     });
     aiOutputEl.textContent = data.output || "(No output)";
+    fireAndForgetTrack("ai.action", { action });
   } catch (err) {
     aiOutputEl.textContent = `Error: ${err.message}`;
   }
@@ -425,6 +486,17 @@ function closeOverlay() {
   overlayEl.classList.add("hidden");
   overlayEl.setAttribute("aria-hidden", "true");
   overlayBodyEl.innerHTML = "";
+}
+
+function openOnboarding() {
+  onboardingOverlayEl.classList.remove("hidden");
+  onboardingOverlayEl.setAttribute("aria-hidden", "false");
+}
+
+function closeOnboarding() {
+  onboardingOverlayEl.classList.add("hidden");
+  onboardingOverlayEl.setAttribute("aria-hidden", "true");
+  markOnboardingSeen();
 }
 
 function buttonRow(buttons) {
@@ -454,6 +526,7 @@ async function generateFlashcards() {
     const created = data.created || [];
     const due = await fetchDueCount();
     aiOutputEl.textContent = `Created ${created.length} flashcards. Due now: ${due}.`;
+    fireAndForgetTrack("flashcards.generate", { count: created.length });
   } catch (e) {
     aiOutputEl.textContent = `Flashcards error: ${e.message}`;
   }
@@ -551,6 +624,7 @@ async function renderStudyDue() {
             method: "POST",
             body: JSON.stringify({ id: c.id, grade })
           });
+          fireAndForgetTrack("flashcards.review", { grade });
           idx += 1;
           reviewed += 1;
           showBack = false;
@@ -592,6 +666,7 @@ async function renderTestPrep() {
   });
 
   const questions = out.questions || [];
+  fireAndForgetTrack("testprep.generate", { count: questions.length });
   if (!questions.length) {
     overlayBodyEl.innerHTML = `<div class="muted">No questions generated.</div>`;
     return;
@@ -730,6 +805,7 @@ async function startRecording() {
         editorEl.innerHTML += `${editorEl.innerHTML ? "<br><br>" : ""}${escapeHtml(data.text)}`;
       }
       aiOutputEl.textContent = data.text || "No transcript returned.";
+      fireAndForgetTrack("notes.transcribe", {});
     } catch (err) {
       aiOutputEl.textContent = `Transcription error: ${err.message}`;
     } finally {
@@ -790,6 +866,19 @@ testprepBtn.addEventListener("click", () => {
   renderTestPrep().catch((e) => (aiOutputEl.textContent = `Test prep error: ${e.message}`));
 });
 
+onboardingCloseEl.addEventListener("click", closeOnboarding);
+onboardingOverlayEl.addEventListener("click", (e) => {
+  if (e.target === onboardingOverlayEl) closeOnboarding();
+});
+onboardingStartEl.addEventListener("click", () => {
+  closeOnboarding();
+  titleEl.focus();
+});
+onboardingStudyEl.addEventListener("click", () => {
+  closeOnboarding();
+  renderStudyDue().catch((e) => (aiOutputEl.textContent = `Study error: ${e.message}`));
+});
+
 (async function init() {
   await loadConfig();
   await loadMe();
@@ -797,6 +886,8 @@ testprepBtn.addEventListener("click", () => {
   if (me) {
     await loadNotes();
     await loadBillingStatus();
+    await loadAnalyticsSummary();
+    if (!onboardingSeen()) openOnboarding();
   } else {
     setAuthStatus("Sign in to start writing notes.");
   }

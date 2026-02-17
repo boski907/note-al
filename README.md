@@ -35,6 +35,7 @@ Run:
 - `supabase/migrations/20260215_create_notes_table.sql`
 - `supabase/migrations/202602160910_create_flashcards_table.sql`
 - `supabase/migrations/202602160900_create_billing_profiles.sql`
+- `supabase/migrations/202602170700_create_analytics_events.sql`
 
 It creates:
 
@@ -72,6 +73,13 @@ It creates:
 - `POST /api/billing/create-checkout-session`
 - `POST /api/billing/portal`
 - `POST /api/stripe/webhook`
+- `POST /api/analytics/event`
+- `GET /api/analytics/summary`
+
+## Legal Pages
+
+- `/privacy.html`
+- `/terms.html`
 
 ## Stripe Webhook Setup
 

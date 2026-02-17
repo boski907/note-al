@@ -273,6 +273,31 @@ h1 {
   gap: 0.8rem;
 }
 
+.legal-links {
+  position: fixed;
+  right: 1rem;
+  bottom: 4.6rem;
+  z-index: 61;
+  display: flex;
+  gap: 0.65rem;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(16, 33, 40, 0.14);
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  backdrop-filter: blur(8px);
+}
+
+.legal-links a {
+  color: #164e63;
+  text-decoration: none;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.legal-links a:hover {
+  text-decoration: underline;
+}
+
 .overlay.hidden {
   display: none;
 }
@@ -382,5 +407,11 @@ button.danger {
 
   .note-editor {
     min-height: 34vh;
+  }
+
+  .legal-links {
+    right: 0.5rem;
+    left: 0.5rem;
+    justify-content: center;
   }
 }

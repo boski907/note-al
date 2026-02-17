@@ -39,6 +39,7 @@
           <button id="manage-btn" class="ghost">Manage subscription</button>
         </div>
         <div id="billing-status" class="status"></div>
+        <div id="analytics-status" class="status"></div>
       </section>
 
       <section class="workspace" id="workspace">
@@ -110,6 +111,34 @@
         <div id="ad-bottom-slot" class="ad-slot"></div>
       </div>
     </div>
+
+    <div id="onboarding-overlay" class="overlay hidden" aria-hidden="true">
+      <div class="overlay-card">
+        <header class="overlay-head">
+          <strong>Welcome to Notematica</strong>
+          <button id="onboarding-close" class="ghost">Close</button>
+        </header>
+        <div class="overlay-body">
+          <div class="card-face">
+            <h3>How Plans Work</h3>
+            <p class="muted">Free plan includes ads. Ad-free is $5.99/month via Stripe and removes bottom/study ads.</p>
+          </div>
+          <div class="card-face">
+            <h3>Study Loop</h3>
+            <p class="muted">Write notes, generate flashcards, run practice tests, then review due cards daily.</p>
+          </div>
+          <div class="row wrap">
+            <button id="onboarding-start">Start writing</button>
+            <button id="onboarding-study" class="ghost">Open study mode</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="legal-links">
+      <a href="/privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+      <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a>
+    </footer>
 
     <script src="/app.js"></script>
   </body>

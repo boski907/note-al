@@ -44,6 +44,7 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const DATA_DIR = path.join(__dirname, "data");
 const NOTES_FILE = path.join(DATA_DIR, "notes.json");
 const FLASHCARDS_FILE = path.join(DATA_DIR, "flashcards.json");
+const ANALYTICS_FILE = path.join(DATA_DIR, "analytics.json");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
 
@@ -560,6 +561,75 @@ async function listNotes(user) {
     .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
 }
 
+async function trackEvent(user, eventName, payload = {}) {
+  const safeName = String(eventName || "").trim().slice(0, 80);
+  if (!safeName) return;
+
+  const row = {
+    id: crypto.randomUUID(),
+    userId: user.id,
+    eventName: safeName,
+    payload: payload && typeof payload === "object" ? payload : {},
+    createdAt: new Date().toISOString()
+  };
+
+  if (USE_SUPABASE) {
+    await supabaseRestRequest(
+      "/rest/v1/analytics_events",
+      "POST",
+      [
+        {
+          id: row.id,
+          user_id: row.userId,
+          event_name: row.eventName,
+          payload: row.payload,
+          created_at: row.createdAt
+        }
+      ],
+      user.token
+    );
+    return;
+  }
+
+  const items = loadJson(ANALYTICS_FILE, []);
+  items.push(row);
+  saveJson(ANALYTICS_FILE, items.slice(-5000));
+}
+
+async function getAnalyticsSummary(user, days = 7) {
+  const safeDays = Math.max(1, Math.min(90, Number(days) || 7));
+  const since = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000).toISOString();
+
+  let items = [];
+  if (USE_SUPABASE) {
+    const rows = await supabaseRestRequest(
+      `/rest/v1/analytics_events?select=event_name,created_at&created_at=gte.${encodeURIComponent(
+        since
+      )}&order=created_at.desc&limit=5000`,
+      "GET",
+      null,
+      user.token
+    );
+    items = (rows || []).map((r) => ({ eventName: r.event_name || "", createdAt: r.created_at }));
+  } else {
+    items = loadJson(ANALYTICS_FILE, [])
+      .filter((e) => e.userId === user.id && String(e.createdAt || "") >= since)
+      .map((e) => ({ eventName: e.eventName, createdAt: e.createdAt }));
+  }
+
+  const counts = {};
+  for (const e of items) {
+    const key = String(e.eventName || "unknown");
+    counts[key] = (counts[key] || 0) + 1;
+  }
+
+  return {
+    days: safeDays,
+    total: items.length,
+    counts
+  };
+}
+
 async function upsertNote(user, payload) {
   const now = new Date().toISOString();
   const note = {
@@ -1060,6 +1130,22 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { url: portal.url });
       }
 
+      if (pathname === "/api/analytics/event" && req.method === "POST") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const body = parseJsonBody(await readBody(req));
+        await trackEvent(user, body.eventName, body.payload || {});
+        return json(res, 200, { ok: true });
+      }
+
+      if (pathname === "/api/analytics/summary" && req.method === "GET") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const days = Number(reqUrl.searchParams.get("days") || 7);
+        const summary = await getAnalyticsSummary(user, days);
+        return json(res, 200, summary);
+      }
+
       if (pathname === "/api/auth/register" && req.method === "POST") {
         const body = parseJsonBody(await readBody(req));
         const email = sanitizeEmail(body.email);
@@ -1305,6 +1391,7 @@ server.listen(PORT, HOST, () => {
   ensureJsonFile(SESSIONS_FILE, []);
   ensureJsonFile(NOTES_FILE, []);
   ensureJsonFile(FLASHCARDS_FILE, []);
+  ensureJsonFile(ANALYTICS_FILE, []);
   console.log(`AI note app running on http://${HOST}:${PORT}`);
   console.log(`Storage mode: ${USE_SUPABASE ? "Supabase RLS mode" : "Local fallback mode"}`);
 });
