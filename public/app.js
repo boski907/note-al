@@ -1165,8 +1165,12 @@ function renderImportedSources(imported = []) {
   appendToEditor(blocks.join("\n\n"));
 }
 
+function sourcesKeyForNote(noteId) {
+  return authScopedKey(`note_sources_v1_${noteId || "draft"}`);
+}
+
 function sourcesKeyForCurrentNote() {
-  return authScopedKey(`note_sources_v1_${currentId || "draft"}`);
+  return sourcesKeyForNote(currentId);
 }
 
 function loadSourcesForCurrentNote() {
@@ -1426,6 +1430,8 @@ async function sendFeedbackReport() {
 
 async function saveNote() {
   if (!token) return;
+  const prevSourcesKey = sourcesKeyForCurrentNote();
+  const prevSources = loadSourcesForCurrentNote();
   const payload = noteToPayload();
   const data = await api("/api/notes", {
     method: "POST",
@@ -1437,6 +1443,16 @@ async function saveNote() {
   else notes.unshift(saved);
   notes.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   currentId = saved.id;
+  // If user imported sources before saving a new note (draft), move sources to the saved note id.
+  try {
+    const nextKey = sourcesKeyForCurrentNote();
+    if (prevSources.length && prevSourcesKey !== nextKey && !localStorage.getItem(nextKey)) {
+      localStorage.setItem(nextKey, JSON.stringify(prevSources));
+      localStorage.removeItem(prevSourcesKey);
+    }
+  } catch {
+    // ignore
+  }
   renderNotes();
   aiOutputEl.textContent = "Saved.";
   fireAndForgetTrack("notes.save", { noteId: saved.id });
