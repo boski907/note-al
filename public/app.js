@@ -81,6 +81,7 @@ let recordingStream = null;
 let recordingChunks = [];
 let recordingMimeType = "";
 let monetizedOutputCount = 0;
+let sourceImportCount = 0;
 
 function setDisabled(el, disabled, title = "") {
   if (!el) return;
@@ -145,10 +146,17 @@ function loadOutputCounter() {
   const raw = localStorage.getItem(authScopedKey("output_count_v1")) || "0";
   const n = Number(raw);
   monetizedOutputCount = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+  const rawImport = localStorage.getItem(authScopedKey("import_count_v1")) || "0";
+  const m = Number(rawImport);
+  sourceImportCount = Number.isFinite(m) ? Math.max(0, Math.floor(m)) : 0;
 }
 
 function saveOutputCounter() {
   localStorage.setItem(authScopedKey("output_count_v1"), String(monetizedOutputCount));
+}
+
+function saveImportCounter() {
+  localStorage.setItem(authScopedKey("import_count_v1"), String(sourceImportCount));
 }
 
 function openOutputAdsOverlay() {
@@ -199,6 +207,15 @@ async function countOutputAndMaybeShowAds(eventName = "output.generic") {
   if (monetizedOutputCount % 4 !== 0) return;
   await showTwoAdInterstitial();
   fireAndForgetTrack("ads.double_interstitial_shown", { atOutput: monetizedOutputCount, trigger: eventName });
+}
+
+async function countImportAndMaybeShowAds() {
+  if (adFree) return;
+  sourceImportCount += 1;
+  saveImportCounter();
+  if (sourceImportCount % 4 !== 0) return;
+  await showTwoAdInterstitial();
+  fireAndForgetTrack("ads.double_interstitial_shown", { atImport: sourceImportCount, trigger: "sources.import" });
 }
 
 function onboardingSeen() {
@@ -603,6 +620,7 @@ async function logout() {
   setMetric(metricFlashcardsEl, "-");
   setMetric(metricAiEl, "-");
   monetizedOutputCount = 0;
+  sourceImportCount = 0;
   closeOutputAdsOverlay();
   clearLearningUi();
   setLearningStatus("");
@@ -757,7 +775,7 @@ async function importSources({ sources = [], urls = [] } = {}) {
     renderImportedSources(out.imported || []);
     setSourceStatus(`Imported ${out.imported?.length || 0} source(s) into this note.`);
     fireAndForgetTrack("sources.import_client", { count: out.imported?.length || 0 });
-    await countOutputAndMaybeShowAds("sources.import");
+    await countImportAndMaybeShowAds();
   } catch (e) {
     setSourceStatus(`Import failed: ${e.message}`, true);
   }
