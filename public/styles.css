@@ -9,6 +9,7 @@
   --accent-2: #ea580c;
   --danger: #be123c;
   --shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+  --shadow-strong: 0 28px 56px rgba(15, 23, 42, 0.2);
 }
 
 * {
@@ -24,6 +25,36 @@ body {
     radial-gradient(circle at 85% 80%, #fed7aa 0%, transparent 22%),
     linear-gradient(135deg, var(--bg-a), var(--bg-b));
   padding-bottom: 92px;
+  overflow-x: hidden;
+}
+
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  width: 38vw;
+  height: 38vw;
+  max-width: 560px;
+  max-height: 560px;
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(20px);
+  opacity: 0.38;
+}
+
+body::before {
+  top: -12vw;
+  left: -10vw;
+  background: radial-gradient(circle at 40% 40%, #67e8f9 0%, #22d3ee 36%, transparent 70%);
+  animation: floatA 18s ease-in-out infinite;
+}
+
+body::after {
+  right: -12vw;
+  bottom: -16vw;
+  background: radial-gradient(circle at 40% 40%, #fdba74 0%, #fb923c 35%, transparent 70%);
+  animation: floatB 22s ease-in-out infinite;
 }
 
 .backdrop {
@@ -43,6 +74,7 @@ body {
   margin: 1rem auto;
   display: grid;
   gap: 1rem;
+  animation: fadeUp 500ms ease-out;
 }
 
 .login-page {
@@ -61,6 +93,19 @@ body {
   border: 1px solid var(--line);
   border-radius: 18px;
   box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-card::before,
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, #22d3ee, #0ea5e9, #f97316);
+  opacity: 0.75;
 }
 
 .auth-card {
@@ -109,8 +154,14 @@ h1 {
 .metric-card {
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #ffffffdb;
+  background: linear-gradient(180deg, #ffffffef 0%, #f8fdffdf 100%);
   padding: 0.55rem 0.65rem;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
 }
 
 .metric-label {
@@ -192,6 +243,24 @@ h1 {
   background: #ffffffde;
 }
 
+#search-input:focus,
+#note-title:focus,
+#note-tags:focus,
+#source-urls:focus,
+#tutor-question:focus,
+#referral-code-input:focus,
+#plan-days:focus,
+#plan-minutes:focus,
+#reminder-time:focus,
+#exam-mode:focus,
+#auth-email:focus,
+#auth-password:focus,
+#feedback-text:focus {
+  outline: 2px solid rgba(14, 165, 233, 0.42);
+  outline-offset: 1px;
+  border-color: rgba(14, 165, 233, 0.55);
+}
+
 .notes-list {
   overflow: auto;
   padding: 0.6rem;
@@ -204,17 +273,19 @@ h1 {
   padding: 0.7rem;
   margin-bottom: 0.55rem;
   cursor: pointer;
-  transition: transform 120ms ease, border-color 120ms ease;
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .note-item:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
   border-color: #7fa2b2;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
 }
 
 .note-item.active {
   border-color: #0891b2;
-  box-shadow: inset 0 0 0 1px #0891b2;
+  box-shadow: inset 0 0 0 1px #0891b2, 0 8px 18px rgba(8, 145, 178, 0.18);
+  background: linear-gradient(180deg, #ecfeff 0%, #f8fdff 100%);
 }
 
 .note-title {
@@ -245,8 +316,9 @@ h1 {
   min-height: 44vh;
   overflow: auto;
   font: 400 0.94rem/1.55 "IBM Plex Mono", monospace;
-  background: #fffefc;
+  background: linear-gradient(180deg, #fffefc 0%, #f9fdff 100%);
   white-space: pre-wrap;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .note-editor:focus {
@@ -267,9 +339,9 @@ h1 {
 
 .ai-output {
   min-height: 5rem;
-  border: 1px dashed #8ca6b3;
+  border: 1px dashed #7ea5b8;
   border-radius: 10px;
-  background: #ffffffcc;
+  background: linear-gradient(180deg, #ffffffde 0%, #f7fcffdb 100%);
   padding: 0.7rem;
   white-space: pre-wrap;
   font: 400 0.85rem/1.45 "IBM Plex Mono", monospace;
@@ -278,7 +350,7 @@ h1 {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(16, 33, 40, 0.45);
+  background: linear-gradient(160deg, rgba(16, 33, 40, 0.66), rgba(15, 23, 42, 0.5));
   display: grid;
   place-items: center;
   padding: 1rem;
@@ -378,7 +450,7 @@ h1 {
   backdrop-filter: blur(10px);
   border: 1px solid var(--line);
   border-radius: 18px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-strong);
   display: grid;
   grid-template-rows: auto 1fr;
 }
@@ -400,7 +472,7 @@ h1 {
 .card-face {
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: #ffffffdd;
+  background: linear-gradient(180deg, #ffffffea 0%, #f8fdffdd 100%);
   padding: 1rem;
   margin-bottom: 0.8rem;
 }
@@ -456,10 +528,13 @@ button {
   letter-spacing: 0.01em;
   padding: 0.42rem 0.7rem;
   cursor: pointer;
+  transition: filter 120ms ease, transform 120ms ease, box-shadow 120ms ease;
 }
 
 button:hover {
-  filter: brightness(0.98);
+  filter: brightness(0.99);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(15, 118, 110, 0.16);
 }
 
 button.ghost {
@@ -492,5 +567,34 @@ button.danger {
     right: 0.5rem;
     left: 0.5rem;
     justify-content: center;
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes floatA {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(2vw, 2vh) scale(1.06);
+  }
+}
+
+@keyframes floatB {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-2vw, -2vh) scale(1.04);
   }
 }
