@@ -315,6 +315,13 @@ h1 {
   gap: 0.8rem;
 }
 
+.output-ads-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+  margin-bottom: 0.8rem;
+}
+
 .legal-links {
   position: fixed;
   right: 1rem;
@@ -408,6 +415,10 @@ h1 {
 
 @media (max-width: 760px) {
   .grid-two {
+    grid-template-columns: 1fr;
+  }
+
+  .output-ads-grid {
     grid-template-columns: 1fr;
   }
 }
