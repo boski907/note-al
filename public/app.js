@@ -65,6 +65,7 @@ const adBottomSlotEl = document.getElementById("ad-bottom-slot");
 const outputAdsOverlayEl = document.getElementById("output-ads-overlay");
 const outputAdSlotAEl = document.getElementById("output-ad-slot-a");
 const outputAdSlotBEl = document.getElementById("output-ad-slot-b");
+const outputAdSlotCEl = document.getElementById("output-ad-slot-c");
 const outputAdsContinueEl = document.getElementById("output-ads-continue");
 
 let adsenseCfg = null;
@@ -169,10 +170,14 @@ function closeOutputAdsOverlay() {
   outputAdsOverlayEl.setAttribute("aria-hidden", "true");
   outputAdSlotAEl.innerHTML = "";
   outputAdSlotBEl.innerHTML = "";
+  outputAdSlotCEl.innerHTML = "";
+  setHidden(outputAdSlotCEl, true);
 }
 
-async function showTwoAdInterstitial() {
+async function showAdInterstitial(adCount = 2) {
   if (adFree) return;
+  const showThree = Number(adCount) >= 3;
+  setHidden(outputAdSlotCEl, !showThree);
   openOutputAdsOverlay();
 
   if (adsenseCfg?.enabled && adsenseCfg.client && adsenseCfg.bottomSlot) {
@@ -181,13 +186,18 @@ async function showTwoAdInterstitial() {
       renderAdInto(outputAdSlotAEl, { client: adsenseCfg.client, slot: adsenseCfg.bottomSlot }, { responsive: true });
       const slotB = adsenseCfg.breakSlot || adsenseCfg.bottomSlot;
       renderAdInto(outputAdSlotBEl, { client: adsenseCfg.client, slot: slotB }, { responsive: true });
+      if (showThree) {
+        renderAdInto(outputAdSlotCEl, { client: adsenseCfg.client, slot: slotB }, { responsive: true });
+      }
     } catch {
       outputAdSlotAEl.textContent = "Ad unavailable right now.";
       outputAdSlotBEl.textContent = "Ad unavailable right now.";
+      if (showThree) outputAdSlotCEl.textContent = "Ad unavailable right now.";
     }
   } else {
     outputAdSlotAEl.textContent = "Sponsored";
     outputAdSlotBEl.textContent = "Sponsored";
+    if (showThree) outputAdSlotCEl.textContent = "Sponsored";
   }
 
   await new Promise((resolve) => {
@@ -205,7 +215,7 @@ async function countOutputAndMaybeShowAds(eventName = "output.generic") {
   monetizedOutputCount += 1;
   saveOutputCounter();
   if (monetizedOutputCount % 4 !== 0) return;
-  await showTwoAdInterstitial();
+  await showAdInterstitial(2);
   fireAndForgetTrack("ads.double_interstitial_shown", { atOutput: monetizedOutputCount, trigger: eventName });
 }
 
@@ -214,8 +224,8 @@ async function countImportAndMaybeShowAds() {
   sourceImportCount += 1;
   saveImportCounter();
   if (sourceImportCount % 4 !== 0) return;
-  await showTwoAdInterstitial();
-  fireAndForgetTrack("ads.double_interstitial_shown", { atImport: sourceImportCount, trigger: "sources.import" });
+  await showAdInterstitial(3);
+  fireAndForgetTrack("ads.triple_interstitial_shown", { atImport: sourceImportCount, trigger: "sources.import" });
 }
 
 function onboardingSeen() {
