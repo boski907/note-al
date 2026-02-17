@@ -40,6 +40,15 @@ const RL_AUTH_REGISTER_MAX = Number(process.env.RL_AUTH_REGISTER_MAX || 10);
 const RL_AI_WINDOW_MS = Number(process.env.RL_AI_WINDOW_MS || 60 * 1000); // 1 min
 const RL_AI_MAX_PER_IP = Number(process.env.RL_AI_MAX_PER_IP || 30);
 const RL_AI_MAX_PER_USER = Number(process.env.RL_AI_MAX_PER_USER || 60);
+
+function safeJsonParse(txt) {
+  if (!txt) return null;
+  try {
+    return JSON.parse(txt);
+  } catch {
+    return { _raw: String(txt) };
+  }
+}
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const OPENAI_TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe";
@@ -295,9 +304,15 @@ async function supabaseAuthRequest(endpoint, method = "GET", body = null, access
   });
 
   const txt = await response.text();
-  const payload = txt ? JSON.parse(txt) : {};
+  const payload = safeJsonParse(txt) || {};
   if (!response.ok) {
-    throw new Error(payload?.msg || payload?.error_description || payload?.error || `Supabase auth error ${response.status}`);
+    const detail =
+      payload?.msg ||
+      payload?.error_description ||
+      payload?.error ||
+      payload?._raw ||
+      `Supabase auth error ${response.status}`;
+    throw new Error(String(detail).slice(0, 800));
   }
   return payload;
 }
@@ -318,9 +333,10 @@ async function supabaseRestRequest(endpoint, method = "GET", body = null, access
   });
 
   const txt = await response.text();
-  const payload = txt ? JSON.parse(txt) : null;
+  const payload = safeJsonParse(txt);
   if (!response.ok) {
-    throw new Error(payload?.message || `Supabase REST error ${response.status}`);
+    const detail = payload?.message || payload?.hint || payload?._raw || `Supabase REST error ${response.status}`;
+    throw new Error(String(detail).slice(0, 800));
   }
   return payload;
 }
@@ -343,9 +359,11 @@ async function supabaseAdminRestRequest(endpoint, method = "GET", body = null, p
   });
 
   const txt = await response.text();
-  const payload = txt ? JSON.parse(txt) : null;
+  const payload = safeJsonParse(txt);
   if (!response.ok) {
-    throw new Error(payload?.message || `Supabase admin REST error ${response.status}`);
+    const detail =
+      payload?.message || payload?.hint || payload?._raw || `Supabase admin REST error ${response.status}`;
+    throw new Error(String(detail).slice(0, 800));
   }
   return payload;
 }
@@ -1779,12 +1797,17 @@ async function transcribeAudio(audioBase64, mimeType) {
 }
 
 const server = http.createServer(async (req, res) => {
+  const requestId = crypto.randomBytes(6).toString("hex");
+  res.setHeader("X-Request-Id", requestId);
   try {
     const reqUrl = new URL(req.url, `http://${req.headers.host}`);
     const pathname = reqUrl.pathname;
     const ip = getClientIp(req);
 
     if (pathname.startsWith("/api/")) {
+      if (pathname === "/api/health" && req.method === "GET") {
+        return json(res, 200, { ok: true, time: new Date().toISOString() });
+      }
       if (pathname === "/api/stripe/webhook" && req.method === "POST") {
         const rawBody = await readBody(req, { maxBytes: STRIPE_WEBHOOK_MAX_BODY_BYTES });
         try {
@@ -2283,6 +2306,11 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     const status = error && typeof error === "object" && error.statusCode ? Number(error.statusCode) : 500;
     const message = error instanceof Error ? error.message : "Unexpected error";
+    try {
+      console.error(`[${requestId}] ${req.method} ${String(req.url || "")} -> ${status}:`, error);
+    } catch {
+      // ignore logging errors
+    }
     json(res, status, { error: status === 500 && IS_PROD ? "Internal server error" : message });
   }
 });
