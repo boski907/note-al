@@ -893,6 +893,95 @@ function extractJsonArray(text) {
   return s;
 }
 
+function cleanImportedText(value) {
+  return String(value || "")
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function htmlToText(html) {
+  const raw = String(html || "");
+  return cleanImportedText(
+    raw
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<\/(p|div|li|h1|h2|h3|h4|h5|h6|tr)>/gi, "\n")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/[ \t]+/g, " ")
+  );
+}
+
+async function fetchUrlAsSource(url) {
+  const raw = String(url || "").trim();
+  if (!/^https?:\/\//i.test(raw)) throw new Error("Only http/https URLs are supported");
+
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 9000);
+  let response;
+  try {
+    response = await fetch(raw, {
+      method: "GET",
+      redirect: "follow",
+      signal: ac.signal,
+      headers: {
+        "User-Agent": "NotematicaSourceFetcher/1.0"
+      }
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!response.ok) throw new Error(`Fetch failed (${response.status})`);
+  const ctype = String(response.headers.get("content-type") || "").toLowerCase();
+  const isTextLike = ctype.includes("text/") || ctype.includes("json") || ctype.includes("xml");
+  if (!isTextLike) throw new Error(`Unsupported content type: ${ctype || "unknown"}`);
+
+  const text = await response.text();
+  const capped = text.slice(0, 140000);
+  const parsed = ctype.includes("html") ? htmlToText(capped) : cleanImportedText(capped);
+  if (!parsed) throw new Error("No readable text found at URL");
+  return parsed;
+}
+
+async function importSources(body) {
+  const fileSources = Array.isArray(body.sources) ? body.sources : [];
+  const urls = Array.isArray(body.urls) ? body.urls : [];
+  const out = [];
+
+  for (const src of fileSources.slice(0, 20)) {
+    const name = String(src?.name || "source.txt").slice(0, 120);
+    const content = cleanImportedText(String(src?.content || "").slice(0, 140000));
+    if (!content) continue;
+    out.push({
+      name,
+      kind: "file",
+      content
+    });
+  }
+
+  for (const raw of urls.slice(0, 8)) {
+    const url = String(raw || "").trim();
+    if (!url) continue;
+    const content = await fetchUrlAsSource(url);
+    out.push({
+      name: url.slice(0, 120),
+      kind: "url",
+      content
+    });
+  }
+
+  return out;
+}
+
 async function generateFlashcardsFromText(noteText, count = 10) {
   const n = Math.max(1, Math.min(25, Number(count) || 10));
   const response = await fetch("https://api.openai.com/v1/responses", {
@@ -1431,6 +1520,22 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { output });
       }
 
+      if (pathname === "/api/sources/import" && req.method === "POST") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const body = parseJsonBody(await readBody(req));
+        const imported = await importSources(body);
+        if (!imported.length) {
+          return json(res, 400, { error: "No readable sources were imported" });
+        }
+        await trackEvent(user, "sources.import", {
+          count: imported.length,
+          fromFiles: imported.filter((i) => i.kind === "file").length,
+          fromUrls: imported.filter((i) => i.kind === "url").length
+        });
+        return json(res, 200, { imported });
+      }
+
       if (pathname === "/api/transcribe" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
@@ -1469,6 +1574,7 @@ server.listen(PORT, HOST, () => {
   ensureJsonFile(NOTES_FILE, []);
   ensureJsonFile(FLASHCARDS_FILE, []);
   ensureJsonFile(ANALYTICS_FILE, []);
+  ensureJsonFile(ONBOARDING_FILE, []);
   console.log(`AI note app running on http://${HOST}:${PORT}`);
   console.log(`Storage mode: ${USE_SUPABASE ? "Supabase RLS mode" : "Local fallback mode"}`);
 });

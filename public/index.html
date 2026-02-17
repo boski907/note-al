@@ -103,6 +103,18 @@
 
             <div class="divider"></div>
             <div class="row wrap">
+              <input id="source-files" type="file" multiple />
+              <button id="import-files-btn" class="ghost">Import files</button>
+            </div>
+            <div class="row wrap">
+              <input id="source-urls" placeholder="Paste one or more URLs, separated by commas or new lines" />
+              <button id="import-urls-btn" class="ghost">Import URLs</button>
+            </div>
+            <p class="muted">Supported file types: txt, md, csv, json, html, xml, log.</p>
+            <div id="source-status" class="status"></div>
+
+            <div class="divider"></div>
+            <div class="row wrap">
               <button id="gen-cards-btn">Generate flashcards</button>
               <button id="study-btn" class="ghost">Study due</button>
               <button id="testprep-btn" class="ghost">Practice test</button>

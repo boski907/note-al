@@ -29,6 +29,11 @@ const recordBtn = document.getElementById("record-btn");
 const genCardsBtn = document.getElementById("gen-cards-btn");
 const studyBtn = document.getElementById("study-btn");
 const testprepBtn = document.getElementById("testprep-btn");
+const sourceFilesEl = document.getElementById("source-files");
+const sourceUrlsEl = document.getElementById("source-urls");
+const importFilesBtn = document.getElementById("import-files-btn");
+const importUrlsBtn = document.getElementById("import-urls-btn");
+const sourceStatusEl = document.getElementById("source-status");
 
 const overlayEl = document.getElementById("study-overlay");
 const overlayTitleEl = document.getElementById("overlay-title");
@@ -99,6 +104,11 @@ function escapeHtml(v) {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+function setSourceStatus(msg, isError = false) {
+  sourceStatusEl.textContent = msg;
+  sourceStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
 }
 
 function getSelectionTextWithinEditor() {
@@ -181,6 +191,12 @@ function clearEditor() {
   aiOutputEl.textContent = "";
   titleEl.focus();
   renderNotes();
+}
+
+function appendToEditor(text) {
+  const clean = String(text || "").trim();
+  if (!clean) return;
+  editorEl.innerHTML += `${editorEl.innerHTML ? "<br><br>" : ""}${escapeHtml(clean).replaceAll("\n", "<br>")}`;
 }
 
 function setAuthStatus(msg, isError = false) {
@@ -455,6 +471,9 @@ async function logout() {
   setMetric(metricTopEventEl, "-");
   setMetric(metricFlashcardsEl, "-");
   setMetric(metricAiEl, "-");
+  setSourceStatus("");
+  if (sourceUrlsEl) sourceUrlsEl.value = "";
+  if (sourceFilesEl) sourceFilesEl.value = "";
   window.location.href = "/login.html";
 }
 
@@ -478,6 +497,64 @@ async function loadNotes() {
   notes.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   renderNotes();
   if (notes.length) selectNote(notes[0].id);
+}
+
+function parseUrlInput(raw) {
+  return String(raw || "")
+    .split(/[\n,]/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function canImportFile(name) {
+  const lower = String(name || "").toLowerCase();
+  const allowed = [".txt", ".md", ".csv", ".json", ".html", ".htm", ".xml", ".log"];
+  return allowed.some((ext) => lower.endsWith(ext));
+}
+
+async function readSelectedFilesAsSources() {
+  const files = [...(sourceFilesEl.files || [])];
+  const accepted = files.filter((f) => canImportFile(f.name)).slice(0, 20);
+  const rejected = files.length - accepted.length;
+  const sources = [];
+  for (const f of accepted) {
+    const text = String(await f.text()).trim();
+    if (!text) continue;
+    sources.push({
+      name: f.name,
+      content: text.slice(0, 140000)
+    });
+  }
+  return { sources, rejected };
+}
+
+function renderImportedSources(imported = []) {
+  if (!Array.isArray(imported) || !imported.length) return;
+  const blocks = imported.map((src) => {
+    const title = `Source: ${src.name}`;
+    return `## ${title}\n${String(src.content || "").trim()}`;
+  });
+  appendToEditor(blocks.join("\n\n"));
+}
+
+async function importSources({ sources = [], urls = [] } = {}) {
+  if (!token) return;
+  if (!sources.length && !urls.length) {
+    setSourceStatus("Select files or enter URLs first.", true);
+    return;
+  }
+  setSourceStatus("Importing sources...");
+  try {
+    const out = await api("/api/sources/import", {
+      method: "POST",
+      body: JSON.stringify({ sources, urls })
+    });
+    renderImportedSources(out.imported || []);
+    setSourceStatus(`Imported ${out.imported?.length || 0} source(s) into this note.`);
+    fireAndForgetTrack("sources.import_client", { count: out.imported?.length || 0 });
+  } catch (e) {
+    setSourceStatus(`Import failed: ${e.message}`, true);
+  }
 }
 
 async function saveNote() {
@@ -957,6 +1034,30 @@ studyBtn.addEventListener("click", () => {
 });
 testprepBtn.addEventListener("click", () => {
   renderTestPrep().catch((e) => (aiOutputEl.textContent = `Test prep error: ${e.message}`));
+});
+importFilesBtn.addEventListener("click", async () => {
+  const { sources, rejected } = await readSelectedFilesAsSources();
+  if (!sources.length) {
+    setSourceStatus(
+      rejected > 0
+        ? "No supported text files selected. Use txt, md, csv, json, html, xml, or log."
+        : "Select files first.",
+      true
+    );
+    return;
+  }
+  await importSources({ sources, urls: [] });
+  if (rejected > 0) {
+    setSourceStatus(`Imported ${sources.length}. Skipped ${rejected} unsupported file(s).`);
+  }
+});
+importUrlsBtn.addEventListener("click", async () => {
+  const urls = parseUrlInput(sourceUrlsEl.value).slice(0, 8);
+  if (!urls.length) {
+    setSourceStatus("Enter at least one URL.", true);
+    return;
+  }
+  await importSources({ sources: [], urls });
 });
 
 onboardingCloseEl.addEventListener("click", closeOnboarding);
