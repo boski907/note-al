@@ -16,6 +16,7 @@ const learningMasteryEl = document.getElementById("learning-mastery");
 const learningDueEl = document.getElementById("learning-due");
 const learningFocusEl = document.getElementById("learning-focus");
 const learningNextEl = document.getElementById("learning-next");
+const upgradeLearningBtn = document.getElementById("upgrade-learning-btn");
 const adCheckBtn = document.getElementById("ad-check-btn");
 const adCheckStatusEl = document.getElementById("ad-check-status");
 
@@ -30,6 +31,7 @@ const deleteBtn = document.getElementById("delete-btn");
 const aiOutputEl = document.getElementById("ai-output");
 const aiButtons = [...document.querySelectorAll("[data-ai]")];
 const feedbackAiBtn = document.querySelector('[data-ai="feedback"]');
+const upgradeAiBtn = document.getElementById("upgrade-ai-btn");
 const formatButtons = [...document.querySelectorAll("[data-cmd]")];
 const clearFormatBtn = document.getElementById("clear-format-btn");
 const recordBtn = document.getElementById("record-btn");
@@ -40,6 +42,7 @@ const sourceFilesEl = document.getElementById("source-files");
 const sourceUrlsEl = document.getElementById("source-urls");
 const importFilesBtn = document.getElementById("import-files-btn");
 const importUrlsBtn = document.getElementById("import-urls-btn");
+const upgradeSourcesBtn = document.getElementById("upgrade-sources-btn");
 const sourceStatusEl = document.getElementById("source-status");
 
 const overlayEl = document.getElementById("study-overlay");
@@ -79,6 +82,11 @@ function setDisabled(el, disabled, title = "") {
   el.disabled = Boolean(disabled);
   if (title) el.title = title;
   else el.removeAttribute("title");
+}
+
+function setHidden(el, hidden) {
+  if (!el) return;
+  el.classList.toggle("hidden", Boolean(hidden));
 }
 
 function authScopedKey(prefix) {
@@ -124,6 +132,9 @@ function applyPremiumFeatureGates() {
   setDisabled(importUrlsBtn, gated, gated ? hint : "");
   setDisabled(refreshLearningBtn, gated, gated ? hint : "");
   setDisabled(feedbackAiBtn, gated, gated ? hint : "");
+  setHidden(upgradeLearningBtn, !gated);
+  setHidden(upgradeSourcesBtn, !gated);
+  setHidden(upgradeAiBtn, !gated);
   if (gated) {
     if (!sourceStatusEl.textContent) setSourceStatus("Advanced source import is available on Ad-free.");
     if (!learningStatusEl.textContent) setLearningStatus("Personalized learning is available on Ad-free.");
@@ -1222,6 +1233,9 @@ onboardingStudyEl.addEventListener("click", () => {
 onboardingEmailSaveEl.addEventListener("click", () => saveOnboardingEmail());
 adCheckBtn.addEventListener("click", () => runAdDiagnostics());
 refreshLearningBtn.addEventListener("click", () => loadLearningPlan());
+upgradeLearningBtn.addEventListener("click", () => startCheckout());
+upgradeSourcesBtn.addEventListener("click", () => startCheckout());
+upgradeAiBtn.addEventListener("click", () => startCheckout());
 
 (async function init() {
   if (!token) {

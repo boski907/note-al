@@ -344,6 +344,10 @@ h1 {
   display: none;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .overlay-card {
   width: min(920px, 100%);
   max-height: min(86vh, 900px);

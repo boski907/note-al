@@ -56,7 +56,10 @@
         <div class="learning-block">
           <div class="auth-head">
             <strong>Personalized Learning</strong>
-            <button id="refresh-learning-btn" class="ghost">Refresh</button>
+            <div class="row wrap">
+              <button id="upgrade-learning-btn" class="ghost hidden">Upgrade to Ad-free</button>
+              <button id="refresh-learning-btn" class="ghost">Refresh</button>
+            </div>
           </div>
           <div id="learning-status" class="status"></div>
           <div class="metrics-grid">
@@ -116,6 +119,7 @@
               <button data-ai="summarize">Summarize</button>
               <button data-ai="improve">Improve writing</button>
               <button data-ai="feedback">Get feedback</button>
+              <button id="upgrade-ai-btn" class="ghost hidden">Upgrade to Ad-free</button>
               <button data-ai="tasks">Extract tasks</button>
               <button id="record-btn" class="ghost">Record voice note</button>
             </div>
@@ -135,6 +139,7 @@
             <div class="row wrap">
               <input id="source-urls" placeholder="Paste one or more URLs, separated by commas or new lines" />
               <button id="import-urls-btn" class="ghost">Import URLs</button>
+              <button id="upgrade-sources-btn" class="ghost hidden">Upgrade to Ad-free</button>
             </div>
             <p class="muted">Supported: text files, PDF, DOCX, websites, YouTube links, and video/audio files.</p>
             <div id="source-status" class="status"></div>
