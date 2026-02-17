@@ -1,0 +1,22 @@
+{
+  "name": "notematica-mobile",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "cap:init": "cap init Notematica com.notematica.app --web-dir www",
+    "cap:add:ios": "cap add ios",
+    "cap:add:android": "cap add android",
+    "cap:sync": "cap sync",
+    "cap:open:ios": "cap open ios",
+    "cap:open:android": "cap open android"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/ios": "^6.0.0"
+  }
+}

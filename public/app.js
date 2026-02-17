@@ -110,6 +110,18 @@ const outputAdsCloseEl = document.getElementById("output-ads-close");
 let adsenseCfg = null;
 let adFree = false;
 let billingLoaded = false;
+const IS_NATIVE_SHELL = (() => {
+  try {
+    if (window.Capacitor && typeof window.Capacitor.isNativePlatform === "function") {
+      return Boolean(window.Capacitor.isNativePlatform());
+    }
+    if (window.Capacitor && window.Capacitor.platform) return true;
+    const ua = String(navigator.userAgent || "");
+    return /\bCapacitor\b/i.test(ua);
+  } catch {
+    return false;
+  }
+})();
 
 function syncBottomAdSafeArea() {
   const shown = adBottomBarEl && !adBottomBarEl.classList.contains("hidden");
@@ -790,6 +802,13 @@ function renderAdInto(container, { client, slot }, { responsive = true } = {}) {
 }
 
 async function initAdsense() {
+  if (IS_NATIVE_SHELL) {
+    // AdSense web units should not run inside native store wrappers.
+    adBottomBarEl.classList.add("hidden");
+    adBottomBarEl.setAttribute("aria-hidden", "true");
+    syncBottomAdSafeArea();
+    return;
+  }
   if (adFree) {
     syncBottomAdSafeArea();
     return;
@@ -2219,6 +2238,14 @@ themeSelectEl.addEventListener("change", () => {
   await loadLearningPlan();
   await loadDashboard();
   await loadReferralCode();
+  if (IS_NATIVE_SHELL) {
+    // Store wrappers: avoid showing any purchase/upgrade CTAs or external billing portals.
+    setHidden(subscribeBtn, true);
+    setHidden(manageBtn, true);
+    setHidden(upgradeLearningBtn, true);
+    setHidden(upgradeSourcesBtn, true);
+    setHidden(upgradeAiBtn, true);
+  }
   // Keep safe area correct on resize/orientation changes (mobile Safari).
   window.addEventListener("resize", () => syncBottomAdSafeArea());
   if (!onboardingSeen()) openOnboarding();
