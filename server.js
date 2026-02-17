@@ -131,6 +131,40 @@ function securityHeaders() {
   return headers;
 }
 
+function getCorsAllowedOrigin(origin) {
+  const o = String(origin || "").trim();
+  if (!o) return "";
+
+  const allow = new Set(
+    String(process.env.CORS_ALLOW_ORIGINS || "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean)
+  );
+
+  // Known safe origins for native wrappers + your site.
+  [
+    "capacitor://localhost",
+    "ionic://localhost",
+    "http://localhost",
+    "https://localhost",
+    "https://notematica.com",
+    "https://www.notematica.com"
+  ].forEach((x) => allow.add(x));
+
+  return allow.has(o) ? o : "";
+}
+
+function applyCors(req, res) {
+  const origin = req.headers.origin || "";
+  const allowed = getCorsAllowedOrigin(origin);
+  if (!allowed) return;
+  res.setHeader("Access-Control-Allow-Origin", allowed);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+}
+
 function json(res, status, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
@@ -1948,6 +1982,12 @@ const server = http.createServer(async (req, res) => {
     const ip = getClientIp(req);
 
     if (pathname.startsWith("/api/")) {
+      applyCors(req, res);
+      if (req.method === "OPTIONS") {
+        res.writeHead(204, { ...securityHeaders() });
+        res.end();
+        return;
+      }
       if (pathname === "/api/health" && req.method === "GET") {
         return json(res, 200, { ok: true, time: new Date().toISOString() });
       }

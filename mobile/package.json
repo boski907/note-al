@@ -4,10 +4,11 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
+    "www:sync": "node scripts/sync-www.mjs",
     "cap:init": "cap init Notematica com.notematica.app --web-dir www",
     "cap:add:ios": "cap add ios",
     "cap:add:android": "cap add android",
-    "cap:sync": "cap sync",
+    "cap:sync": "npm run www:sync && cap sync",
     "cap:open:ios": "cap open ios",
     "cap:open:android": "cap open android"
   },

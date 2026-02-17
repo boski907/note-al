@@ -1,10 +1,5 @@
 {
   "appId": "com.notematica.app",
   "appName": "Notematica",
-  "webDir": "www",
-  "server": {
-    "url": "https://notematica.com",
-    "cleartext": false
-  }
+  "webDir": "www"
 }
-
