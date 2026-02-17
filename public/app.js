@@ -287,7 +287,7 @@ async function showAdInterstitial(adCount = 2) {
   setHidden(outputAdSlotCEl, !showThree);
   openOutputAdsOverlay();
 
-  const gateSeconds = 6;
+  const gateSeconds = 20;
   let remaining = gateSeconds;
   const originalContinueText = outputAdsContinueEl.textContent || "Continue";
   const originalCloseText = outputAdsCloseEl ? outputAdsCloseEl.textContent || "Close" : "";
