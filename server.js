@@ -46,6 +46,9 @@ const NOTES_FILE = path.join(DATA_DIR, "notes.json");
 const FLASHCARDS_FILE = path.join(DATA_DIR, "flashcards.json");
 const ANALYTICS_FILE = path.join(DATA_DIR, "analytics.json");
 const ONBOARDING_FILE = path.join(DATA_DIR, "onboarding_emails.json");
+const SHARES_FILE = path.join(DATA_DIR, "shares.json");
+const REFERRALS_FILE = path.join(DATA_DIR, "referrals.json");
+const FEEDBACK_FILE = path.join(DATA_DIR, "feedback.json");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
 
@@ -634,6 +637,126 @@ async function getAnalyticsSummary(user, days = 7) {
     total: items.length,
     counts
   };
+}
+
+async function getDashboardSummary(user) {
+  const summary = await getAnalyticsSummary(user, 14);
+  const byDay = {};
+  for (let i = 13; i >= 0; i -= 1) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    byDay[d] = 0;
+  }
+
+  let events = [];
+  if (USE_SUPABASE) {
+    const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const rows = await supabaseRestRequest(
+      `/rest/v1/analytics_events?select=event_name,created_at&created_at=gte.${encodeURIComponent(
+        since
+      )}&order=created_at.desc&limit=5000`,
+      "GET",
+      null,
+      user.token
+    );
+    events = (rows || []).map((r) => ({ createdAt: r.created_at }));
+  } else {
+    events = loadJson(ANALYTICS_FILE, [])
+      .filter((e) => e.userId === user.id)
+      .map((e) => ({ createdAt: e.createdAt }));
+  }
+
+  for (const ev of events) {
+    const k = String(ev.createdAt || "").slice(0, 10);
+    if (k in byDay) byDay[k] += 1;
+  }
+
+  return {
+    total: summary.total,
+    counts: summary.counts,
+    last14Days: Object.entries(byDay).map(([date, count]) => ({ date, count }))
+  };
+}
+
+function makeReferralCode(userId) {
+  return `NTE${String(userId || "").replace(/[^a-z0-9]/gi, "").slice(0, 6).toUpperCase()}${crypto
+    .createHash("sha1")
+    .update(String(userId || "x"))
+    .digest("hex")
+    .slice(0, 4)
+    .toUpperCase()}`;
+}
+
+function upsertReferralUser(user) {
+  const rows = loadJson(REFERRALS_FILE, []);
+  let row = rows.find((r) => r.userId === user.id);
+  if (!row) {
+    row = {
+      userId: user.id,
+      code: makeReferralCode(user.id),
+      referredBy: null,
+      referrals: 0
+    };
+    rows.push(row);
+    saveJson(REFERRALS_FILE, rows);
+  }
+  return row;
+}
+
+function applyReferral(user, code) {
+  const rows = loadJson(REFERRALS_FILE, []);
+  let me = rows.find((r) => r.userId === user.id);
+  if (!me) {
+    me = {
+      userId: user.id,
+      code: makeReferralCode(user.id),
+      referredBy: null,
+      referrals: 0
+    };
+    rows.push(me);
+  }
+  const normalized = String(code || "").trim().toUpperCase();
+  if (!normalized) throw new Error("Code is required");
+  if (me.code === normalized) throw new Error("You cannot use your own code");
+  const owner = rows.find((r) => r.code === normalized);
+  if (!owner) throw new Error("Referral code not found");
+  if (me.referredBy) throw new Error("Referral already applied");
+  me.referredBy = owner.userId;
+  owner.referrals = Number(owner.referrals || 0) + 1;
+  saveJson(REFERRALS_FILE, rows);
+}
+
+function createShareEntry(user, payload) {
+  const items = loadJson(SHARES_FILE, []);
+  const id = crypto.randomBytes(8).toString("hex");
+  items.push({
+    id,
+    userId: user.id,
+    noteId: String(payload.noteId || ""),
+    title: String(payload.title || "Shared note").slice(0, 160),
+    contentText: String(payload.contentText || "").slice(0, 300000),
+    contentHtml: String(payload.contentHtml || "").slice(0, 300000),
+    createdAt: new Date().toISOString()
+  });
+  saveJson(SHARES_FILE, items.slice(-2000));
+  return id;
+}
+
+function getShareEntry(shareId) {
+  const items = loadJson(SHARES_FILE, []);
+  return items.find((x) => x.id === shareId) || null;
+}
+
+function saveFeedback(user, payload) {
+  const items = loadJson(FEEDBACK_FILE, []);
+  items.push({
+    id: crypto.randomUUID(),
+    userId: user.id,
+    email: user.email || "",
+    text: String(payload.text || "").slice(0, 4000),
+    page: String(payload.page || "").slice(0, 200),
+    createdAt: new Date().toISOString()
+  });
+  saveJson(FEEDBACK_FILE, items.slice(-5000));
 }
 
 async function saveOnboardingEmail(user, email, source = "onboarding_modal") {
@@ -1349,8 +1472,14 @@ async function generateFlashcardsFromText(noteText, count = 10) {
     .slice(0, n);
 }
 
-async function generateTestPrep(noteText, numQuestions = 8) {
+async function generateTestPrep(noteText, numQuestions = 8, mode = "standard") {
   const n = Math.max(3, Math.min(20, Number(numQuestions) || 8));
+  const modeHint =
+    mode === "timed"
+      ? "Favor concise, high-pressure exam questions."
+      : mode === "weak"
+        ? "Focus on likely weak points, common mistakes, and tricky distinctions."
+        : "Balance foundational and application questions.";
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
@@ -1362,7 +1491,7 @@ async function generateTestPrep(noteText, numQuestions = 8) {
           content:
             "Create exam-style practice questions. Output ONLY valid JSON (no markdown). Return {questions:[{type:\"mcq\"|\"short\",question:string,choices?:string[],answer:string,explanation:string}]}."
         },
-        { role: "user", content: `Create ${n} questions from this note:\n\n${noteText}` }
+        { role: "user", content: `Create ${n} questions from this note. ${modeHint}\n\n${noteText}` }
       ]
     })
   });
@@ -1392,6 +1521,71 @@ async function generateTestPrep(noteText, numQuestions = 8) {
       .filter((q) => q.question && q.answer)
       .slice(0, n)
   };
+}
+
+async function generateStudyPlan(user, days = 7, minutesPerDay = 20) {
+  const d = Math.max(1, Math.min(30, Number(days) || 7));
+  const m = Math.max(5, Math.min(180, Number(minutesPerDay) || 20));
+  const learning = await buildLearningPlan(user);
+  const weak = (learning.weakTags || []).map((w) => w.tag);
+  const plan = [];
+  for (let i = 1; i <= d; i += 1) {
+    const focus = weak.length ? weak[(i - 1) % weak.length] : "general review";
+    const minutes = i % 3 === 0 ? m + 5 : m;
+    plan.push({
+      day: i,
+      minutes,
+      focus,
+      steps: [
+        `Review due flashcards for ${Math.max(8, Math.round(minutes * 0.5))} min`,
+        `Run practice test in ${focus} for ${Math.max(5, Math.round(minutes * 0.35))} min`,
+        `Update one note with key corrections (${Math.max(2, Math.round(minutes * 0.15))} min)`
+      ]
+    });
+  }
+  return {
+    days: d,
+    minutesPerDay: m,
+    generatedAt: new Date().toISOString(),
+    plan
+  };
+}
+
+async function runTutorAnswer(noteText, question) {
+  if (!OPENAI_API_KEY) throw new Error("Missing OPENAI_API_KEY");
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      input: [
+        {
+          role: "system",
+          content:
+            "You are a study tutor. Use only the provided note context. If uncertain, say what is missing."
+        },
+        {
+          role: "user",
+          content: `Context note:\n${noteText}\n\nStudent question:\n${question}\n\nRespond with: direct answer, short explanation, and one follow-up question.`
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`OpenAI API error ${response.status}: ${errText}`);
+  }
+
+  const data = await response.json();
+  return (
+    data.output_text ||
+    data.output?.map((o) => o?.content?.map((c) => c?.text).join("")).join("\n") ||
+    ""
+  ).trim();
 }
 
 async function runAiAction(action, noteText, selectedText) {
@@ -1622,6 +1816,26 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, summary);
       }
 
+      if (pathname === "/api/dashboard" && req.method === "GET") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const out = await getDashboardSummary(user);
+        return json(res, 200, out);
+      }
+
+      if (pathname.startsWith("/api/share/") && req.method === "GET") {
+        const shareId = decodeURIComponent(pathname.replace("/api/share/", ""));
+        const entry = getShareEntry(shareId);
+        if (!entry) return json(res, 404, { error: "Share not found" });
+        return json(res, 200, {
+          id: entry.id,
+          title: entry.title,
+          contentText: entry.contentText,
+          contentHtml: entry.contentHtml,
+          createdAt: entry.createdAt
+        });
+      }
+
       if (pathname === "/api/onboarding/email" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
@@ -1729,6 +1943,32 @@ const server = http.createServer(async (req, res) => {
         const user = await requireUser(req, res);
         if (!user) return;
         return json(res, 200, { user: { id: user.id, email: user.email } });
+      }
+
+      if (pathname === "/api/referral/code" && req.method === "GET") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const row = upsertReferralUser(user);
+        return json(res, 200, { code: row.code, referrals: Number(row.referrals || 0) });
+      }
+
+      if (pathname === "/api/referral/apply" && req.method === "POST") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const body = parseJsonBody(await readBody(req));
+        applyReferral(user, body.code);
+        await trackEvent(user, "referral.apply", {});
+        return json(res, 200, { ok: true });
+      }
+
+      if (pathname === "/api/feedback/report" && req.method === "POST") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const body = parseJsonBody(await readBody(req));
+        if (!String(body.text || "").trim()) return json(res, 400, { error: "Feedback text is required" });
+        saveFeedback(user, body);
+        await trackEvent(user, "feedback.report", {});
+        return json(res, 200, { ok: true });
       }
 
       if (pathname === "/api/notes" && req.method === "GET") {
@@ -1841,6 +2081,14 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, plan);
       }
 
+      if (pathname === "/api/study/plan" && req.method === "POST") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const body = parseJsonBody(await readBody(req));
+        const out = await generateStudyPlan(user, body.days, body.minutesPerDay);
+        return json(res, 200, out);
+      }
+
       if (pathname === "/api/ai" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
@@ -1853,6 +2101,26 @@ const server = http.createServer(async (req, res) => {
 
         const output = await runAiAction(action, noteText, selectedText);
         return json(res, 200, { output });
+      }
+
+      if (pathname === "/api/tutor" && req.method === "POST") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const body = parseJsonBody(await readBody(req));
+        const noteText = String(body.noteText || "");
+        const question = String(body.question || "");
+        if (!noteText.trim() || !question.trim()) return json(res, 400, { error: "noteText and question are required" });
+        const answer = await runTutorAnswer(noteText, question);
+        return json(res, 200, { answer });
+      }
+
+      if (pathname === "/api/share/create" && req.method === "POST") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const body = parseJsonBody(await readBody(req));
+        const shareId = createShareEntry(user, body);
+        await trackEvent(user, "share.create", {});
+        return json(res, 200, { shareId });
       }
 
       if (pathname === "/api/sources/import" && req.method === "POST") {
@@ -1886,8 +2154,9 @@ const server = http.createServer(async (req, res) => {
         const body = parseJsonBody(await readBody(req));
         const noteText = String(body.noteText || "");
         const numQuestions = Number(body.numQuestions || 8);
+        const mode = String(body.mode || "standard");
         if (!noteText.trim()) return json(res, 400, { error: "noteText is required" });
-        const out = await generateTestPrep(noteText, numQuestions);
+        const out = await generateTestPrep(noteText, numQuestions, mode);
         return json(res, 200, out);
       }
 
@@ -1910,6 +2179,9 @@ server.listen(PORT, HOST, () => {
   ensureJsonFile(FLASHCARDS_FILE, []);
   ensureJsonFile(ANALYTICS_FILE, []);
   ensureJsonFile(ONBOARDING_FILE, []);
+  ensureJsonFile(SHARES_FILE, []);
+  ensureJsonFile(REFERRALS_FILE, []);
+  ensureJsonFile(FEEDBACK_FILE, []);
   console.log(`AI note app running on http://${HOST}:${PORT}`);
   console.log(`Storage mode: ${USE_SUPABASE ? "Supabase RLS mode" : "Local fallback mode"}`);
 });

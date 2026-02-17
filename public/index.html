@@ -80,6 +80,43 @@
           <button id="ad-check-btn" class="ghost">Run ad check</button>
         </div>
         <div id="ad-check-status" class="status"></div>
+        <div class="divider"></div>
+        <div class="metrics-grid">
+          <article class="metric-card">
+            <div class="metric-label">Study streak</div>
+            <div id="streak-days" class="metric-value">0 days</div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-label">XP level</div>
+            <div id="xp-level" class="metric-value">Lv 1</div>
+          </article>
+        </div>
+        <div id="xp-status" class="status"></div>
+        <div class="divider"></div>
+        <div class="row wrap">
+          <input id="reminder-time" type="time" />
+          <button id="save-reminder-btn" class="ghost">Save reminder</button>
+          <button id="test-reminder-btn" class="ghost">Test reminder</button>
+        </div>
+        <div id="reminder-status" class="status"></div>
+        <div class="divider"></div>
+        <div class="row wrap">
+          <button id="refresh-dashboard-btn" class="ghost">Refresh dashboard</button>
+        </div>
+        <pre id="dashboard-heatmap" class="ai-output"></pre>
+        <div class="divider"></div>
+        <div class="row wrap">
+          <input id="referral-code-input" placeholder="Enter referral code" />
+          <button id="apply-referral-btn" class="ghost">Apply code</button>
+        </div>
+        <div id="my-referral-code" class="status"></div>
+        <div id="referral-status" class="status"></div>
+        <div class="divider"></div>
+        <textarea id="feedback-text" rows="3" placeholder="Feature feedback or bug report"></textarea>
+        <div class="row wrap">
+          <button id="send-feedback-btn" class="ghost">Send feedback</button>
+        </div>
+        <div id="feedback-status" class="status"></div>
       </section>
 
       <section class="workspace" id="workspace">
@@ -149,7 +186,32 @@
               <button id="gen-cards-btn">Generate flashcards</button>
               <button id="study-btn" class="ghost">Study due</button>
               <button id="testprep-btn" class="ghost">Practice test</button>
+              <select id="exam-mode">
+                <option value="standard">Exam: standard</option>
+                <option value="timed">Exam: timed</option>
+                <option value="weak">Exam: weak topics</option>
+              </select>
             </div>
+            <div class="row wrap">
+              <input id="plan-days" type="number" min="1" max="30" value="7" />
+              <input id="plan-minutes" type="number" min="5" max="180" value="20" />
+              <button id="auto-plan-btn" class="ghost">Generate study plan</button>
+            </div>
+            <div id="plan-status" class="status"></div>
+            <div class="divider"></div>
+            <div class="row wrap">
+              <input id="tutor-question" placeholder="Ask AI tutor from this note..." />
+              <button id="ask-tutor-btn" class="ghost">Ask tutor</button>
+            </div>
+            <div id="tutor-output" class="ai-output"></div>
+            <div class="divider"></div>
+            <div class="row wrap">
+              <button id="share-note-btn" class="ghost">Share note link</button>
+              <button id="export-txt-btn" class="ghost">Export TXT</button>
+              <button id="export-json-btn" class="ghost">Export JSON</button>
+              <button id="export-pdf-btn" class="ghost">Export PDF</button>
+            </div>
+            <div id="share-status" class="status"></div>
           </section>
         </section>
       </section>

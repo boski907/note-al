@@ -44,6 +44,35 @@ const importFilesBtn = document.getElementById("import-files-btn");
 const importUrlsBtn = document.getElementById("import-urls-btn");
 const upgradeSourcesBtn = document.getElementById("upgrade-sources-btn");
 const sourceStatusEl = document.getElementById("source-status");
+const examModeEl = document.getElementById("exam-mode");
+const tutorQuestionEl = document.getElementById("tutor-question");
+const askTutorBtn = document.getElementById("ask-tutor-btn");
+const tutorOutputEl = document.getElementById("tutor-output");
+const planDaysEl = document.getElementById("plan-days");
+const planMinutesEl = document.getElementById("plan-minutes");
+const autoPlanBtn = document.getElementById("auto-plan-btn");
+const planStatusEl = document.getElementById("plan-status");
+const shareNoteBtn = document.getElementById("share-note-btn");
+const shareStatusEl = document.getElementById("share-status");
+const exportTxtBtn = document.getElementById("export-txt-btn");
+const exportJsonBtn = document.getElementById("export-json-btn");
+const exportPdfBtn = document.getElementById("export-pdf-btn");
+const streakDaysEl = document.getElementById("streak-days");
+const xpLevelEl = document.getElementById("xp-level");
+const xpStatusEl = document.getElementById("xp-status");
+const reminderTimeEl = document.getElementById("reminder-time");
+const saveReminderBtn = document.getElementById("save-reminder-btn");
+const testReminderBtn = document.getElementById("test-reminder-btn");
+const reminderStatusEl = document.getElementById("reminder-status");
+const refreshDashboardBtn = document.getElementById("refresh-dashboard-btn");
+const dashboardHeatmapEl = document.getElementById("dashboard-heatmap");
+const referralCodeInputEl = document.getElementById("referral-code-input");
+const applyReferralBtn = document.getElementById("apply-referral-btn");
+const myReferralCodeEl = document.getElementById("my-referral-code");
+const referralStatusEl = document.getElementById("referral-status");
+const feedbackTextEl = document.getElementById("feedback-text");
+const sendFeedbackBtn = document.getElementById("send-feedback-btn");
+const feedbackStatusEl = document.getElementById("feedback-status");
 
 const overlayEl = document.getElementById("study-overlay");
 const overlayTitleEl = document.getElementById("overlay-title");
@@ -83,6 +112,7 @@ let recordingChunks = [];
 let recordingMimeType = "";
 let monetizedOutputCount = 0;
 let sourceImportCount = 0;
+let reminderTimer = null;
 
 function setDisabled(el, disabled, title = "") {
   if (!el) return;
@@ -246,6 +276,156 @@ function escapeHtml(v) {
 function setSourceStatus(msg, isError = false) {
   sourceStatusEl.textContent = msg;
   sourceStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function setPlanStatus(msg, isError = false) {
+  planStatusEl.textContent = msg;
+  planStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function setShareStatus(msg, isError = false) {
+  shareStatusEl.textContent = msg;
+  shareStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function setReminderStatus(msg, isError = false) {
+  reminderStatusEl.textContent = msg;
+  reminderStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function setReferralStatus(msg, isError = false) {
+  referralStatusEl.textContent = msg;
+  referralStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function setFeedbackStatus(msg, isError = false) {
+  feedbackStatusEl.textContent = msg;
+  feedbackStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function todayDateKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function loadXpState() {
+  const raw = localStorage.getItem(authScopedKey("xp_state_v1")) || "{}";
+  let s = {};
+  try {
+    s = JSON.parse(raw);
+  } catch {
+    s = {};
+  }
+  return {
+    xp: Number(s.xp || 0),
+    level: Math.max(1, Number(s.level || 1)),
+    days: Array.isArray(s.days) ? s.days.slice(-120) : [],
+    lastDate: String(s.lastDate || "")
+  };
+}
+
+function saveXpState(s) {
+  localStorage.setItem(authScopedKey("xp_state_v1"), JSON.stringify(s));
+}
+
+function computeStreak(days) {
+  const set = new Set(days);
+  let streak = 0;
+  for (let i = 0; i < 365; i += 1) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    if (set.has(key)) streak += 1;
+    else break;
+  }
+  return streak;
+}
+
+function refreshXpUi() {
+  const s = loadXpState();
+  const streak = computeStreak(s.days);
+  streakDaysEl.textContent = `${streak} day${streak === 1 ? "" : "s"}`;
+  xpLevelEl.textContent = `Lv ${s.level} (${s.xp} XP)`;
+}
+
+function awardXp(action, points = 5) {
+  const s = loadXpState();
+  s.xp += Number(points || 0);
+  const nextLevel = Math.max(1, Math.floor(s.xp / 120) + 1);
+  if (nextLevel > s.level) {
+    xpStatusEl.textContent = `Level up! You reached Lv ${nextLevel} (${action}).`;
+  }
+  s.level = nextLevel;
+  const today = todayDateKey();
+  if (!s.days.includes(today)) s.days.push(today);
+  s.lastDate = today;
+  saveXpState(s);
+  refreshXpUi();
+}
+
+function renderHeatmap(days = []) {
+  if (!Array.isArray(days) || !days.length) {
+    dashboardHeatmapEl.textContent = "No recent activity.";
+    return;
+  }
+  const blocks = days.map((d) => {
+    const n = Number(d.count || 0);
+    const c = n === 0 ? "·" : n < 3 ? "░" : n < 6 ? "▒" : "▓";
+    return `${d.date.slice(5)} ${c} ${n}`;
+  });
+  dashboardHeatmapEl.textContent = blocks.join("\n");
+}
+
+async function loadDashboard() {
+  if (!token) return;
+  try {
+    const out = await api("/api/dashboard", { method: "GET" });
+    renderHeatmap(out.last14Days || []);
+  } catch (e) {
+    dashboardHeatmapEl.textContent = `Dashboard error: ${e.message}`;
+  }
+}
+
+async function requestNotificationPermission() {
+  if (!("Notification" in window)) return false;
+  if (Notification.permission === "granted") return true;
+  const p = await Notification.requestPermission();
+  return p === "granted";
+}
+
+function scheduleReminderTick() {
+  if (reminderTimer) clearInterval(reminderTimer);
+  reminderTimer = setInterval(() => {
+    const cfgRaw = localStorage.getItem(authScopedKey("reminder_cfg_v1")) || "{}";
+    let cfg = {};
+    try {
+      cfg = JSON.parse(cfgRaw);
+    } catch {
+      cfg = {};
+    }
+    if (!cfg?.time) return;
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    const key = `${hh}:${mm}`;
+    const firedKey = `${todayDateKey()}_${key}`;
+    if (cfg.time === key && cfg.lastFired !== firedKey) {
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("Notematica reminder", { body: "You have study items due. Open Notematica to review." });
+      }
+      cfg.lastFired = firedKey;
+      localStorage.setItem(authScopedKey("reminder_cfg_v1"), JSON.stringify(cfg));
+    }
+  }, 30000);
+}
+
+function downloadTextFile(filename, text, mime = "text/plain") {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function getSelectionTextWithinEditor() {
@@ -633,6 +813,9 @@ async function logout() {
   sourceImportCount = 0;
   closeOutputAdsOverlay();
   clearLearningUi();
+  streakDaysEl.textContent = "0 days";
+  xpLevelEl.textContent = "Lv 1";
+  xpStatusEl.textContent = "";
   setLearningStatus("");
   setSourceStatus("");
   if (sourceUrlsEl) sourceUrlsEl.value = "";
@@ -785,9 +968,141 @@ async function importSources({ sources = [], urls = [] } = {}) {
     renderImportedSources(out.imported || []);
     setSourceStatus(`Imported ${out.imported?.length || 0} source(s) into this note.`);
     fireAndForgetTrack("sources.import_client", { count: out.imported?.length || 0 });
+    awardXp("import", 6);
     await countImportAndMaybeShowAds();
   } catch (e) {
     setSourceStatus(`Import failed: ${e.message}`, true);
+  }
+}
+
+async function askTutor() {
+  const question = String(tutorQuestionEl.value || "").trim();
+  const noteText = editorEl.innerText.trim();
+  if (!question) return (tutorOutputEl.textContent = "Enter a tutor question.");
+  if (!noteText) return (tutorOutputEl.textContent = "Add note text first.");
+  tutorOutputEl.textContent = "Tutor is thinking...";
+  try {
+    const out = await api("/api/tutor", {
+      method: "POST",
+      body: JSON.stringify({ question, noteText })
+    });
+    tutorOutputEl.textContent = out.answer || "No tutor response.";
+    awardXp("tutor", 8);
+    await countOutputAndMaybeShowAds("tutor.ask");
+  } catch (e) {
+    tutorOutputEl.textContent = `Tutor error: ${e.message}`;
+  }
+}
+
+async function generateAutoPlan() {
+  const days = Number(planDaysEl.value || 7);
+  const minutes = Number(planMinutesEl.value || 20);
+  setPlanStatus("Generating plan...");
+  try {
+    const out = await api("/api/study/plan", {
+      method: "POST",
+      body: JSON.stringify({ days, minutesPerDay: minutes })
+    });
+    const lines = (out.plan || []).map((p) => `Day ${p.day}: ${p.focus} (${p.minutes}m)`);
+    setPlanStatus(lines.join("\n") || "No plan generated.");
+    awardXp("plan", 10);
+    await countOutputAndMaybeShowAds("study.plan");
+  } catch (e) {
+    setPlanStatus(`Plan error: ${e.message}`, true);
+  }
+}
+
+async function shareCurrentNote() {
+  if (!currentId) return setShareStatus("Open a note first.", true);
+  const note = notes.find((n) => n.id === currentId);
+  if (!note) return setShareStatus("Note not found.", true);
+  setShareStatus("Creating share link...");
+  try {
+    const out = await api("/api/share/create", {
+      method: "POST",
+      body: JSON.stringify({
+        noteId: note.id,
+        title: note.title,
+        contentText: note.contentText,
+        contentHtml: note.contentHtml
+      })
+    });
+    const link = `${window.location.origin}/share.html?id=${encodeURIComponent(out.shareId)}`;
+    await navigator.clipboard.writeText(link).catch(() => {});
+    setShareStatus(`Share link ready: ${link}`);
+    awardXp("share", 6);
+  } catch (e) {
+    setShareStatus(`Share error: ${e.message}`, true);
+  }
+}
+
+function exportCurrentNoteTxt() {
+  if (!currentId) return setShareStatus("Open a note first.", true);
+  const note = notes.find((n) => n.id === currentId);
+  if (!note) return;
+  const body = `${note.title}\n\n${note.contentText || ""}`;
+  downloadTextFile(`${(note.title || "note").replaceAll(/\s+/g, "_")}.txt`, body, "text/plain");
+  awardXp("export", 3);
+}
+
+function exportCurrentNoteJson() {
+  if (!currentId) return setShareStatus("Open a note first.", true);
+  const note = notes.find((n) => n.id === currentId);
+  if (!note) return;
+  downloadTextFile(
+    `${(note.title || "note").replaceAll(/\s+/g, "_")}.json`,
+    JSON.stringify(note, null, 2),
+    "application/json"
+  );
+  awardXp("export", 3);
+}
+
+function exportCurrentNotePdf() {
+  window.print();
+  awardXp("export", 3);
+}
+
+async function loadReferralCode() {
+  if (!token) return;
+  try {
+    const out = await api("/api/referral/code", { method: "GET" });
+    myReferralCodeEl.textContent = `Your referral code: ${out.code}`;
+  } catch (e) {
+    myReferralCodeEl.textContent = `Referral error: ${e.message}`;
+  }
+}
+
+async function applyReferralCode() {
+  const code = String(referralCodeInputEl.value || "").trim().toUpperCase();
+  if (!code) return setReferralStatus("Enter a referral code.", true);
+  try {
+    await api("/api/referral/apply", {
+      method: "POST",
+      body: JSON.stringify({ code })
+    });
+    setReferralStatus("Referral applied.");
+    awardXp("referral", 5);
+  } catch (e) {
+    setReferralStatus(`Referral error: ${e.message}`, true);
+  }
+}
+
+async function sendFeedbackReport() {
+  const text = String(feedbackTextEl.value || "").trim();
+  if (!text) return setFeedbackStatus("Write feedback first.", true);
+  try {
+    await api("/api/feedback/report", {
+      method: "POST",
+      body: JSON.stringify({
+        text,
+        page: location.pathname
+      })
+    });
+    feedbackTextEl.value = "";
+    setFeedbackStatus("Feedback sent. Thank you.");
+    awardXp("feedback", 4);
+  } catch (e) {
+    setFeedbackStatus(`Feedback error: ${e.message}`, true);
   }
 }
 
@@ -837,6 +1152,7 @@ async function runAi(action) {
     });
     aiOutputEl.textContent = data.output || "(No output)";
     fireAndForgetTrack("ai.action", { action });
+    awardXp(action, 5);
     await countOutputAndMaybeShowAds(`ai.${action}`);
   } catch (err) {
     aiOutputEl.textContent = `Error: ${err.message}`;
@@ -934,6 +1250,7 @@ async function generateFlashcards() {
     const due = await fetchDueCount();
     aiOutputEl.textContent = `Created ${created.length} flashcards. Due now: ${due}.`;
     fireAndForgetTrack("flashcards.generate", { count: created.length });
+    awardXp("flashcards", 8);
     loadLearningPlan().catch(() => {});
     await countOutputAndMaybeShowAds("flashcards.generate");
   } catch (e) {
@@ -1069,14 +1386,16 @@ async function renderTestPrep() {
 
   openOverlay("Practice test");
   overlayBodyEl.innerHTML = `<div class="muted">Generating questions...</div>`;
+  const examMode = String(examModeEl?.value || "standard");
 
   const out = await api("/api/testprep/generate", {
     method: "POST",
-    body: JSON.stringify({ noteText, numQuestions: 8 })
+    body: JSON.stringify({ noteText, numQuestions: 8, mode: examMode })
   });
 
   const questions = out.questions || [];
   fireAndForgetTrack("testprep.generate", { count: questions.length });
+  awardXp("testprep", 7);
   await countOutputAndMaybeShowAds("testprep.generate");
   if (!questions.length) {
     overlayBodyEl.innerHTML = `<div class="muted">No questions generated.</div>`;
@@ -1084,6 +1403,20 @@ async function renderTestPrep() {
   }
 
   const form = document.createElement("div");
+  if (examMode === "timed") {
+    const timer = document.createElement("div");
+    timer.className = "muted";
+    let left = 10 * 60;
+    timer.textContent = `Time left: 10:00`;
+    const iv = setInterval(() => {
+      left -= 1;
+      const mm = String(Math.max(0, Math.floor(left / 60))).padStart(2, "0");
+      const ss = String(Math.max(0, left % 60)).padStart(2, "0");
+      timer.textContent = `Time left: ${mm}:${ss}`;
+      if (left <= 0) clearInterval(iv);
+    }, 1000);
+    overlayBodyEl.appendChild(timer);
+  }
   questions.forEach((q, i) => {
     const block = document.createElement("div");
     block.className = "card-face";
@@ -1274,6 +1607,30 @@ studyBtn.addEventListener("click", () => {
 testprepBtn.addEventListener("click", () => {
   renderTestPrep().catch((e) => (aiOutputEl.textContent = `Test prep error: ${e.message}`));
 });
+askTutorBtn.addEventListener("click", () => askTutor());
+autoPlanBtn.addEventListener("click", () => generateAutoPlan());
+shareNoteBtn.addEventListener("click", () => shareCurrentNote());
+exportTxtBtn.addEventListener("click", () => exportCurrentNoteTxt());
+exportJsonBtn.addEventListener("click", () => exportCurrentNoteJson());
+exportPdfBtn.addEventListener("click", () => exportCurrentNotePdf());
+refreshDashboardBtn.addEventListener("click", () => loadDashboard());
+applyReferralBtn.addEventListener("click", () => applyReferralCode());
+sendFeedbackBtn.addEventListener("click", () => sendFeedbackReport());
+saveReminderBtn.addEventListener("click", async () => {
+  const ok = await requestNotificationPermission();
+  if (!ok) return setReminderStatus("Notification permission is required.", true);
+  const time = String(reminderTimeEl.value || "").trim();
+  if (!time) return setReminderStatus("Choose a reminder time.", true);
+  localStorage.setItem(authScopedKey("reminder_cfg_v1"), JSON.stringify({ time, lastFired: "" }));
+  scheduleReminderTick();
+  setReminderStatus(`Reminder saved for ${time}.`);
+});
+testReminderBtn.addEventListener("click", async () => {
+  const ok = await requestNotificationPermission();
+  if (!ok) return setReminderStatus("Notification permission denied.", true);
+  new Notification("Notematica test reminder", { body: "Your study reminder is active." });
+  setReminderStatus("Test notification sent.");
+});
 importFilesBtn.addEventListener("click", async () => {
   const { sources, rejected } = await readSelectedFilesAsSources();
   if (!sources.length) {
@@ -1330,11 +1687,20 @@ upgradeAiBtn.addEventListener("click", () => startCheckout());
     return;
   }
   loadOutputCounter();
+  refreshXpUi();
+  const reminderCfgRaw = localStorage.getItem(authScopedKey("reminder_cfg_v1")) || "{}";
+  try {
+    const reminderCfg = JSON.parse(reminderCfgRaw);
+    if (reminderCfg?.time) reminderTimeEl.value = reminderCfg.time;
+  } catch {}
+  scheduleReminderTick();
   updateAuthUi();
   await loadNotes();
   await loadBillingStatus();
   await loadAnalyticsSummary();
   await loadLearningPlan();
+  await loadDashboard();
+  await loadReferralCode();
   if (!onboardingSeen()) openOnboarding();
 })();
 

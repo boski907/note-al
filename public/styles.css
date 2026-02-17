@@ -167,6 +167,12 @@ h1 {
 #note-title,
 #note-tags,
 #source-urls,
+#tutor-question,
+#referral-code-input,
+#plan-days,
+#plan-minutes,
+#reminder-time,
+#exam-mode,
 #auth-email,
 #auth-password {
   width: 100%;
@@ -174,6 +180,15 @@ h1 {
   border-radius: 10px;
   padding: 0.55rem 0.65rem;
   font: 500 0.92rem "Space Grotesk", sans-serif;
+  background: #ffffffde;
+}
+
+#feedback-text {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+  font: 500 0.88rem "Space Grotesk", sans-serif;
   background: #ffffffde;
 }
 
