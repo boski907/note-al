@@ -734,10 +734,22 @@ async function api(path, options = {}) {
   if (!res.ok) {
     const error = new Error(data.error || `${res.status} ${res.statusText}`);
     error.status = res.status;
+    error.data = data;
     throw error;
   }
 
   return data;
+}
+
+function formatQuotaError(e, fallback) {
+  if (!e || e.status !== 429) return "";
+  const resetIso = e.data && e.data.resetsAt ? String(e.data.resetsAt) : "";
+  let resetText = "";
+  if (resetIso) {
+    const dt = new Date(resetIso);
+    if (!Number.isNaN(dt.getTime())) resetText = ` Resets: ${dt.toLocaleString()}.`;
+  }
+  return `${fallback || "Daily limit reached."}${resetText}`;
 }
 
 async function trackEvent(eventName, payload = {}) {
@@ -1295,7 +1307,8 @@ async function importSources({ sources = [], urls = [] } = {}) {
     awardXp("import", 6);
     await countImportAndMaybeShowAds();
   } catch (e) {
-    setSourceStatus(`Import failed: ${e.message}`, true);
+    const quota = formatQuotaError(e, "Import limit reached.");
+    setSourceStatus(quota ? quota : `Import failed: ${e.message}`, true);
   }
 }
 
@@ -1314,7 +1327,8 @@ async function askTutor() {
     awardXp("tutor", 8);
     await countOutputAndMaybeShowAds("tutor.ask");
   } catch (e) {
-    tutorOutputEl.textContent = `Tutor error: ${e.message}`;
+    const quota = formatQuotaError(e, "Tutor limit reached.");
+    tutorOutputEl.textContent = quota ? quota : `Tutor error: ${e.message}`;
   }
 }
 
@@ -1491,7 +1505,8 @@ async function runAi(action) {
     awardXp(action, 5);
     await countOutputAndMaybeShowAds(`ai.${action}`);
   } catch (err) {
-    aiOutputEl.textContent = `Error: ${err.message}`;
+    const quota = formatQuotaError(err, "AI limit reached.");
+    aiOutputEl.textContent = quota ? quota : `Error: ${err.message}`;
   }
 }
 
@@ -1897,7 +1912,8 @@ async function generateFlashcards() {
     loadLearningPlan().catch(() => {});
     await countOutputAndMaybeShowAds("flashcards.generate");
   } catch (e) {
-    aiOutputEl.textContent = `Flashcards error: ${e.message}`;
+    const quota = formatQuotaError(e, "Flashcard limit reached.");
+    aiOutputEl.textContent = quota ? quota : `Flashcards error: ${e.message}`;
   }
 }
 
@@ -2132,10 +2148,17 @@ async function renderTestPrep() {
   overlayBodyEl.innerHTML = `<div class="muted">Generating questions...</div>`;
   const examMode = String(examModeEl?.value || "standard");
 
-  const out = await api("/api/testprep/generate", {
-    method: "POST",
-    body: JSON.stringify({ noteText, numQuestions: 8, mode: examMode, sources: getAiSourcesForRequest(6) })
-  });
+  let out;
+  try {
+    out = await api("/api/testprep/generate", {
+      method: "POST",
+      body: JSON.stringify({ noteText, numQuestions: 8, mode: examMode, sources: getAiSourcesForRequest(6) })
+    });
+  } catch (e) {
+    const quota = formatQuotaError(e, "Practice test limit reached.");
+    overlayBodyEl.innerHTML = `<div class="muted">${escapeHtml(quota ? quota : `Test prep error: ${e.message}`)}</div>`;
+    return;
+  }
 
   const questions = out.questions || [];
   fireAndForgetTrack("testprep.generate", { count: questions.length });
@@ -2385,7 +2408,8 @@ async function startRecording() {
       aiOutputEl.textContent = data.text || "No transcript returned.";
       fireAndForgetTrack("notes.transcribe", {});
     } catch (err) {
-      aiOutputEl.textContent = `Transcription error: ${err.message}`;
+      const quota = formatQuotaError(err, "Transcription limit reached.");
+      aiOutputEl.textContent = quota ? quota : `Transcription error: ${err.message}`;
     } finally {
       recordingStream?.getTracks().forEach((t) => t.stop());
       recorder = null;

@@ -41,6 +41,18 @@ const RL_AI_WINDOW_MS = Number(process.env.RL_AI_WINDOW_MS || 60 * 1000); // 1 m
 const RL_AI_MAX_PER_IP = Number(process.env.RL_AI_MAX_PER_IP || 30);
 const RL_AI_MAX_PER_USER = Number(process.env.RL_AI_MAX_PER_USER || 60);
 
+// Per-user quota limits (separate from burst rate limiting). Designed to cap cost exposure.
+// These apply primarily to AI / import endpoints that can incur variable costs.
+const USAGE_LIMITS_ENABLED = (process.env.USAGE_LIMITS_ENABLED || (IS_PROD ? "1" : "0")) !== "0";
+const FREE_DAILY_AI_OUTPUT_LIMIT = Number(process.env.FREE_DAILY_AI_OUTPUT_LIMIT || 60);
+const PREMIUM_DAILY_AI_OUTPUT_LIMIT = Number(process.env.PREMIUM_DAILY_AI_OUTPUT_LIMIT || 500);
+const FREE_DAILY_FLASHCARD_GEN_LIMIT = Number(process.env.FREE_DAILY_FLASHCARD_GEN_LIMIT || 20);
+const PREMIUM_DAILY_FLASHCARD_GEN_LIMIT = Number(process.env.PREMIUM_DAILY_FLASHCARD_GEN_LIMIT || 200);
+const FREE_DAILY_SOURCE_IMPORT_LIMIT = Number(process.env.FREE_DAILY_SOURCE_IMPORT_LIMIT || 20);
+const PREMIUM_DAILY_SOURCE_IMPORT_LIMIT = Number(process.env.PREMIUM_DAILY_SOURCE_IMPORT_LIMIT || 200);
+const FREE_DAILY_TRANSCRIBE_LIMIT = Number(process.env.FREE_DAILY_TRANSCRIBE_LIMIT || 10);
+const PREMIUM_DAILY_TRANSCRIBE_LIMIT = Number(process.env.PREMIUM_DAILY_TRANSCRIBE_LIMIT || 200);
+
 function safeJsonParse(txt) {
   if (!txt) return null;
   try {
@@ -79,6 +91,7 @@ const REFERRALS_FILE = path.join(DATA_DIR, "referrals.json");
 const FEEDBACK_FILE = path.join(DATA_DIR, "feedback.json");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
+const USAGE_COUNTERS_FILE = path.join(DATA_DIR, "usage_counters.json");
 
 function ensureJsonFile(filePath, initialValue) {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -287,6 +300,137 @@ function rateLimitOr429(res, key, limit, windowMs) {
   const out = rateLimitConsume(key, limit, windowMs);
   if (out.ok) return true;
   json(res, 429, { error: "Too many requests. Please slow down." });
+  return false;
+}
+
+function utcDateOnly(d = new Date()) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function utcMonthStartDateOnly(d = new Date()) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}-01`;
+}
+
+function nextUtcDayResetIso(d = new Date()) {
+  const next = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 0, 0, 0));
+  return next.toISOString();
+}
+
+function usageLimitsForTier({ adFree }) {
+  const premium = Boolean(adFree);
+  return {
+    ai_output: premium ? PREMIUM_DAILY_AI_OUTPUT_LIMIT : FREE_DAILY_AI_OUTPUT_LIMIT,
+    flashcard_gen: premium ? PREMIUM_DAILY_FLASHCARD_GEN_LIMIT : FREE_DAILY_FLASHCARD_GEN_LIMIT,
+    source_import: premium ? PREMIUM_DAILY_SOURCE_IMPORT_LIMIT : FREE_DAILY_SOURCE_IMPORT_LIMIT,
+    transcribe: premium ? PREMIUM_DAILY_TRANSCRIBE_LIMIT : FREE_DAILY_TRANSCRIBE_LIMIT
+  };
+}
+
+const entitlementCache = new Map(); // userId -> { expiresAt, value }
+
+async function getCachedEntitlements(user) {
+  const key = String(user?.id || "");
+  if (!key) return { adFree: false };
+  const cached = entitlementCache.get(key);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  // Avoid calling Stripe for every request. Use the last known billing profile state.
+  let adFree = false;
+  if (USE_SUPABASE) {
+    try {
+      const profile = await getBillingProfile(user);
+      adFree = Boolean(profile?.stripe_subscription_id) && isSubActive(String(profile?.subscription_status || ""));
+    } catch {
+      // Keep false if billing lookup fails.
+    }
+  }
+
+  const value = { adFree };
+  entitlementCache.set(key, { expiresAt: now + 60_000, value }); // 60s TTL
+  return value;
+}
+
+function loadUsageCountersLocal() {
+  return loadJson(USAGE_COUNTERS_FILE, {});
+}
+
+function saveUsageCountersLocal(obj) {
+  saveJson(USAGE_COUNTERS_FILE, obj || {});
+}
+
+async function tryConsumeUsage(user, { scope, period = "day", inc = 1, limit = 0 } = {}) {
+  const safeScope = String(scope || "").trim().slice(0, 80);
+  if (!safeScope) throw new Error("Missing usage scope");
+  const safePeriod = period === "month" ? "month" : "day";
+  const periodStart = safePeriod === "month" ? utcMonthStartDateOnly() : utcDateOnly();
+  const safeInc = Math.max(1, Math.floor(Number(inc) || 1));
+  const safeLimit = Math.max(0, Math.floor(Number(limit) || 0));
+
+  if (!USE_SUPABASE) {
+    const db = loadUsageCountersLocal();
+    const key = `${user.id}:${safeScope}:${safePeriod}:${periodStart}`;
+    const cur = Number(db[key] || 0);
+    if (cur + safeInc > safeLimit) return { ok: false, used: cur, periodStart, resetAt: nextUtcDayResetIso() };
+    db[key] = cur + safeInc;
+    saveUsageCountersLocal(db);
+    return { ok: true, used: Number(db[key] || 0), periodStart, resetAt: nextUtcDayResetIso() };
+  }
+
+  const rows = await supabaseRestRequest(
+    "/rest/v1/rpc/try_consume_usage",
+    "POST",
+    { scope: safeScope, period: safePeriod, period_start: periodStart, inc: safeInc, quota_limit: safeLimit },
+    user.token
+  );
+  const rec = Array.isArray(rows) ? rows[0] : rows;
+  return {
+    ok: Boolean(rec?.ok),
+    used: Number(rec?.used || 0),
+    periodStart,
+    resetAt: nextUtcDayResetIso()
+  };
+}
+
+async function enforceUsageOr429(res, user, { scope, inc, limit, period = "day", message = "" } = {}) {
+  if (!USAGE_LIMITS_ENABLED) return true;
+  if (!user?.id) return true;
+  const safeLimit = Number(limit);
+  if (!Number.isFinite(safeLimit) || safeLimit < 0) return true;
+
+  let out;
+  try {
+    out = await tryConsumeUsage(user, { scope, inc, limit: safeLimit, period });
+  } catch (e) {
+    // Fail open if the quota function/table hasn't been deployed yet.
+    try {
+      console.warn("Usage limit check failed (allowing request):", e instanceof Error ? e.message : e);
+    } catch {
+      // ignore logging errors
+    }
+    return true;
+  }
+  if (out.ok) return true;
+
+  const remaining = Math.max(0, safeLimit - Number(out.used || 0));
+  res.setHeader("X-Usage-Scope", String(scope || ""));
+  res.setHeader("X-Usage-Limit", String(safeLimit));
+  res.setHeader("X-Usage-Used", String(out.used || 0));
+  res.setHeader("X-Usage-Remaining", String(remaining));
+  res.setHeader("X-Usage-Reset", String(out.resetAt || ""));
+  json(res, 429, {
+    error: message || "Daily limit reached. Try again tomorrow or upgrade.",
+    scope: String(scope || ""),
+    limit: safeLimit,
+    used: Number(out.used || 0),
+    remaining,
+    resetsAt: out.resetAt || null
+  });
   return false;
 }
 
@@ -2333,6 +2477,17 @@ const server = http.createServer(async (req, res) => {
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
         if (!rateLimitOr429(res, `ip:${ip}:ai:flashcards`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
         if (!rateLimitOr429(res, `user:${user.id}:ai:flashcards`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        const tier = await getCachedEntitlements(user);
+        const limits = usageLimitsForTier(tier);
+        if (
+          !(await enforceUsageOr429(res, user, {
+            scope: "flashcard_gen",
+            inc: 1,
+            limit: limits.flashcard_gen,
+            message: "Daily flashcard generation limit reached. Try again tomorrow or upgrade."
+          }))
+        )
+          return;
         const body = parseJsonBody(await readBody(req));
         const noteText = String(body.noteText || "");
         const noteId = body.noteId ? String(body.noteId) : null;
@@ -2409,6 +2564,17 @@ const server = http.createServer(async (req, res) => {
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
         if (!rateLimitOr429(res, `ip:${ip}:ai:generic`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
         if (!rateLimitOr429(res, `user:${user.id}:ai:generic`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        const tier = await getCachedEntitlements(user);
+        const limits = usageLimitsForTier(tier);
+        if (
+          !(await enforceUsageOr429(res, user, {
+            scope: "ai_output",
+            inc: 1,
+            limit: limits.ai_output,
+            message: "Daily AI limit reached. Try again tomorrow or upgrade."
+          }))
+        )
+          return;
         const body = parseJsonBody(await readBody(req));
         const action = String(body.action || "summarize");
         const noteText = String(body.noteText || "");
@@ -2427,6 +2593,17 @@ const server = http.createServer(async (req, res) => {
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
         if (!rateLimitOr429(res, `ip:${ip}:ai:tutor`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
         if (!rateLimitOr429(res, `user:${user.id}:ai:tutor`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        const tier = await getCachedEntitlements(user);
+        const limits = usageLimitsForTier(tier);
+        if (
+          !(await enforceUsageOr429(res, user, {
+            scope: "ai_output",
+            inc: 1,
+            limit: limits.ai_output,
+            message: "Daily AI limit reached. Try again tomorrow or upgrade."
+          }))
+        )
+          return;
         const body = parseJsonBody(await readBody(req));
         const noteText = String(body.noteText || "");
         const question = String(body.question || "");
@@ -2451,6 +2628,38 @@ const server = http.createServer(async (req, res) => {
         if (!rateLimitOr429(res, `ip:${ip}:ai:sources`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
         if (!rateLimitOr429(res, `user:${user.id}:ai:sources`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
         const body = parseJsonBody(await readBody(req, { maxBytes: DEFAULT_MAX_BODY_BYTES }));
+        const tier = await getCachedEntitlements(user);
+        const limits = usageLimitsForTier(tier);
+        const fileSources = Array.isArray(body.sources) ? body.sources : [];
+        const urls = Array.isArray(body.urls) ? body.urls : [];
+        const requestedFileCount = Math.min(20, fileSources.length);
+        const requestedUrlCount = Math.min(8, urls.length);
+        const requested = requestedFileCount + requestedUrlCount;
+        const mediaCount = fileSources
+          .slice(0, 20)
+          .filter((s) => String(s?.kind || "") === "media").length;
+        if (requested > 0) {
+          if (
+            !(await enforceUsageOr429(res, user, {
+              scope: "source_import",
+              inc: requested,
+              limit: limits.source_import,
+              message: "Daily import limit reached. Try again tomorrow or upgrade."
+            }))
+          )
+            return;
+        }
+        if (mediaCount > 0 && OPENAI_API_KEY) {
+          if (
+            !(await enforceUsageOr429(res, user, {
+              scope: "transcribe",
+              inc: mediaCount,
+              limit: limits.transcribe,
+              message: "Daily transcription limit reached. Try again tomorrow or upgrade."
+            }))
+          )
+            return;
+        }
         const imported = await importSources(body);
         if (!imported.length) {
           return json(res, 400, { error: "No readable sources were imported" });
@@ -2468,6 +2677,17 @@ const server = http.createServer(async (req, res) => {
         if (!user) return;
         if (!rateLimitOr429(res, `ip:${ip}:ai:transcribe`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
         if (!rateLimitOr429(res, `user:${user.id}:ai:transcribe`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        const tier = await getCachedEntitlements(user);
+        const limits = usageLimitsForTier(tier);
+        if (
+          !(await enforceUsageOr429(res, user, {
+            scope: "transcribe",
+            inc: 1,
+            limit: limits.transcribe,
+            message: "Daily transcription limit reached. Try again tomorrow or upgrade."
+          }))
+        )
+          return;
         const body = parseJsonBody(await readBody(req, { maxBytes: TRANSCRIBE_MAX_BODY_BYTES }));
         const text = await transcribeAudio(body.audioBase64, body.mimeType);
         return json(res, 200, { text });
@@ -2479,6 +2699,17 @@ const server = http.createServer(async (req, res) => {
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
         if (!rateLimitOr429(res, `ip:${ip}:ai:testprep`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
         if (!rateLimitOr429(res, `user:${user.id}:ai:testprep`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        const tier = await getCachedEntitlements(user);
+        const limits = usageLimitsForTier(tier);
+        if (
+          !(await enforceUsageOr429(res, user, {
+            scope: "ai_output",
+            inc: 1,
+            limit: limits.ai_output,
+            message: "Daily AI limit reached. Try again tomorrow or upgrade."
+          }))
+        )
+          return;
         const body = parseJsonBody(await readBody(req));
         const noteText = String(body.noteText || "");
         const numQuestions = Number(body.numQuestions || 8);
@@ -2517,6 +2748,7 @@ server.listen(PORT, HOST, () => {
   ensureJsonFile(SHARES_FILE, []);
   ensureJsonFile(REFERRALS_FILE, []);
   ensureJsonFile(FEEDBACK_FILE, []);
+  ensureJsonFile(USAGE_COUNTERS_FILE, {});
   console.log(`AI note app running on http://${HOST}:${PORT}`);
   console.log(`Storage mode: ${USE_SUPABASE ? "Supabase RLS mode" : "Local fallback mode"}`);
 });
