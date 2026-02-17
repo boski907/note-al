@@ -543,6 +543,19 @@ async function computeAdFreeStatus(user) {
   return { adFree: isSubActive(status), status, currentPeriodEnd };
 }
 
+async function requirePremiumFeature(user, res, featureName) {
+  if (!USE_SUPABASE || !STRIPE_SECRET_KEY) {
+    json(res, 402, { error: `${featureName} requires an active ad-free subscription` });
+    return false;
+  }
+  const status = await computeAdFreeStatus(user);
+  if (!status.adFree) {
+    json(res, 402, { error: `${featureName} requires an active ad-free subscription` });
+    return false;
+  }
+  return true;
+}
+
 async function listNotes(user) {
   if (USE_SUPABASE) {
     const rows = await supabaseRestRequest(
@@ -1837,6 +1850,8 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/learning/plan" && req.method === "GET") {
         const user = await requireUser(req, res);
         if (!user) return;
+        const premium = await requirePremiumFeature(user, res, "Personalized learning");
+        if (!premium) return;
         const plan = await buildLearningPlan(user);
         return json(res, 200, plan);
       }
@@ -1850,6 +1865,10 @@ const server = http.createServer(async (req, res) => {
         const selectedText = String(body.selectedText || "");
 
         if (!noteText.trim()) return json(res, 400, { error: "noteText is required" });
+        if (action === "feedback") {
+          const premium = await requirePremiumFeature(user, res, "AI feedback");
+          if (!premium) return;
+        }
 
         const output = await runAiAction(action, noteText, selectedText);
         return json(res, 200, { output });
@@ -1858,6 +1877,8 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/sources/import" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
+        const premium = await requirePremiumFeature(user, res, "Advanced source import");
+        if (!premium) return;
         const body = parseJsonBody(await readBody(req));
         const imported = await importSources(body);
         if (!imported.length) {

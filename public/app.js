@@ -29,6 +29,7 @@ const saveBtn = document.getElementById("save-btn");
 const deleteBtn = document.getElementById("delete-btn");
 const aiOutputEl = document.getElementById("ai-output");
 const aiButtons = [...document.querySelectorAll("[data-ai]")];
+const feedbackAiBtn = document.querySelector('[data-ai="feedback"]');
 const formatButtons = [...document.querySelectorAll("[data-cmd]")];
 const clearFormatBtn = document.getElementById("clear-format-btn");
 const recordBtn = document.getElementById("record-btn");
@@ -73,6 +74,13 @@ let recordingStream = null;
 let recordingChunks = [];
 let recordingMimeType = "";
 
+function setDisabled(el, disabled, title = "") {
+  if (!el) return;
+  el.disabled = Boolean(disabled);
+  if (title) el.title = title;
+  else el.removeAttribute("title");
+}
+
 function authScopedKey(prefix) {
   return `${prefix}_${me?.id || "anon"}`;
 }
@@ -107,6 +115,19 @@ function clearLearningUi() {
   setMetric(learningDueEl, "-");
   learningFocusEl.textContent = "";
   learningNextEl.textContent = "";
+}
+
+function applyPremiumFeatureGates() {
+  const gated = !adFree;
+  const hint = "Ad-free subscription required";
+  setDisabled(importFilesBtn, gated, gated ? hint : "");
+  setDisabled(importUrlsBtn, gated, gated ? hint : "");
+  setDisabled(refreshLearningBtn, gated, gated ? hint : "");
+  setDisabled(feedbackAiBtn, gated, gated ? hint : "");
+  if (gated) {
+    if (!sourceStatusEl.textContent) setSourceStatus("Advanced source import is available on Ad-free.");
+    if (!learningStatusEl.textContent) setLearningStatus("Personalized learning is available on Ad-free.");
+  }
 }
 
 function onboardingSeen() {
@@ -350,8 +371,10 @@ async function loadBillingStatus() {
       setBillingStatus("Free plan (ads enabled).");
       initAdsense().catch(() => {});
     }
+    applyPremiumFeatureGates();
   } catch (e) {
     setBillingStatus(`Billing status error: ${e.message}`, true);
+    applyPremiumFeatureGates();
   }
 }
 
@@ -382,6 +405,11 @@ async function loadAnalyticsSummary() {
 
 async function loadLearningPlan() {
   if (!token) return;
+  if (!adFree) {
+    clearLearningUi();
+    setLearningStatus("Personalized learning is available on Ad-free.");
+    return;
+  }
   try {
     const plan = await api("/api/learning/plan", { method: "GET" });
     setMetric(learningMasteryEl, `${plan.masteryScore ?? 0}%`);
@@ -648,6 +676,10 @@ function renderImportedSources(imported = []) {
 
 async function importSources({ sources = [], urls = [] } = {}) {
   if (!token) return;
+  if (!adFree) {
+    setSourceStatus("Advanced source import is available on Ad-free.", true);
+    return;
+  }
   if (!sources.length && !urls.length) {
     setSourceStatus("Select files or enter URLs first.", true);
     return;
@@ -697,6 +729,10 @@ async function deleteNote() {
 }
 
 async function runAi(action) {
+  if (action === "feedback" && !adFree) {
+    aiOutputEl.textContent = "AI feedback is available on Ad-free.";
+    return;
+  }
   const noteText = editorEl.innerText.trim();
   if (!noteText) {
     aiOutputEl.textContent = "Add note text first.";
