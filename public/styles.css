@@ -541,6 +541,74 @@ h1 {
   white-space: pre-wrap;
 }
 
+.flashcard-stage {
+  position: relative;
+  min-height: 62vh;
+}
+
+.flashcard-float {
+  position: absolute;
+  left: 24px;
+  top: 16px;
+  width: min(760px, calc(100% - 48px));
+  height: auto;
+  max-width: calc(100% - 48px);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-strong);
+  overflow: hidden;
+  --fc-scale: 1;
+}
+
+.flashcard-float-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 252, 255, 0.92));
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.flashcard-float-head .muted {
+  margin: 0;
+}
+
+.flashcard-float-body {
+  padding: 0.85rem;
+}
+
+.flashcard-float .mono {
+  font-size: calc(0.86rem * var(--fc-scale));
+  line-height: 1.55;
+}
+
+.fc-resizer {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1px solid rgba(16, 33, 40, 0.22);
+  background: rgba(255, 255, 255, 0.9);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.fc-resizer::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-right: 2px solid rgba(16, 33, 40, 0.22);
+  border-bottom: 2px solid rgba(16, 33, 40, 0.22);
+  border-radius: 2px;
+}
+
 .grid-two {
   display: grid;
   grid-template-columns: 1fr 1fr;

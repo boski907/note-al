@@ -1454,6 +1454,170 @@ function buttonRow(buttons) {
   return row;
 }
 
+function clamp(n, min, max) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return min;
+  return Math.max(min, Math.min(max, x));
+}
+
+function flashcardLayoutKey() {
+  return authScopedKey("flashcard_layout_v1");
+}
+
+function loadFlashcardLayout() {
+  try {
+    const raw = localStorage.getItem(flashcardLayoutKey()) || "";
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== "object") return null;
+    return obj;
+  } catch {
+    return null;
+  }
+}
+
+function saveFlashcardLayout(layout) {
+  try {
+    localStorage.setItem(flashcardLayoutKey(), JSON.stringify(layout));
+  } catch {
+    // ignore
+  }
+}
+
+function attachDragResize(floatEl, stageEl, handleEl, resizerEl, getScale, setScale) {
+  if (!floatEl || !stageEl || !handleEl) return;
+
+  // Remove previous handlers if this is being re-attached.
+  if (floatEl.__fc_cleanup) {
+    try {
+      floatEl.__fc_cleanup();
+    } catch {
+      // ignore
+    }
+    floatEl.__fc_cleanup = null;
+  }
+
+  const minW = 320;
+  const minH = 260;
+
+  const readLayout = () => {
+    const left = Number.parseFloat(floatEl.style.left || "0") || 0;
+    const top = Number.parseFloat(floatEl.style.top || "0") || 0;
+    const width = Number.parseFloat(floatEl.style.width || "0") || floatEl.getBoundingClientRect().width;
+    const height = Number.parseFloat(floatEl.style.height || "0") || floatEl.getBoundingClientRect().height;
+    return { left, top, width, height, scale: getScale() };
+  };
+
+  const applyLayout = (layout, { persist = true } = {}) => {
+    const stageRect = stageEl.getBoundingClientRect();
+    const width = clamp(layout.width, minW, Math.max(minW, stageRect.width));
+    const height = clamp(layout.height, minH, Math.max(minH, stageRect.height));
+    const left = clamp(layout.left, 0, Math.max(0, stageRect.width - width));
+    const top = clamp(layout.top, 0, Math.max(0, stageRect.height - height));
+
+    floatEl.style.left = `${left}px`;
+    floatEl.style.top = `${top}px`;
+    floatEl.style.width = `${width}px`;
+    floatEl.style.height = `${height}px`;
+    setScale(layout.scale);
+    if (persist) saveFlashcardLayout({ left, top, width, height, scale: layout.scale });
+  };
+
+  const onResizeWindow = () => {
+    const existing = loadFlashcardLayout();
+    if (existing) applyLayout(existing, { persist: false });
+  };
+
+  window.addEventListener("resize", onResizeWindow);
+
+  let drag = null;
+  const onHandleDown = (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    const r = floatEl.getBoundingClientRect();
+    const stageRect = stageEl.getBoundingClientRect();
+    drag = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startLeft: r.left - stageRect.left,
+      startTop: r.top - stageRect.top
+    };
+    handleEl.setPointerCapture?.(e.pointerId);
+  };
+  const onHandleMove = (e) => {
+    if (!drag) return;
+    e.preventDefault();
+    const stageRect = stageEl.getBoundingClientRect();
+    const width = floatEl.getBoundingClientRect().width;
+    const height = floatEl.getBoundingClientRect().height;
+    const left = clamp(drag.startLeft + (e.clientX - drag.startX), 0, Math.max(0, stageRect.width - width));
+    const top = clamp(drag.startTop + (e.clientY - drag.startY), 0, Math.max(0, stageRect.height - height));
+    floatEl.style.left = `${left}px`;
+    floatEl.style.top = `${top}px`;
+  };
+  const onHandleUp = (e) => {
+    if (!drag) return;
+    e.preventDefault();
+    drag = null;
+    saveFlashcardLayout(readLayout());
+  };
+
+  handleEl.addEventListener("pointerdown", onHandleDown);
+  handleEl.addEventListener("pointermove", onHandleMove);
+  handleEl.addEventListener("pointerup", onHandleUp);
+  handleEl.addEventListener("pointercancel", onHandleUp);
+
+  let resize = null;
+  const onResizerDown = (e) => {
+    if (!resizerEl) return;
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    const r = floatEl.getBoundingClientRect();
+    resize = { startX: e.clientX, startY: e.clientY, startW: r.width, startH: r.height };
+    resizerEl.setPointerCapture?.(e.pointerId);
+  };
+  const onResizerMove = (e) => {
+    if (!resize) return;
+    e.preventDefault();
+    const stageRect = stageEl.getBoundingClientRect();
+    const left = Number.parseFloat(floatEl.style.left || "0") || 0;
+    const top = Number.parseFloat(floatEl.style.top || "0") || 0;
+    const maxW = Math.max(minW, stageRect.width - left);
+    const maxH = Math.max(minH, stageRect.height - top);
+    const w = clamp(resize.startW + (e.clientX - resize.startX), minW, maxW);
+    const h = clamp(resize.startH + (e.clientY - resize.startY), minH, maxH);
+    floatEl.style.width = `${w}px`;
+    floatEl.style.height = `${h}px`;
+  };
+  const onResizerUp = (e) => {
+    if (!resize) return;
+    e.preventDefault();
+    resize = null;
+    saveFlashcardLayout(readLayout());
+  };
+
+  if (resizerEl) {
+    resizerEl.addEventListener("pointerdown", onResizerDown);
+    resizerEl.addEventListener("pointermove", onResizerMove);
+    resizerEl.addEventListener("pointerup", onResizerUp);
+    resizerEl.addEventListener("pointercancel", onResizerUp);
+  }
+
+  floatEl.__fc_cleanup = () => {
+    window.removeEventListener("resize", onResizeWindow);
+    handleEl.removeEventListener("pointerdown", onHandleDown);
+    handleEl.removeEventListener("pointermove", onHandleMove);
+    handleEl.removeEventListener("pointerup", onHandleUp);
+    handleEl.removeEventListener("pointercancel", onHandleUp);
+    if (resizerEl) {
+      resizerEl.removeEventListener("pointerdown", onResizerDown);
+      resizerEl.removeEventListener("pointermove", onResizerMove);
+      resizerEl.removeEventListener("pointerup", onResizerUp);
+      resizerEl.removeEventListener("pointercancel", onResizerUp);
+    }
+  };
+}
+
 async function fetchDueCount() {
   const data = await api("/api/flashcards/stats", { method: "GET" });
   return Number(data.dueCount || 0);
@@ -1499,8 +1663,49 @@ async function renderStudyDue() {
   let showBack = false;
   let reviewed = 0;
 
+  // Movable/resizable flashcard panel.
+  overlayBodyEl.innerHTML = "";
+  const stage = document.createElement("div");
+  stage.className = "flashcard-stage";
+  overlayBodyEl.appendChild(stage);
+
+  const float = document.createElement("div");
+  float.className = "flashcard-float";
+  stage.appendChild(float);
+
+  let fcScale = 1;
+  const applyScale = (v) => {
+    fcScale = clamp(v, 0.85, 1.6);
+    float.style.setProperty("--fc-scale", String(fcScale));
+  };
+
+  const setDefaultLayout = () => {
+    const stageRect = stage.getBoundingClientRect();
+    const width = Math.min(760, Math.max(360, Math.floor(stageRect.width * 0.92)));
+    const height = Math.min(640, Math.max(320, Math.floor(stageRect.height * 0.74)));
+    const left = Math.max(0, Math.floor((stageRect.width - width) / 2));
+    const top = 12;
+    float.style.left = `${left}px`;
+    float.style.top = `${top}px`;
+    float.style.width = `${width}px`;
+    float.style.height = `${height}px`;
+    applyScale(1);
+    saveFlashcardLayout({ left, top, width, height, scale: 1 });
+  };
+
+  // Initialize layout once stage has a real size.
+  setTimeout(() => {
+    const saved = loadFlashcardLayout();
+    if (!saved) return setDefaultLayout();
+    float.style.left = `${Number(saved.left || 0)}px`;
+    float.style.top = `${Number(saved.top || 0)}px`;
+    if (saved.width) float.style.width = `${Number(saved.width)}px`;
+    if (saved.height) float.style.height = `${Number(saved.height)}px`;
+    applyScale(Number(saved.scale || 1));
+  }, 0);
+
   function renderAdBreak(nextFn) {
-    overlayBodyEl.innerHTML = "";
+    stage.innerHTML = "";
 
     const box = document.createElement("div");
     box.className = "ad-break";
@@ -1520,7 +1725,7 @@ async function renderStudyDue() {
     cont.addEventListener("click", nextFn);
     box.appendChild(buttonRow([cont]));
 
-    overlayBodyEl.appendChild(box);
+    stage.appendChild(box);
 
     if (adsenseCfg?.enabled && adsenseCfg.client && adsenseCfg.breakSlot) {
       loadAdSenseScript(adsenseCfg.client)
@@ -1536,25 +1741,73 @@ async function renderStudyDue() {
 
   function render() {
     const c = cards[idx];
-    overlayBodyEl.innerHTML = "";
+    stage.innerHTML = "";
+    stage.appendChild(float);
+    float.innerHTML = "";
 
-    const wrap = document.createElement("div");
-    const top = document.createElement("div");
-    top.className = "muted";
-    top.textContent = `Card ${idx + 1} / ${cards.length}`;
-    wrap.appendChild(top);
+    const head = document.createElement("div");
+    head.className = "flashcard-float-head";
+
+    const headLeft = document.createElement("div");
+    headLeft.className = "muted";
+    headLeft.textContent = `Card ${idx + 1} / ${cards.length}`;
+    head.appendChild(headLeft);
+
+    const headBtns = document.createElement("div");
+    headBtns.className = "row wrap";
+
+    const mkHeadBtn = (label, onClick) => {
+      const b = document.createElement("button");
+      b.className = "ghost";
+      b.type = "button";
+      b.textContent = label;
+      b.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation(); // Don't start drag.
+        onClick();
+      });
+      return b;
+    };
+
+    headBtns.appendChild(
+      mkHeadBtn("A-", () => {
+        applyScale(fcScale - 0.08);
+        saveFlashcardLayout({ ...(loadFlashcardLayout() || {}), ...(() => {
+          const r = float.getBoundingClientRect();
+          const sr = stage.getBoundingClientRect();
+          return { left: r.left - sr.left, top: r.top - sr.top, width: r.width, height: r.height, scale: fcScale };
+        })() });
+      })
+    );
+    headBtns.appendChild(
+      mkHeadBtn("A+", () => {
+        applyScale(fcScale + 0.08);
+        saveFlashcardLayout({ ...(loadFlashcardLayout() || {}), ...(() => {
+          const r = float.getBoundingClientRect();
+          const sr = stage.getBoundingClientRect();
+          return { left: r.left - sr.left, top: r.top - sr.top, width: r.width, height: r.height, scale: fcScale };
+        })() });
+      })
+    );
+    headBtns.appendChild(mkHeadBtn("Reset", () => setDefaultLayout()));
+    head.appendChild(headBtns);
+
+    float.appendChild(head);
+
+    const body = document.createElement("div");
+    body.className = "flashcard-float-body";
 
     const front = document.createElement("div");
     front.className = "card-face";
     front.innerHTML = `<h3>Front</h3><div class="mono"></div>`;
     front.querySelector(".mono").textContent = c.front;
-    wrap.appendChild(front);
+    body.appendChild(front);
 
     const back = document.createElement("div");
     back.className = "card-face";
     back.innerHTML = `<h3>Back</h3><div class="mono"></div>`;
     back.querySelector(".mono").textContent = showBack ? c.back : "Click “Show answer”.";
-    wrap.appendChild(back);
+    body.appendChild(back);
 
     if (!showBack) {
       const showBtn = document.createElement("button");
@@ -1564,7 +1817,7 @@ async function renderStudyDue() {
         showBack = true;
         render();
       });
-      wrap.appendChild(buttonRow([showBtn]));
+      body.appendChild(buttonRow([showBtn]));
     } else {
       const mk = (label, grade, cls = "ghost") => {
         const b = document.createElement("button");
@@ -1581,7 +1834,7 @@ async function renderStudyDue() {
           reviewed += 1;
           showBack = false;
           if (idx >= cards.length) {
-            overlayBodyEl.innerHTML = `<div class="muted">Done. You reviewed ${cards.length} cards.</div>`;
+            stage.innerHTML = `<div class="muted">Done. You reviewed ${cards.length} cards.</div>`;
           } else {
             if (!adFree && reviewed % 3 === 0) {
               renderAdBreak(render);
@@ -1593,10 +1846,16 @@ async function renderStudyDue() {
         return b;
       };
 
-      wrap.appendChild(buttonRow([mk("Again", 0), mk("Hard", 1), mk("Good", 2), mk("Easy", 3)]));
+      body.appendChild(buttonRow([mk("Again", 0), mk("Hard", 1), mk("Good", 2), mk("Easy", 3)]));
     }
 
-    overlayBodyEl.appendChild(wrap);
+    float.appendChild(body);
+
+    const resizer = document.createElement("div");
+    resizer.className = "fc-resizer";
+    float.appendChild(resizer);
+
+    attachDragResize(float, stage, head, resizer, () => fcScale, (v) => applyScale(v));
   }
 
   render();
