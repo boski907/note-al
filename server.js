@@ -75,6 +75,12 @@ const ADSENSE_CLIENT = process.env.ADSENSE_CLIENT || "";
 const ADSENSE_SLOT_BOTTOM = process.env.ADSENSE_SLOT_BOTTOM || "";
 const ADSENSE_SLOT_BREAK = process.env.ADSENSE_SLOT_BREAK || "";
 
+// Owner-only features (like the in-app Builder chatbox). Comma-separated emails.
+const OWNER_EMAILS = (process.env.OWNER_EMAILS || "lboski@live.com")
+  .split(",")
+  .map((x) => String(x || "").trim().toLowerCase())
+  .filter(Boolean);
+
 const APP_BASE_URL = process.env.APP_BASE_URL || `http://${HOST}:${PORT}`;
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_PRICE_ID_PREMIUM_10 =
@@ -437,6 +443,12 @@ async function enforceUsageOr429(res, user, { scope, inc, limit, period = "day",
 
 function sanitizeEmail(email) {
   return String(email || "").trim().toLowerCase();
+}
+
+function isOwnerUser(user) {
+  const email = sanitizeEmail(user?.email || "");
+  if (!email) return false;
+  return OWNER_EMAILS.includes(email);
 }
 
 function looksLikeEmail(value) {
@@ -2460,7 +2472,7 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/auth/me" && req.method === "GET") {
         const user = await requireUser(req, res);
         if (!user) return;
-        return json(res, 200, { user: { id: user.id, email: user.email } });
+        return json(res, 200, { user: { id: user.id, email: user.email, isOwner: isOwnerUser(user) } });
       }
 
       if (pathname === "/api/referral/code" && req.method === "GET") {
@@ -2682,6 +2694,7 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/assistant/chat" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
+        if (!isOwnerUser(user)) return json(res, 403, { error: "Forbidden" });
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
         if (!rateLimitOr429(res, `ip:${ip}:ai:assistant`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
         if (!rateLimitOr429(res, `user:${user.id}:ai:assistant`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;

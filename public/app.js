@@ -147,6 +147,7 @@ let token = localStorage.getItem("ai_notes_token") || "";
 let me = null;
 let notes = [];
 let filteredNotes = [];
+let isOwner = false;
 let currentId = null;
 let recorder = null;
 let recordingStream = null;
@@ -822,6 +823,7 @@ function renderBuilderChatMessages() {
 
 function openBuilderChat() {
   if (!builderChatEl) return;
+  if (!isOwner) return;
   builderChatEl.classList.remove("hidden");
   builderChatEl.setAttribute("aria-hidden", "false");
   renderBuilderChatMessages();
@@ -1180,10 +1182,14 @@ async function loadMe() {
   try {
     const data = await api("/api/auth/me", { method: "GET" });
     me = data.user;
+    isOwner = Boolean(me && me.isOwner);
     setAuthStatus(`Signed in as ${me.email}`);
+    setHidden(builderChatToggleEl, !isOwner);
+    if (!isOwner) closeBuilderChat();
   } catch {
     token = "";
     me = null;
+    isOwner = false;
     localStorage.removeItem("ai_notes_token");
   }
 }
