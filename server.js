@@ -1216,6 +1216,82 @@ function cleanImportedText(value) {
     .trim();
 }
 
+function decodeHtmlEntities(s) {
+  return String(s || "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d{1,6});/g, (_, n) => {
+      const code = Number(n);
+      if (!Number.isFinite(code)) return "";
+      try {
+        return String.fromCodePoint(code);
+      } catch {
+        return "";
+      }
+    });
+}
+
+function extractHtmlTitle(html) {
+  const raw = String(html || "");
+  const m = raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (!m) return "";
+  const t = decodeHtmlEntities(m[1])
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
+  return t;
+}
+
+function filterNoisyLines(text) {
+  const raw = String(text || "");
+  const lines = raw
+    .split("\n")
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const out = [];
+  for (const line of lines) {
+    const l = line;
+    const lower = l.toLowerCase();
+
+    // Drop typical JS/config noise that sometimes leaks when HTML is truncated mid-script.
+    if (
+      lower.includes("this.gbar_") ||
+      lower.includes("__closure__") ||
+      lower.includes("spdx-license") ||
+      lower.includes("function(") ||
+      lower.includes("prototype.") ||
+      lower.includes("var ") ||
+      lower.includes("const ") ||
+      lower.includes("let ") ||
+      lower.includes("window.") ||
+      lower.includes("globalthis") ||
+      lower.includes("document.") ||
+      lower.includes("settimeout(") ||
+      lower.includes("googleapis") ||
+      lower.includes("gstatic.com") ||
+      lower.includes("googlesyndication")
+    ) {
+      continue;
+    }
+
+    // Drop lines that are mostly symbols (minified code).
+    const symbolHits = (l.match(/[{}[\];=<>]/g) || []).length;
+    if (l.length >= 120 && symbolHits / l.length > 0.08) continue;
+
+    // Drop extremely long single-line blobs.
+    if (l.length > 420) continue;
+
+    out.push(l);
+  }
+
+  return cleanImportedText(out.join("\n"));
+}
+
 function decodeBase64Payload(base64) {
   const cleaned = String(base64 || "");
   const onlyBase64 = cleaned.includes(",") ? cleaned.split(",").pop() : cleaned;
@@ -1225,22 +1301,25 @@ function decodeBase64Payload(base64) {
 
 function htmlToText(html) {
   const raw = String(html || "");
-  return cleanImportedText(
-    raw
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
-      .replace(/<\/(p|div|li|h1|h2|h3|h4|h5|h6|tr)>/gi, "\n")
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&#39;/g, "'")
-      .replace(/&quot;/g, '"')
-      .replace(/[ \t]+/g, " ")
-  );
+  const title = extractHtmlTitle(raw);
+  const withoutScripts = raw
+    // If HTML was truncated mid-script, match until end-of-string.
+    .replace(/<script\b[^>]*>[\s\S]*?(<\/script>|$)/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?(<\/style>|$)/gi, " ")
+    .replace(/<noscript\b[^>]*>[\s\S]*?(<\/noscript>|$)/gi, " ")
+    .replace(/<\/(p|div|li|h1|h2|h3|h4|h5|h6|tr|section|article|main)>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, " ");
+
+  const decoded = decodeHtmlEntities(withoutScripts)
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n[ \t]+/g, "\n");
+
+  const cleaned = filterNoisyLines(cleanImportedText(decoded));
+  const merged = title && cleaned && !cleaned.toLowerCase().startsWith(title.toLowerCase())
+    ? `${title}\n\n${cleaned}`
+    : (cleaned || title || "");
+  return cleanImportedText(merged);
 }
 
 function decodePdfEscapedString(v) {
@@ -1475,8 +1554,10 @@ async function fetchUrlAsSource(url) {
   if (!isTextLike) throw new Error(`Unsupported content type: ${ctype || "unknown"}`);
 
   const text = await response.text();
-  const capped = text.slice(0, 140000);
-  const parsed = ctype.includes("html") ? htmlToText(capped) : cleanImportedText(capped);
+  // Keep more of the HTML before extracting text so we don't cut mid-script and leak JS into output.
+  const capped = text.slice(0, 2_000_000);
+  const parsedRaw = ctype.includes("html") ? htmlToText(capped) : cleanImportedText(capped);
+  const parsed = cleanImportedText(String(parsedRaw || "").slice(0, 140000));
   if (!parsed) throw new Error("No readable text found at URL");
   return parsed;
 }
