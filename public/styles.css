@@ -45,6 +45,15 @@ body {
   gap: 1rem;
 }
 
+.login-page {
+  padding-bottom: 0;
+}
+
+.login-wrap {
+  width: min(560px, calc(100vw - 2rem));
+  margin: 8vh auto 0;
+}
+
 .auth-card,
 .panel {
   background: var(--card);

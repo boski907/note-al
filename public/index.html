@@ -19,20 +19,14 @@
     <main class="app-shell">
       <section class="auth-card" id="auth-card">
         <div class="auth-head">
-          <h1>AI Note App</h1>
+          <h1>Notematica</h1>
           <span id="cloud-badge" class="badge">Local mode</span>
         </div>
-        <p class="muted">Create an account or sign in to sync notes across sessions.</p>
-        <div class="row">
-          <input id="auth-email" type="email" placeholder="you@example.com" />
-          <input id="auth-password" type="password" placeholder="Password (8+ chars)" />
-        </div>
+        <p class="muted">Signed in account and subscription settings.</p>
+        <div id="auth-status" class="status"></div>
         <div class="row wrap">
-          <button id="register-btn">Register</button>
-          <button id="login-btn">Login</button>
           <button id="logout-btn" class="ghost">Logout</button>
         </div>
-        <div id="auth-status" class="status"></div>
         <div class="divider"></div>
         <div class="row wrap">
           <button id="subscribe-btn">Go Ad-free ($5.99/mo)</button>

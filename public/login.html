@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login | Notematica</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="login-page">
+    <main class="login-wrap">
+      <section class="auth-card">
+        <div class="auth-head">
+          <h1>Notematica Login</h1>
+          <span id="cloud-badge" class="badge">Loading...</span>
+        </div>
+        <p class="muted">Sign in to access your notes, flashcards, and study tools.</p>
+        <div class="row">
+          <input id="auth-email" type="email" placeholder="you@example.com" />
+          <input id="auth-password" type="password" placeholder="Password (8+ chars)" />
+        </div>
+        <div class="row wrap">
+          <button id="login-btn">Login</button>
+          <button id="register-btn" class="ghost">Create account</button>
+        </div>
+        <div id="auth-status" class="status"></div>
+      </section>
+    </main>
+
+    <script src="/login.js"></script>
+  </body>
+</html>

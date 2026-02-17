@@ -1,9 +1,5 @@
 const authCardEl = document.getElementById("auth-card");
 const workspaceEl = document.getElementById("workspace");
-const emailEl = document.getElementById("auth-email");
-const passwordEl = document.getElementById("auth-password");
-const registerBtn = document.getElementById("register-btn");
-const loginBtn = document.getElementById("login-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const authStatusEl = document.getElementById("auth-status");
 const cloudBadgeEl = document.getElementById("cloud-badge");
@@ -435,52 +431,6 @@ async function openPortal() {
   }
 }
 
-async function register() {
-  try {
-    const email = emailEl.value;
-    const password = passwordEl.value;
-    const data = await api("/api/auth/register", {
-      method: "POST",
-      body: JSON.stringify({ email, password })
-    });
-    token = data.token;
-    me = data.user;
-    localStorage.setItem("ai_notes_token", token);
-    setAuthStatus(`Registered as ${me.email}`);
-    updateAuthUi();
-    await loadNotes();
-    await loadBillingStatus();
-    await loadAnalyticsSummary();
-    fireAndForgetTrack("auth.register", {});
-    if (!onboardingSeen()) openOnboarding();
-  } catch (err) {
-    setAuthStatus(err.message, true);
-  }
-}
-
-async function login() {
-  try {
-    const email = emailEl.value;
-    const password = passwordEl.value;
-    const data = await api("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password })
-    });
-    token = data.token;
-    me = data.user;
-    localStorage.setItem("ai_notes_token", token);
-    setAuthStatus(`Logged in as ${me.email}`);
-    updateAuthUi();
-    await loadNotes();
-    await loadBillingStatus();
-    await loadAnalyticsSummary();
-    fireAndForgetTrack("auth.login", {});
-    if (!onboardingSeen()) openOnboarding();
-  } catch (err) {
-    setAuthStatus(err.message, true);
-  }
-}
-
 async function logout() {
   try {
     await api("/api/auth/logout", { method: "POST" });
@@ -505,6 +455,7 @@ async function logout() {
   setMetric(metricTopEventEl, "-");
   setMetric(metricFlashcardsEl, "-");
   setMetric(metricAiEl, "-");
+  window.location.href = "/login.html";
 }
 
 async function loadMe() {
@@ -965,8 +916,6 @@ async function startRecording() {
   aiOutputEl.textContent = "Recording... click again to stop.";
 }
 
-registerBtn.addEventListener("click", register);
-loginBtn.addEventListener("click", login);
 logoutBtn.addEventListener("click", logout);
 newBtn.addEventListener("click", clearEditor);
 saveBtn.addEventListener("click", () => saveNote().catch((e) => (aiOutputEl.textContent = e.message)));
@@ -1026,17 +975,21 @@ onboardingEmailSaveEl.addEventListener("click", () => saveOnboardingEmail());
 adCheckBtn.addEventListener("click", () => runAdDiagnostics());
 
 (async function init() {
+  if (!token) {
+    window.location.href = "/login.html";
+    return;
+  }
   await loadConfig();
   await loadMe();
-  updateAuthUi();
-  if (me) {
-    await loadNotes();
-    await loadBillingStatus();
-    await loadAnalyticsSummary();
-    if (!onboardingSeen()) openOnboarding();
-  } else {
-    setAuthStatus("Sign in to start writing notes.");
+  if (!me) {
+    window.location.href = "/login.html";
+    return;
   }
+  updateAuthUi();
+  await loadNotes();
+  await loadBillingStatus();
+  await loadAnalyticsSummary();
+  if (!onboardingSeen()) openOnboarding();
 })();
 
 subscribeBtn.addEventListener("click", () => startCheckout());
