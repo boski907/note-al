@@ -152,78 +152,123 @@
             </div>
           </header>
 
-          <div class="toolbar row wrap">
-            <button data-cmd="bold" class="ghost">Bold</button>
-            <button data-cmd="italic" class="ghost">Italic</button>
-            <button data-cmd="insertUnorderedList" class="ghost">Bullet List</button>
-            <button data-cmd="insertOrderedList" class="ghost">Numbered List</button>
-            <button id="clear-format-btn" class="ghost">Clear Format</button>
+          <div class="tab-bar">
+            <button id="focus-toggle-btn" class="ghost" type="button" title="Toggle focus mode">Focus</button>
+            <button id="tab-btn-write" class="tab active" type="button">Write</button>
+            <button id="tab-btn-sources" class="tab" type="button">Sources</button>
+            <button id="tab-btn-study" class="tab" type="button">Study</button>
           </div>
 
-          <div id="note-editor" class="note-editor" contenteditable="true"></div>
-
-          <section class="ai-tools">
-            <div class="row wrap">
-              <button data-ai="summarize">Summarize</button>
-              <button data-ai="improve">Improve writing</button>
-              <button data-ai="feedback">Get feedback</button>
-              <button id="upgrade-ai-btn" class="ghost hidden">Upgrade to Premium</button>
-              <button data-ai="tasks">Extract tasks</button>
-              <button id="record-btn" class="ghost">Record voice note</button>
+          <div class="output-dock">
+            <div class="dock-head">
+              <strong>Output</strong>
+              <button id="clear-output-btn" class="ghost" type="button">Clear</button>
             </div>
-            <p class="muted">Select text to run AI on a specific section. Voice transcription appends text to the note.</p>
             <div id="ai-output" class="ai-output"></div>
+          </div>
 
-            <div class="divider"></div>
-            <div class="row wrap">
-              <input
-                id="source-files"
-                type="file"
-                multiple
-                accept=".txt,.md,.csv,.json,.html,.htm,.xml,.log,.pdf,.docx,.mp4,.mov,.m4v,.webm,.mp3,.wav,.m4a,.ogg"
-              />
-              <button id="import-files-btn" class="ghost">Import files</button>
+          <div id="tab-write" class="tab-panel">
+            <div class="toolbar row wrap">
+              <button data-cmd="bold" class="ghost">Bold</button>
+              <button data-cmd="italic" class="ghost">Italic</button>
+              <button data-cmd="insertUnorderedList" class="ghost">Bullet List</button>
+              <button data-cmd="insertOrderedList" class="ghost">Numbered List</button>
+              <button id="clear-format-btn" class="ghost">Clear Format</button>
             </div>
-            <div class="row wrap">
-              <input id="source-urls" placeholder="Paste one or more URLs, separated by commas or new lines" />
-              <button id="import-urls-btn" class="ghost">Import URLs</button>
-              <button id="upgrade-sources-btn" class="ghost hidden">Upgrade to Premium</button>
-            </div>
-            <p class="muted">Supported: text files, PDF, DOCX, websites, YouTube links, and video/audio files.</p>
-            <div id="source-status" class="status"></div>
 
-            <div class="divider"></div>
-            <div class="row wrap">
-              <button id="gen-cards-btn">Generate flashcards</button>
-              <button id="study-btn" class="ghost">Study due</button>
-              <button id="testprep-btn" class="ghost">Practice test</button>
-              <select id="exam-mode">
-                <option value="standard">Exam: standard</option>
-                <option value="timed">Exam: timed</option>
-                <option value="weak">Exam: weak topics</option>
-              </select>
+            <div id="note-editor" class="note-editor" contenteditable="true"></div>
+
+            <section class="ai-tools">
+              <div class="row wrap">
+                <button data-ai="summarize">Summarize</button>
+                <button data-ai="improve">Improve writing</button>
+                <button data-ai="feedback">Get feedback</button>
+                <button id="upgrade-ai-btn" class="ghost hidden">Upgrade to Premium</button>
+                <button data-ai="tasks">Extract tasks</button>
+                <button id="record-btn" class="ghost">Record voice note</button>
+              </div>
+              <p class="muted">Select text to run AI on a specific section. Voice transcription appends text to the note.</p>
+
+              <div class="divider"></div>
+              <div class="row wrap">
+                <button id="share-note-btn" class="ghost">Share note link</button>
+                <button id="export-txt-btn" class="ghost">Export TXT</button>
+                <button id="export-json-btn" class="ghost">Export JSON</button>
+                <button id="export-pdf-btn" class="ghost">Export PDF</button>
+              </div>
+              <div id="share-status" class="status"></div>
+            </section>
+          </div>
+
+          <div id="tab-sources" class="tab-panel hidden">
+            <div class="card-face">
+              <h3>Import sources</h3>
+              <p class="muted">Attach PDFs, DOCX, websites, YouTube, and media transcripts to the current note for grounded answers and citations.</p>
+              <div class="row wrap">
+                <input
+                  id="source-files"
+                  type="file"
+                  multiple
+                  accept=".txt,.md,.csv,.json,.html,.htm,.xml,.log,.pdf,.docx,.mp4,.mov,.m4v,.webm,.mp3,.wav,.m4a,.ogg"
+                />
+                <button id="import-files-btn" class="ghost">Import files</button>
+              </div>
+              <div class="row wrap">
+                <input id="source-urls" placeholder="Paste one or more URLs, separated by commas or new lines" />
+                <button id="import-urls-btn" class="ghost">Import URLs</button>
+                <button id="upgrade-sources-btn" class="ghost hidden">Upgrade to Premium</button>
+              </div>
+              <div id="source-status" class="status"></div>
             </div>
-            <div class="row wrap">
-              <input id="plan-days" type="number" min="1" max="30" value="7" />
-              <input id="plan-minutes" type="number" min="5" max="180" value="20" />
-              <button id="auto-plan-btn" class="ghost">Generate study plan</button>
+
+            <div class="card-face">
+              <div class="row wrap" style="justify-content: space-between; align-items: center">
+                <h3 style="margin: 0">Sources on this note</h3>
+                <div class="row wrap">
+                  <button id="sources-refresh-btn" class="ghost" type="button">Refresh</button>
+                  <button id="sources-clear-btn" class="ghost danger" type="button">Clear</button>
+                </div>
+              </div>
+              <div id="sources-list" class="sources-list"></div>
+              <p class="muted">These sources are stored on your device for this note and are sent to AI requests (up to 6 at a time).</p>
             </div>
-            <div id="plan-status" class="status"></div>
-            <div class="divider"></div>
-            <div class="row wrap">
-              <input id="tutor-question" placeholder="Ask AI tutor from this note..." />
-              <button id="ask-tutor-btn" class="ghost">Ask tutor</button>
+          </div>
+
+          <div id="tab-study" class="tab-panel hidden">
+            <div class="card-face">
+              <h3>Study hub</h3>
+              <p class="muted">Generate flashcards, practice tests, and an auto study plan from your current note.</p>
+              <div class="row wrap">
+                <button id="gen-cards-btn">Generate flashcards</button>
+                <button id="study-btn" class="ghost">Study due</button>
+                <button id="testprep-btn" class="ghost">Practice test</button>
+                <select id="exam-mode">
+                  <option value="standard">Exam: standard</option>
+                  <option value="timed">Exam: timed</option>
+                  <option value="weak">Exam: weak topics</option>
+                </select>
+              </div>
             </div>
-            <div id="tutor-output" class="ai-output"></div>
-            <div class="divider"></div>
-            <div class="row wrap">
-              <button id="share-note-btn" class="ghost">Share note link</button>
-              <button id="export-txt-btn" class="ghost">Export TXT</button>
-              <button id="export-json-btn" class="ghost">Export JSON</button>
-              <button id="export-pdf-btn" class="ghost">Export PDF</button>
+
+            <div class="card-face">
+              <h3>Auto study plan</h3>
+              <div class="row wrap">
+                <input id="plan-days" type="number" min="1" max="30" value="7" />
+                <input id="plan-minutes" type="number" min="5" max="180" value="20" />
+                <button id="auto-plan-btn" class="ghost">Generate study plan</button>
+              </div>
+              <div id="plan-status" class="status"></div>
             </div>
-            <div id="share-status" class="status"></div>
-          </section>
+
+            <div class="card-face">
+              <h3>Tutor</h3>
+              <div class="row wrap">
+                <input id="tutor-question" placeholder="Ask AI tutor from this note..." />
+                <button id="ask-tutor-btn" class="ghost">Ask tutor</button>
+              </div>
+              <div id="tutor-output" class="ai-output"></div>
+            </div>
+          </div>
         </section>
       </section>
     </main>

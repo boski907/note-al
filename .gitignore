@@ -6,3 +6,7 @@ data/analytics.json
 public/*.svg.png
 **/.idea/
 **/*.iml
+
+# Keystores (never commit)
+keystore/
+*.jks

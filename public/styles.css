@@ -316,6 +316,117 @@ h1 {
   min-height: calc(100vh - 13rem);
 }
 
+.focus-mode .auth-card {
+  display: none;
+}
+
+.focus-mode .workspace {
+  grid-template-columns: 1fr;
+}
+
+.focus-mode .panel.left {
+  display: none;
+}
+
+.tab-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  gap: 0.45rem;
+  padding: 0.6rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.55));
+  backdrop-filter: blur(10px);
+}
+
+.tab-bar .tab {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 999px;
+  padding: 0.34rem 0.65rem;
+  font-weight: 800;
+}
+
+.tab-bar .tab.active {
+  border-color: rgba(15, 118, 110, 0.35);
+  background: rgba(15, 118, 110, 0.12);
+}
+
+.tab-panel {
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.output-dock {
+  margin: 0.7rem 0.9rem 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(250, 250, 250, 0.7));
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+
+.dock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.18), rgba(249, 115, 22, 0.12));
+}
+
+.output-dock .ai-output {
+  min-height: 3.2rem;
+  max-height: 12rem;
+  overflow: auto;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.sources-list {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.source-item {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.75);
+  padding: 0.6rem 0.65rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.source-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.source-item-title {
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.source-item-meta {
+  font: 600 0.78rem "IBM Plex Mono", monospace;
+  color: var(--soft);
+}
+
+.source-item-snippet {
+  font-size: 0.86rem;
+  color: var(--text);
+  opacity: 0.9;
+  overflow-wrap: anywhere;
+}
+
 .panel.left,
 .panel.right {
   display: flex;

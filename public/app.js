@@ -82,6 +82,18 @@ const overlayBodyEl = document.getElementById("overlay-body");
 const overlayCloseEl = document.getElementById("overlay-close");
 const analyticsStatusEl = document.getElementById("analytics-status");
 
+const focusToggleBtn = document.getElementById("focus-toggle-btn");
+const clearOutputBtn = document.getElementById("clear-output-btn");
+const tabBtnWriteEl = document.getElementById("tab-btn-write");
+const tabBtnSourcesEl = document.getElementById("tab-btn-sources");
+const tabBtnStudyEl = document.getElementById("tab-btn-study");
+const tabWriteEl = document.getElementById("tab-write");
+const tabSourcesEl = document.getElementById("tab-sources");
+const tabStudyEl = document.getElementById("tab-study");
+const sourcesListEl = document.getElementById("sources-list");
+const sourcesRefreshBtn = document.getElementById("sources-refresh-btn");
+const sourcesClearBtn = document.getElementById("sources-clear-btn");
+
 const onboardingOverlayEl = document.getElementById("onboarding-overlay");
 const onboardingCloseEl = document.getElementById("onboarding-close");
 const onboardingStartEl = document.getElementById("onboarding-start");
@@ -148,6 +160,7 @@ let me = null;
 let notes = [];
 let filteredNotes = [];
 let isOwner = false;
+let activeTab = "write";
 let currentId = null;
 let recorder = null;
 let recordingStream = null;
@@ -695,6 +708,7 @@ function selectNote(id) {
   tagsEl.value = Array.isArray(note.tags) ? note.tags.join(", ") : "";
   editorEl.innerHTML = note.contentHtml || escapeHtml(note.contentText || "");
   aiOutputEl.textContent = "";
+  renderSourcesManager();
   renderNotes();
 }
 
@@ -704,6 +718,7 @@ function clearEditor() {
   tagsEl.value = "";
   editorEl.innerHTML = "";
   aiOutputEl.textContent = "";
+  renderSourcesManager();
   titleEl.focus();
   renderNotes();
 }
@@ -1186,6 +1201,7 @@ async function loadMe() {
     setAuthStatus(`Signed in as ${me.email}`);
     setHidden(builderChatToggleEl, !isOwner);
     if (!isOwner) closeBuilderChat();
+    setActiveTab(loadActiveTab());
   } catch {
     token = "";
     me = null;
@@ -1378,6 +1394,104 @@ function getAiSourcesForRequest(maxSources = 6) {
   }));
 }
 
+function setActiveTab(name) {
+  const n = name === "sources" ? "sources" : name === "study" ? "study" : "write";
+  activeTab = n;
+  setHidden(tabWriteEl, n !== "write");
+  setHidden(tabSourcesEl, n !== "sources");
+  setHidden(tabStudyEl, n !== "study");
+  tabBtnWriteEl?.classList.toggle("active", n === "write");
+  tabBtnSourcesEl?.classList.toggle("active", n === "sources");
+  tabBtnStudyEl?.classList.toggle("active", n === "study");
+  try {
+    localStorage.setItem(authScopedKey("active_tab_v1"), n);
+  } catch {}
+  if (n === "sources") renderSourcesManager();
+}
+
+function loadActiveTab() {
+  try {
+    const v = String(localStorage.getItem(authScopedKey("active_tab_v1")) || "write");
+    return v === "sources" || v === "study" ? v : "write";
+  } catch {
+    return "write";
+  }
+}
+
+function renderSourcesManager() {
+  if (!sourcesListEl) return;
+  const list = loadSourcesForCurrentNote();
+  sourcesListEl.innerHTML = "";
+
+  if (!currentId) {
+    sourcesListEl.innerHTML = `<div class="muted">Open or save a note to attach sources.</div>`;
+    return;
+  }
+
+  if (!list.length) {
+    sourcesListEl.innerHTML = `<div class="muted">No sources yet. Import files or URLs above.</div>`;
+    return;
+  }
+
+  const sorted = list
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => Number(b.s.addedAt || 0) - Number(a.s.addedAt || 0));
+
+  for (const { s, i } of sorted) {
+    const wrap = document.createElement("div");
+    wrap.className = "source-item";
+    const head = document.createElement("div");
+    head.className = "source-item-head";
+
+    const left = document.createElement("div");
+    const title = document.createElement("div");
+    title.className = "source-item-title";
+    title.textContent = String(s.name || "Source").slice(0, 240);
+    const meta = document.createElement("div");
+    meta.className = "source-item-meta";
+    const kind = String(s.kind || "source").slice(0, 30);
+    const when = s.addedAt ? new Date(Number(s.addedAt)).toLocaleString() : "";
+    meta.textContent = `${kind}${when ? ` • ${when}` : ""}`;
+    left.appendChild(title);
+    left.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "row wrap";
+    const url = String(s.url || "");
+    if (url) {
+      const open = document.createElement("a");
+      open.className = "ghost";
+      open.textContent = "Open";
+      open.href = url;
+      open.target = "_blank";
+      open.rel = "noreferrer";
+      actions.appendChild(open);
+    }
+    const rm = document.createElement("button");
+    rm.className = "ghost danger";
+    rm.type = "button";
+    rm.textContent = "Remove";
+    rm.addEventListener("click", () => {
+      const next = loadSourcesForCurrentNote();
+      next.splice(i, 1);
+      saveSourcesForCurrentNote(next);
+      renderSourcesManager();
+    });
+    actions.appendChild(rm);
+
+    head.appendChild(left);
+    head.appendChild(actions);
+
+    const snippet = document.createElement("div");
+    snippet.className = "source-item-snippet";
+    snippet.textContent = String(s.content || "").trim().slice(0, 220) || "(empty)";
+
+    wrap.appendChild(head);
+    wrap.appendChild(snippet);
+    sourcesListEl.appendChild(wrap);
+  }
+}
+
 function renderCitationsInline(citations = []) {
   const arr = Array.isArray(citations) ? citations : [];
   if (!arr.length) return null;
@@ -1435,6 +1549,7 @@ async function importSources({ sources = [], urls = [] } = {}) {
     renderImportedSources(out.imported || []);
     mergeImportedSourcesIntoCurrent(out.imported || []);
     setSourceStatus(`Imported ${out.imported?.length || 0} source(s) into this note.`);
+    renderSourcesManager();
     fireAndForgetTrack("sources.import_client", { count: out.imported?.length || 0 });
     awardXp("import", 6);
     await countImportAndMaybeShowAds();
@@ -2649,6 +2764,38 @@ importUrlsBtn.addEventListener("click", async () => {
   await importSources({ sources: [], urls });
 });
 
+if (tabBtnWriteEl) tabBtnWriteEl.addEventListener("click", () => setActiveTab("write"));
+if (tabBtnSourcesEl) tabBtnSourcesEl.addEventListener("click", () => setActiveTab("sources"));
+if (tabBtnStudyEl) tabBtnStudyEl.addEventListener("click", () => setActiveTab("study"));
+
+if (focusToggleBtn) {
+  focusToggleBtn.addEventListener("click", () => {
+    document.body.classList.toggle("focus-mode");
+    try {
+      localStorage.setItem(authScopedKey("focus_mode_v1"), document.body.classList.contains("focus-mode") ? "1" : "0");
+    } catch {}
+  });
+}
+
+if (clearOutputBtn) {
+  clearOutputBtn.addEventListener("click", () => {
+    aiOutputEl.textContent = "";
+    setPlanStatus("");
+    tutorOutputEl.textContent = "";
+  });
+}
+
+if (sourcesRefreshBtn) sourcesRefreshBtn.addEventListener("click", () => renderSourcesManager());
+if (sourcesClearBtn) {
+  sourcesClearBtn.addEventListener("click", () => {
+    if (!currentId) return;
+    if (!confirm("Clear all sources attached to this note?")) return;
+    saveSourcesForCurrentNote([]);
+    renderSourcesManager();
+    setSourceStatus("Cleared sources for this note.");
+  });
+}
+
 if (builderChatToggleEl) {
   builderChatToggleEl.addEventListener("click", () => {
     const open = builderChatEl && !builderChatEl.classList.contains("hidden");
@@ -2733,6 +2880,10 @@ themeSelectEl.addEventListener("change", () => {
     window.location.href = "/login.html";
     return;
   }
+  try {
+    const focusOn = localStorage.getItem(authScopedKey("focus_mode_v1")) === "1";
+    if (focusOn) document.body.classList.add("focus-mode");
+  } catch {}
   loadTheme();
   loadOutputCounter();
   const upgradedKey = authScopedKey("upgraded_at_v1");
