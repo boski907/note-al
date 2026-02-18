@@ -1,5 +1,5 @@
 /* Notematica service worker: caches core assets for offline loads. */
-const CACHE_NAME = "notematica-v1";
+const CACHE_NAME = "notematica-v2";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -64,6 +64,31 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  const isHotAsset =
+    url.pathname === "/styles.css" ||
+    url.pathname === "/app.js" ||
+    url.pathname === "/login.js" ||
+    url.pathname === "/index.html" ||
+    url.pathname === "/login.html";
+
+  // Hot assets: network-first so deploys show up quickly, with cache fallback offline.
+  if (isHotAsset) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});
+          return res;
+        })
+        .catch(async () => {
+          const cache = await caches.open(CACHE_NAME);
+          const cached = await cache.match(req);
+          return cached || Response.error();
+        })
+    );
+    return;
+  }
+
   // Static assets: cache-first.
   event.respondWith(
     caches.match(req).then((cached) => {
@@ -78,4 +103,3 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
-
