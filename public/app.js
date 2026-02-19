@@ -1414,6 +1414,10 @@ function canImportFile(name) {
     ".log",
     ".pdf",
     ".docx",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
     ".mp4",
     ".mov",
     ".m4v",
@@ -1438,6 +1442,10 @@ function isPdfExt(ext) {
 
 function isDocxExt(ext) {
   return ext === ".docx";
+}
+
+function isImageExt(ext) {
+  return [".png", ".jpg", ".jpeg", ".webp"].includes(ext);
 }
 
 function isMediaExt(ext) {
@@ -1466,6 +1474,18 @@ async function readSelectedFilesAsSources() {
       sources.push({
         name: f.name,
         kind: "docx",
+        base64
+      });
+      continue;
+    }
+
+    if (isImageExt(ext)) {
+      const base64 = await blobToBase64(f);
+      const mimeType = f.type || (ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg");
+      sources.push({
+        name: f.name,
+        kind: "image",
+        mimeType,
         base64
       });
       continue;
@@ -2942,7 +2962,7 @@ importFilesBtn.addEventListener("click", async () => {
   if (!sources.length) {
     setSourceStatus(
       rejected > 0
-        ? "No supported files selected. Use text, PDF, DOCX, or video/audio files."
+        ? "No supported files selected. Use text, PDF, DOCX, screenshots/images, or video/audio files."
         : "Select files first.",
       true
     );

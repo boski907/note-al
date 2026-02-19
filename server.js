@@ -1890,6 +1890,79 @@ async function fetchUrlAsSource(url) {
   return parsed;
 }
 
+function normalizeImageMimeType(rawMime, fileName = "") {
+  const safe = String(rawMime || "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  if (safe === "image/png" || safe === "image/jpeg" || safe === "image/webp" || safe === "image/gif") {
+    return safe;
+  }
+  const ext = path.extname(String(fileName || "")).toLowerCase();
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".gif") return "image/gif";
+  return "image/png";
+}
+
+async function extractTextFromImage(base64Payload, mimeType, fileName = "") {
+  if (!OPENAI_API_KEY) throw new Error("Image import requires OPENAI_API_KEY");
+  const base64 = String(base64Payload || "").includes(",")
+    ? String(base64Payload).split(",").pop()
+    : String(base64Payload || "");
+  if (!base64) throw new Error("Image payload is required");
+
+  const imageBuffer = Buffer.from(base64, "base64");
+  if (!imageBuffer.length) throw new Error("Invalid image payload");
+  if (imageBuffer.length > 8 * 1024 * 1024) throw new Error(`Image too large: ${fileName || "image"}`);
+
+  const safeMime = normalizeImageMimeType(mimeType, fileName);
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      input: [
+        {
+          role: "system",
+          content:
+            "Extract study-relevant information from screenshots. Keep only content that matters for learning, summarization, or feedback. Ignore browser chrome, sidebars, ads, nav menus, cookie banners, and decorative UI. Do not invent text."
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text:
+                "Read this screenshot and return concise plain text with these headings: Key points, Important details, Action items (if any). Include formulas, numbers, dates, definitions, and claims that matter. If text is unreadable, return exactly: No readable text found."
+            },
+            {
+              type: "input_image",
+              image_url: `data:${safeMime};base64,${base64}`
+            }
+          ]
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Image extraction error ${response.status}: ${errText}`);
+  }
+
+  const data = await response.json();
+  const text =
+    data.output_text ||
+    data.output?.map((o) => o?.content?.map((c) => c?.text).join("")).join("\n") ||
+    "";
+  return cleanImportedText(String(text || ""));
+}
+
 async function importSources(body) {
   const fileSources = Array.isArray(body.sources) ? body.sources : [];
   const urls = Array.isArray(body.urls) ? body.urls : [];
@@ -1916,6 +1989,18 @@ async function importSources(body) {
       const content = extractTextFromDocxBuffer(docxBuffer).slice(0, 140000);
       if (!content) throw new Error(`Could not extract readable text from DOCX: ${name}`);
       out.push({ name, kind: "docx", content });
+      continue;
+    }
+
+    if (kind === "image") {
+      const base64 = String(src?.base64 || "");
+      const mimeType = String(src?.mimeType || "");
+      const extracted = await extractTextFromImage(base64, mimeType, name);
+      const content = cleanImportedText(extracted).slice(0, 140000);
+      if (!content || /^no readable text found\.?$/i.test(content)) {
+        throw new Error(`No readable text found in image: ${name}`);
+      }
+      out.push({ name, kind: "image", content });
       continue;
     }
 
@@ -2833,9 +2918,15 @@ const server = http.createServer(async (req, res) => {
         const requestedFileCount = Math.min(20, fileSources.length);
         const requestedUrlCount = Math.min(8, urls.length);
         const requested = requestedFileCount + requestedUrlCount;
+        const imageCount = fileSources
+          .slice(0, 20)
+          .filter((s) => String(s?.kind || "") === "image").length;
         const mediaCount = fileSources
           .slice(0, 20)
           .filter((s) => String(s?.kind || "") === "media").length;
+        if (imageCount > 0 && !OPENAI_API_KEY) {
+          return json(res, 503, { error: "Image screenshot import is unavailable (missing OPENAI_API_KEY)." });
+        }
         if (requested > 0) {
           if (
             !(await enforceUsageOr429(res, user, {
@@ -2864,7 +2955,7 @@ const server = http.createServer(async (req, res) => {
         }
         await trackEvent(user, "sources.import", {
           count: imported.length,
-          fromFiles: imported.filter((i) => i.kind === "file").length,
+          fromFiles: imported.filter((i) => i.kind !== "url" && i.kind !== "youtube").length,
           fromUrls: imported.filter((i) => i.kind === "url").length
         });
         return json(res, 200, { imported });
