@@ -942,9 +942,10 @@ function loadAdSenseScript(client) {
   });
 }
 
-function renderAdInto(container, { client, slot }, { responsive = true } = {}) {
+function renderAdInto(container, { client, slot }, { responsive = true, autoHideIfEmpty = false, emptyCheckMs = 2200 } = {}) {
   if (!container) return;
   container.innerHTML = "";
+  container.classList.remove("ad-empty");
 
   const ins = document.createElement("ins");
   ins.className = "adsbygoogle";
@@ -960,6 +961,19 @@ function renderAdInto(container, { client, slot }, { responsive = true } = {}) {
     window.adsbygoogle.push({});
   } catch {
     // AdSense can throw if blocked by browser/privacy extensions; ignore.
+  }
+
+  if (autoHideIfEmpty) {
+    setTimeout(() => {
+      try {
+        const iframe = container.querySelector("iframe");
+        const hasRealAd = Boolean(iframe && iframe.offsetHeight > 8);
+        if (!hasRealAd) container.classList.add("ad-empty");
+        else container.classList.remove("ad-empty");
+      } catch {
+        // ignore ad measurement issues
+      }
+    }, Math.max(300, Number(emptyCheckMs) || 2200));
   }
 }
 
@@ -985,7 +999,23 @@ async function initAdsense() {
   await loadAdSenseScript(adsenseCfg.client);
   adBottomBarEl.classList.remove("hidden");
   adBottomBarEl.setAttribute("aria-hidden", "false");
-  renderAdInto(adBottomSlotEl, { client: adsenseCfg.client, slot: adsenseCfg.bottomSlot }, { responsive: true });
+  renderAdInto(
+    adBottomSlotEl,
+    { client: adsenseCfg.client, slot: adsenseCfg.bottomSlot },
+    { responsive: true, autoHideIfEmpty: true, emptyCheckMs: 2500 }
+  );
+  setTimeout(() => {
+    try {
+      if (adBottomSlotEl.classList.contains("ad-empty")) {
+        adBottomBarEl.classList.add("ad-empty");
+      } else {
+        adBottomBarEl.classList.remove("ad-empty");
+      }
+      syncBottomAdSafeArea();
+    } catch {
+      // ignore
+    }
+  }, 2800);
   syncBottomAdSafeArea();
   // Re-measure after the ad slot has a chance to size itself.
   setTimeout(syncBottomAdSafeArea, 600);
