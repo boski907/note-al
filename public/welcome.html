@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome | Notematica</title>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css?v=20260219v7" />
+  </head>
+  <body class="welcome-page">
+    <div class="backdrop"></div>
+    <main class="welcome-shell">
+      <section class="welcome-hero card-face">
+        <div class="welcome-copy">
+          <div class="welcome-badge-row">
+            <span class="badge">Welcome</span>
+            <span id="welcome-cloud-badge" class="badge">Loading...</span>
+          </div>
+          <h1>Welcome to Notematica</h1>
+          <p id="welcome-message" class="muted">
+            Build better notes, learn faster, and stay ready for exams.
+          </p>
+          <p class="muted">
+            Notematica is an AI-powered study workspace for high school and college students. Bring your class materials together,
+            ask focused questions, and train with flashcards and practice tests.
+          </p>
+          <div class="row wrap">
+            <a class="cta-btn" href="/login.html">Sign In</a>
+            <a class="cta-btn ghost" href="/login.html">Create Account</a>
+            <a class="cta-btn ghost" href="/">Open App</a>
+          </div>
+        </div>
+        <div class="welcome-hero-media">
+          <img src="/logo-header.png" alt="Notematica header" />
+          <img src="/app-icon-512.png" alt="Notematica app icon" />
+        </div>
+      </section>
+
+      <section class="welcome-info-grid">
+        <article class="welcome-info-card card-face">
+          <img src="/app-icon-1024.png" alt="Import and organize" />
+          <h3>Import Everything</h3>
+          <p class="muted">Add PDFs, DOCX, websites, YouTube links, and media transcripts as study sources.</p>
+        </article>
+        <article class="welcome-info-card card-face">
+          <img src="/logo-header.png" alt="AI study tools" />
+          <h3>Study with AI</h3>
+          <p class="muted">Generate summaries, writing feedback, tutor answers, and tasks from your notes.</p>
+        </article>
+        <article class="welcome-info-card card-face">
+          <img src="/app-icon-512.png" alt="Progress and test prep" />
+          <h3>Prep for Tests</h3>
+          <p class="muted">Create flashcards, practice exams, and a daily study plan with progress tracking.</p>
+        </article>
+      </section>
+
+      <section class="welcome-site-info card-face">
+        <h3>About this site</h3>
+        <ul class="welcome-list">
+          <li>Cloud sync support with Supabase.</li>
+          <li>Premium option for ad-free studying and advanced usage.</li>
+          <li>Built for fast workflows on desktop and mobile.</li>
+        </ul>
+      </section>
+    </main>
+
+    <script src="/welcome.js?v=20260219v7"></script>
+  </body>
+</html>

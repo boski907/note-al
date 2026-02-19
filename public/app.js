@@ -19,8 +19,6 @@ const learningDueEl = document.getElementById("learning-due");
 const learningFocusEl = document.getElementById("learning-focus");
 const learningNextEl = document.getElementById("learning-next");
 const upgradeLearningBtn = document.getElementById("upgrade-learning-btn");
-const adCheckBtn = document.getElementById("ad-check-btn");
-const adCheckStatusEl = document.getElementById("ad-check-status");
 
 const notesListEl = document.getElementById("notes-list");
 const searchInputEl = document.getElementById("search-input");
@@ -134,6 +132,7 @@ const homeChipYoutubeEl = document.getElementById("home-chip-youtube");
 const homeChipMoreEl = document.getElementById("home-chip-more");
 const homeFeedViewAllEl = document.getElementById("home-feed-view-all");
 const homeLearningGridEl = document.getElementById("home-learning-grid");
+const homeWelcomeMessageEl = document.getElementById("home-welcome-message");
 
 let adsenseCfg = null;
 let adFree = false;
@@ -298,6 +297,16 @@ function updateProfileButtons() {
   const label = me ? "Profile" : "Sign in";
   if (railProfileBtnEl) railProfileBtnEl.textContent = label;
   if (topProfileBtnEl) topProfileBtnEl.textContent = label;
+}
+
+function updateHomeWelcomeMessage() {
+  if (!homeWelcomeMessageEl) return;
+  if (me?.email) {
+    const user = String(me.email).split("@")[0] || "there";
+    homeWelcomeMessageEl.textContent = `Welcome back, ${user}. Pick a note or source to continue your study flow.`;
+    return;
+  }
+  homeWelcomeMessageEl.textContent = "Welcome. Pick a note or source to start studying.";
 }
 
 function formatRelativeDate(value) {
@@ -492,7 +501,7 @@ function renderLearningFeed() {
 
 function goToAccountView() {
   if (!token || !me) {
-    window.location.href = "/login.html";
+    window.location.href = "/welcome.html";
     return;
   }
   setView("account");
@@ -537,11 +546,6 @@ function saveTheme(theme) {
 function setAnalyticsStatus(msg, isError = false) {
   analyticsStatusEl.textContent = msg;
   analyticsStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
-}
-
-function setAdCheckStatus(msg, isError = false) {
-  adCheckStatusEl.textContent = msg;
-  adCheckStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
 }
 
 function setMetric(el, value) {
@@ -1283,65 +1287,6 @@ async function loadLearningPlan() {
   }
 }
 
-async function loadServerAdCheck() {
-  if (!token) return null;
-  try {
-    return await api("/api/ads/check", { method: "GET" });
-  } catch {
-    return null;
-  }
-}
-
-async function runAdDiagnostics() {
-  if (!token) {
-    setAdCheckStatus("Log in first to run ad checks.", true);
-    return;
-  }
-
-  const lines = [];
-  const server = await loadServerAdCheck();
-  if (server) {
-    lines.push(`Server ad enabled: ${server.adsEnabled ? "yes" : "no"}`);
-    lines.push(`Client configured: ${server.clientConfigured ? "yes" : "no"}`);
-    lines.push(`Bottom slot configured: ${server.bottomSlotConfigured ? "yes" : "no"}`);
-    lines.push(`Premium plan active: ${server.adFree ? "yes" : "no"}`);
-  }
-
-  if (adFree) {
-    lines.push("Ads are intentionally hidden for your ad-free plan.");
-    setAdCheckStatus(lines.join("\n"));
-    return;
-  }
-
-  if (!adsenseCfg?.enabled || !adsenseCfg.client || !adsenseCfg.bottomSlot) {
-    lines.push("AdSense env vars are incomplete. Set ADSENSE_CLIENT and ADSENSE_SLOT_BOTTOM in Render.");
-    setAdCheckStatus(lines.join("\n"), true);
-    return;
-  }
-
-  try {
-    await loadAdSenseScript(adsenseCfg.client);
-  } catch {
-    lines.push("Could not load the AdSense script (likely blocker or network policy).");
-    setAdCheckStatus(lines.join("\n"), true);
-    return;
-  }
-
-  const insEl = adBottomSlotEl.querySelector("ins.adsbygoogle");
-  const hasScriptTag = Boolean(document.querySelector('script[src*="adsbygoogle.js"]'));
-  lines.push(`AdSense script tag present: ${hasScriptTag ? "yes" : "no"}`);
-  lines.push(`Bottom ad element present: ${insEl ? "yes" : "no"}`);
-
-  await new Promise((resolve) => setTimeout(resolve, 1400));
-  const iframeCount = adBottomSlotEl.querySelectorAll("iframe").length;
-  lines.push(`Rendered ad iframe count: ${iframeCount}`);
-  if (iframeCount === 0) {
-    lines.push("No creative yet. Common reasons: new AdSense site/domain review, low fill, ad blocker.");
-  }
-
-  setAdCheckStatus(lines.join("\n"), false);
-}
-
 async function startCheckout() {
   if (!token) return setBillingStatus("Log in first to subscribe.", true);
   setBillingStatus("Opening premium checkout...");
@@ -1388,7 +1333,6 @@ async function logout() {
   billingLoaded = false;
   setBillingStatus("");
   setAnalyticsStatus("");
-  setAdCheckStatus("");
   setMetric(metricTotalEl, "-");
   setMetric(metricTopEventEl, "-");
   setMetric(metricFlashcardsEl, "-");
@@ -1409,7 +1353,7 @@ async function logout() {
   setSourceStatus("");
   if (sourceUrlsEl) sourceUrlsEl.value = "";
   if (sourceFilesEl) sourceFilesEl.value = "";
-  window.location.href = "/login.html";
+  window.location.href = "/welcome.html";
 }
 
 async function loadMe() {
@@ -1419,12 +1363,14 @@ async function loadMe() {
     me = data.user;
     setAuthStatus(`Signed in as ${me.email}`);
     updateProfileButtons();
+    updateHomeWelcomeMessage();
     setActiveTab(loadActiveTab());
   } catch {
     token = "";
     me = null;
     localStorage.removeItem("ai_notes_token");
     updateProfileButtons();
+    updateHomeWelcomeMessage();
   }
 }
 
@@ -3132,7 +3078,6 @@ onboardingStudyEl.addEventListener("click", () => {
   setView("study_tools");
 });
 onboardingEmailSaveEl.addEventListener("click", () => saveOnboardingEmail());
-adCheckBtn.addEventListener("click", () => runAdDiagnostics());
 refreshLearningBtn.addEventListener("click", () => loadLearningPlan());
 upgradeLearningBtn.addEventListener("click", () => startCheckout());
 upgradeSourcesBtn.addEventListener("click", () => startCheckout());
@@ -3169,14 +3114,14 @@ window.addEventListener("popstate", () => {
 
 (async function init() {
   if (!token) {
-    window.location.href = "/login.html";
+    window.location.href = "/welcome.html";
     return;
   }
   registerServiceWorker();
   await loadConfig();
   await loadMe();
   if (!me) {
-    window.location.href = "/login.html";
+    window.location.href = "/welcome.html";
     return;
   }
   try {
