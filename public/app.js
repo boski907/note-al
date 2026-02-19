@@ -119,14 +119,21 @@ const outputAdSlotCEl = document.getElementById("output-ad-slot-c");
 const outputAdsContinueEl = document.getElementById("output-ads-continue");
 const outputAdsCloseEl = document.getElementById("output-ads-close");
 
-const builderChatToggleEl = document.getElementById("builder-chat-toggle");
-const builderChatEl = document.getElementById("builder-chat");
-const builderChatCloseEl = document.getElementById("builder-chat-close");
-const builderChatMessagesEl = document.getElementById("builder-chat-messages");
-const builderChatFormEl = document.getElementById("builder-chat-form");
-const builderChatInputEl = document.getElementById("builder-chat-input");
-const builderChatStatusEl = document.getElementById("builder-chat-status");
-const builderChatChipEls = [...document.querySelectorAll("[data-builder-chip]")];
+const navViewLinkEls = [...document.querySelectorAll("[data-view-link]")];
+const routeViewEls = [...document.querySelectorAll("[data-route-view]")];
+const railProfileBtnEl = document.getElementById("rail-profile-btn");
+const topProfileBtnEl = document.getElementById("top-profile-btn");
+const tabOpenSourcesBtn = document.getElementById("tab-open-sources-btn");
+const tabOpenStudyBtn = document.getElementById("tab-open-study-btn");
+const homeComposerInputEl = document.getElementById("home-composer-input");
+const homeComposeBtnEl = document.getElementById("home-compose-btn");
+const homeChipTranscribeEl = document.getElementById("home-chip-transcribe");
+const homeChipFileSummaryEl = document.getElementById("home-chip-file-summary");
+const homeChipHomeworkEl = document.getElementById("home-chip-homework");
+const homeChipYoutubeEl = document.getElementById("home-chip-youtube");
+const homeChipMoreEl = document.getElementById("home-chip-more");
+const homeFeedViewAllEl = document.getElementById("home-feed-view-all");
+const homeLearningGridEl = document.getElementById("home-learning-grid");
 
 let adsenseCfg = null;
 let adFree = false;
@@ -159,9 +166,11 @@ let token = localStorage.getItem("ai_notes_token") || "";
 let me = null;
 let notes = [];
 let filteredNotes = [];
-let isOwner = false;
+const APP_VIEWS = ["home", "notes", "sources", "study_tools", "account"];
+let currentView = "home";
 let activeTab = "write";
 let currentId = null;
+let analyticsSummary = null;
 let recorder = null;
 let recordingStream = null;
 let recordingChunks = [];
@@ -217,6 +226,289 @@ function setDisabled(el, disabled, title = "") {
 function setHidden(el, hidden) {
   if (!el) return;
   el.classList.toggle("hidden", Boolean(hidden));
+}
+
+function isAppView(view) {
+  return APP_VIEWS.includes(String(view || ""));
+}
+
+function uiViewStorageKey() {
+  return authScopedKey("ui_view_v2");
+}
+
+function readViewFromUrl() {
+  const q = new URLSearchParams(window.location.search).get("view");
+  return isAppView(q) ? q : "";
+}
+
+function readStoredView() {
+  try {
+    const v = String(localStorage.getItem(uiViewStorageKey()) || "");
+    if (isAppView(v) && v !== "account") return v;
+  } catch {
+    // ignore storage errors
+  }
+  return "";
+}
+
+function writeStoredView(view) {
+  if (!me?.id) return;
+  if (!isAppView(view) || view === "account") return;
+  try {
+    localStorage.setItem(uiViewStorageKey(), view);
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function syncViewInUrl(view, replaceHistory = true) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("view", view);
+  if (replaceHistory) window.history.replaceState({ view }, "", url);
+  else window.history.pushState({ view }, "", url);
+}
+
+function updateRouteNavState(view) {
+  navViewLinkEls.forEach((btn) => {
+    const target = String(btn.dataset.viewLink || "");
+    btn.classList.toggle("active", target === view);
+  });
+}
+
+function setView(view, { persist = true, updateUrl = true, replaceHistory = true } = {}) {
+  const next = isAppView(view) ? String(view) : "home";
+  currentView = next;
+  routeViewEls.forEach((section) => {
+    const sectionView = String(section.dataset.routeView || "");
+    setHidden(section, sectionView !== next);
+  });
+  updateRouteNavState(next);
+  if (persist && next !== "account") writeStoredView(next);
+  if (updateUrl) syncViewInUrl(next, replaceHistory);
+  if (next === "notes" && activeTab !== "write") setActiveTab("write");
+  if (next === "sources") renderSourcesManager();
+  if (next === "home") renderLearningFeed();
+}
+
+function renderView() {
+  setView(currentView, { persist: false, updateUrl: false });
+}
+
+function updateProfileButtons() {
+  const label = me ? "Profile" : "Sign in";
+  if (railProfileBtnEl) railProfileBtnEl.textContent = label;
+  if (topProfileBtnEl) topProfileBtnEl.textContent = label;
+}
+
+function formatRelativeDate(value) {
+  const dt = new Date(value || Date.now());
+  if (Number.isNaN(dt.getTime())) return "recent";
+  const diffMs = Date.now() - dt.getTime();
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffDays <= 0) return "today";
+  if (diffDays === 1) return "1 day ago";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks < 5) return `${diffWeeks} week${diffWeeks === 1 ? "" : "s"} ago`;
+  const diffMonths = Math.floor(diffDays / 30);
+  return `${diffMonths} month${diffMonths === 1 ? "" : "s"} ago`;
+}
+
+function thumbStyleFromSeed(seed) {
+  const palettes = [
+    ["#7f8dff", "#92e5ff"],
+    ["#7e57c2", "#3f83f8"],
+    ["#14b8a6", "#bef264"],
+    ["#fb923c", "#facc15"],
+    ["#ef4444", "#fb7185"],
+    ["#06b6d4", "#6366f1"]
+  ];
+  let hash = 0;
+  const s = String(seed || "notematica");
+  for (let i = 0; i < s.length; i += 1) {
+    hash = (hash * 31 + s.charCodeAt(i)) | 0;
+  }
+  const idx = Math.abs(hash) % palettes.length;
+  const [a, b] = palettes[idx];
+  return `linear-gradient(135deg, ${a}, ${b})`;
+}
+
+function collectSourceMetadata(limit = 120) {
+  const all = [];
+  const suffix = `_${me?.id || "anon"}`;
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = String(localStorage.key(i) || "");
+    if (!key.startsWith("note_sources_v1_")) continue;
+    if (!key.endsWith(suffix)) continue;
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || "[]");
+      if (!Array.isArray(parsed)) continue;
+      parsed.forEach((s) => {
+        const name = String(s?.name || s?.url || "Source").trim().slice(0, 180);
+        const kind = String(s?.kind || (s?.url ? "url" : "source")).trim().slice(0, 32);
+        const url = String(s?.url || "").trim();
+        all.push({
+          name,
+          kind,
+          url,
+          addedAt: Number(s?.addedAt || 0)
+        });
+      });
+    } catch {
+      // Ignore malformed local source entries.
+    }
+  }
+  all.sort((a, b) => Number(b.addedAt || 0) - Number(a.addedAt || 0));
+  return all.slice(0, limit);
+}
+
+/**
+ * @typedef {{ id: string, title: string, topic: string, updatedAt: string|number, thumbStyle: string, sourceRef: string }} FeedCard
+ */
+
+function buildLearningFeed(noteRows = [], sourceRows = [], analytics = null) {
+  /** @type {FeedCard[]} */
+  const cards = [];
+  const topicCounts = new Map();
+  const addTopic = (raw) => {
+    const key = String(raw || "").trim().toLowerCase();
+    if (!key) return;
+    topicCounts.set(key, Number(topicCounts.get(key) || 0) + 1);
+  };
+
+  noteRows.forEach((n) => {
+    const tags = Array.isArray(n?.tags) ? n.tags : [];
+    tags.forEach(addTopic);
+  });
+  sourceRows.forEach((s) => addTopic(s?.kind));
+  if (analytics?.topEvent) addTopic(String(analytics.topEvent || "").replaceAll(".", " "));
+
+  const mostCommonTopic =
+    [...topicCounts.entries()].sort((a, b) => Number(b[1]) - Number(a[1]))[0]?.[0]?.replace(/\b\w/g, (m) => m.toUpperCase()) ||
+    "Study";
+
+  const seenTitles = new Set();
+  const noteSorted = [...noteRows].sort((a, b) => String(b?.updatedAt || "").localeCompare(String(a?.updatedAt || "")));
+  for (let i = 0; i < noteSorted.length && cards.length < 9; i += 1) {
+    const n = noteSorted[i];
+    const title = String(n?.title || "").trim() || String(n?.contentText || "Untitled note").trim().slice(0, 64);
+    if (!title || seenTitles.has(title.toLowerCase())) continue;
+    seenTitles.add(title.toLowerCase());
+    const tags = Array.isArray(n?.tags) ? n.tags.filter(Boolean) : [];
+    const topic = String(tags[0] || mostCommonTopic);
+    cards.push({
+      id: `note-${n.id || i}`,
+      title,
+      topic,
+      updatedAt: n?.updatedAt || Date.now(),
+      thumbStyle: thumbStyleFromSeed(`${topic}-${n.id || i}`),
+      sourceRef: `note:${n.id || ""}`
+    });
+  }
+
+  const sourceSorted = [...sourceRows].sort((a, b) => Number(b?.addedAt || 0) - Number(a?.addedAt || 0));
+  for (let i = 0; i < sourceSorted.length && cards.length < 9; i += 1) {
+    const s = sourceSorted[i];
+    const title = String(s?.name || s?.url || "").trim();
+    if (!title || seenTitles.has(title.toLowerCase())) continue;
+    seenTitles.add(title.toLowerCase());
+    const topic = String(s?.kind || mostCommonTopic || "Source").replace(/\b\w/g, (m) => m.toUpperCase());
+    cards.push({
+      id: `source-${i}`,
+      title: title.slice(0, 72),
+      topic,
+      updatedAt: s?.addedAt || Date.now(),
+      thumbStyle: thumbStyleFromSeed(`${topic}-${title}`),
+      sourceRef: `source:${s?.url || s?.name || i}`
+    });
+  }
+
+  if (analytics?.topEvent && cards.length < 9) {
+    cards.push({
+      id: "activity",
+      title: `Keep momentum: ${String(formatEventName(analytics.topEvent || "")).slice(0, 50)}`,
+      topic: "Recent activity",
+      updatedAt: Date.now(),
+      thumbStyle: thumbStyleFromSeed("analytics"),
+      sourceRef: "starter:activity"
+    });
+  }
+
+  if (cards.length) return cards;
+
+  const starters = [
+    { id: "starter-1", title: "Start with one focused note for today", topic: "Focus" },
+    { id: "starter-2", title: "Import a PDF or lecture slide and summarize it", topic: "Sources" },
+    { id: "starter-3", title: "Generate 10 flashcards from your notes", topic: "Flashcards" },
+    { id: "starter-4", title: "Run a practice test and review mistakes", topic: "Test prep" },
+    { id: "starter-5", title: "Ask tutor to explain a weak topic", topic: "Tutor" },
+    { id: "starter-6", title: "Build a 7-day study plan", topic: "Planning" }
+  ];
+  return starters.map((s) => ({
+    id: s.id,
+    title: s.title,
+    topic: s.topic,
+    updatedAt: Date.now(),
+    thumbStyle: thumbStyleFromSeed(s.id),
+    sourceRef: `starter:${s.id}`
+  }));
+}
+
+function renderLearningFeed() {
+  if (!homeLearningGridEl) return;
+  const sources = collectSourceMetadata(100);
+  const cards = buildLearningFeed(notes, sources, analyticsSummary);
+  homeLearningGridEl.innerHTML = "";
+  cards.forEach((card) => {
+    const item = document.createElement("article");
+    item.className = "home-feed-card";
+    item.innerHTML = `
+      <div class="home-feed-thumb"></div>
+      <div class="home-feed-body">
+        <span class="home-feed-topic">${escapeHtml(card.topic || "Study")}</span>
+        <h4 class="home-feed-title">${escapeHtml(card.title || "Learning item")}</h4>
+        <p class="home-feed-meta">${escapeHtml(formatRelativeDate(card.updatedAt))}</p>
+      </div>
+    `;
+    const thumb = item.querySelector(".home-feed-thumb");
+    if (thumb) thumb.style.background = card.thumbStyle;
+    item.addEventListener("click", () => {
+      const ref = String(card.sourceRef || "");
+      if (ref.startsWith("note:")) {
+        const noteId = ref.slice(5);
+        setView("notes");
+        if (noteId) selectNote(noteId);
+        return;
+      }
+      if (ref.startsWith("source:")) {
+        setView("sources");
+        return;
+      }
+      setView("study_tools");
+    });
+    homeLearningGridEl.appendChild(item);
+  });
+}
+
+function goToAccountView() {
+  if (!token || !me) {
+    window.location.href = "/login.html";
+    return;
+  }
+  setView("account");
+}
+
+async function runHomePrompt() {
+  const prompt = String(homeComposerInputEl?.value || "").trim();
+  if (!prompt) return;
+  if (tutorQuestionEl) tutorQuestionEl.value = prompt;
+  if (homeComposerInputEl) homeComposerInputEl.value = "";
+  setView("study_tools");
+  if (!editorEl.innerText.trim()) {
+    tutorOutputEl.textContent = "Add notes or import sources first, then ask tutor.";
+    return;
+  }
+  await askTutor();
 }
 
 function authScopedKey(prefix) {
@@ -741,9 +1033,12 @@ function setAuthStatus(msg, isError = false) {
 
 function updateAuthUi() {
   const loggedIn = Boolean(token && me);
-  workspaceEl.style.opacity = loggedIn ? "1" : "0.55";
-  workspaceEl.style.pointerEvents = loggedIn ? "auto" : "none";
-  logoutBtn.style.display = loggedIn ? "inline-block" : "none";
+  if (workspaceEl) {
+    workspaceEl.style.opacity = loggedIn ? "1" : "0.55";
+    workspaceEl.style.pointerEvents = loggedIn ? "auto" : "none";
+  }
+  if (logoutBtn) logoutBtn.style.display = loggedIn ? "inline-block" : "none";
+  updateProfileButtons();
 }
 
 async function api(path, options = {}) {
@@ -780,124 +1075,6 @@ function formatQuotaError(e, fallback) {
     if (!Number.isNaN(dt.getTime())) resetText = ` Resets: ${dt.toLocaleString()}.`;
   }
   return `${fallback || "Daily limit reached."}${resetText}`;
-}
-
-const BUILDER_CHAT_KEY = "notematica_builder_chat_v1";
-
-function loadBuilderChat() {
-  try {
-    const raw = localStorage.getItem(BUILDER_CHAT_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((m) => ({
-        role: m && m.role === "assistant" ? "assistant" : "user",
-        content: String(m && m.content ? m.content : "").slice(0, 8000)
-      }))
-      .filter((m) => m.content.trim())
-      .slice(-30);
-  } catch {
-    return [];
-  }
-}
-
-function saveBuilderChat(messages) {
-  try {
-    localStorage.setItem(BUILDER_CHAT_KEY, JSON.stringify((messages || []).slice(-60)));
-  } catch {
-    // ignore storage issues
-  }
-}
-
-let builderChatMessages = loadBuilderChat();
-
-function setBuilderChatStatus(msg, isError = false) {
-  if (!builderChatStatusEl) return;
-  builderChatStatusEl.textContent = msg || "";
-  builderChatStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
-}
-
-function renderBuilderChatMessages() {
-  if (!builderChatMessagesEl) return;
-  builderChatMessagesEl.innerHTML = "";
-
-  const msgs = builderChatMessages.length
-    ? builderChatMessages
-    : [
-        {
-          role: "assistant",
-          content:
-            "Ask me what to do next and I’ll give you step-by-step instructions for Notematica (Render, Supabase, Stripe, AdSense, app store builds). Don’t paste API keys or secrets."
-        }
-      ];
-
-  for (const m of msgs) {
-    const div = document.createElement("div");
-    div.className = `builder-msg ${m.role === "assistant" ? "assistant" : "user"}`;
-    div.textContent = String(m.content || "");
-    builderChatMessagesEl.appendChild(div);
-  }
-
-  builderChatMessagesEl.scrollTop = builderChatMessagesEl.scrollHeight;
-}
-
-function openBuilderChat() {
-  if (!builderChatEl) return;
-  if (!isOwner) return;
-  builderChatEl.classList.remove("hidden");
-  builderChatEl.setAttribute("aria-hidden", "false");
-  renderBuilderChatMessages();
-  setBuilderChatStatus("");
-  setTimeout(() => builderChatInputEl && builderChatInputEl.focus(), 30);
-}
-
-function closeBuilderChat() {
-  if (!builderChatEl) return;
-  builderChatEl.classList.add("hidden");
-  builderChatEl.setAttribute("aria-hidden", "true");
-  setBuilderChatStatus("");
-}
-
-async function sendBuilderChatMessage(text) {
-  const msg = String(text || "").trim();
-  if (!msg) return;
-  if (!token) {
-    setBuilderChatStatus("Sign in first, then ask here.", true);
-    return;
-  }
-  if (!navigator.onLine) {
-    setBuilderChatStatus("You look offline. Reconnect and try again.", true);
-    return;
-  }
-
-  builderChatMessages.push({ role: "user", content: msg });
-  builderChatMessages = builderChatMessages.slice(-30);
-  saveBuilderChat(builderChatMessages);
-  renderBuilderChatMessages();
-
-  setBuilderChatStatus("Thinking...");
-  try {
-    const out = await api("/api/assistant/chat", {
-      method: "POST",
-      body: JSON.stringify({
-        messages: builderChatMessages.slice(-12),
-        clientContext: {
-          origin: String(location.origin || ""),
-          nativeShell: Boolean(IS_NATIVE_SHELL),
-          adFree: Boolean(adFree)
-        }
-      })
-    });
-    const answer = String(out.answer || "").trim() || "(No answer)";
-    builderChatMessages.push({ role: "assistant", content: answer });
-    builderChatMessages = builderChatMessages.slice(-30);
-    saveBuilderChat(builderChatMessages);
-    renderBuilderChatMessages();
-    setBuilderChatStatus("");
-  } catch (e) {
-    const quota = formatQuotaError(e, "Chat limit reached.");
-    setBuilderChatStatus(quota ? quota : `Chat error: ${e.message}`, true);
-  }
 }
 
 async function trackEvent(eventName, payload = {}) {
@@ -1070,12 +1247,20 @@ async function loadAnalyticsSummary() {
     setMetric(metricTopEventEl, top ? `${formatEventName(top[0])} (${top[1]})` : "-");
     setMetric(metricFlashcardsEl, flashcards);
     setMetric(metricAiEl, aiActions);
+    analyticsSummary = {
+      total: Number(data.total || 0),
+      topEvent: top ? String(top[0]) : "",
+      counts
+    };
+    renderLearningFeed();
   } catch (e) {
     setAnalyticsStatus(`Analytics error: ${e.message}`, true);
     setMetric(metricTotalEl, "-");
     setMetric(metricTopEventEl, "-");
     setMetric(metricFlashcardsEl, "-");
     setMetric(metricAiEl, "-");
+    analyticsSummary = null;
+    renderLearningFeed();
   }
 }
 
@@ -1232,16 +1417,14 @@ async function loadMe() {
   try {
     const data = await api("/api/auth/me", { method: "GET" });
     me = data.user;
-    isOwner = Boolean(me && me.isOwner);
     setAuthStatus(`Signed in as ${me.email}`);
-    setHidden(builderChatToggleEl, !isOwner);
-    if (!isOwner) closeBuilderChat();
+    updateProfileButtons();
     setActiveTab(loadActiveTab());
   } catch {
     token = "";
     me = null;
-    isOwner = false;
     localStorage.removeItem("ai_notes_token");
+    updateProfileButtons();
   }
 }
 
@@ -1251,7 +1434,17 @@ async function loadNotes() {
   notes = data.notes || [];
   notes.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   renderNotes();
-  if (notes.length) selectNote(notes[0].id);
+  if (notes.length) {
+    selectNote(notes[0].id);
+  } else {
+    currentId = null;
+    titleEl.value = "";
+    tagsEl.value = "";
+    editorEl.innerHTML = "";
+    aiOutputEl.textContent = "";
+    renderSourcesManager();
+  }
+  renderLearningFeed();
 }
 
 function parseUrlInput(raw) {
@@ -1446,10 +1639,10 @@ function setActiveTab(name) {
 
 function loadActiveTab() {
   try {
-    const v = String(localStorage.getItem(authScopedKey("active_tab_v1")) || "study");
-    return v === "sources" || v === "write" ? v : "study";
+    const v = String(localStorage.getItem(authScopedKey("active_tab_v1")) || "write");
+    return v === "sources" || v === "study" || v === "write" ? v : "write";
   } catch {
-    return "study";
+    return "write";
   }
 }
 
@@ -1585,6 +1778,7 @@ async function importSources({ sources = [], urls = [] } = {}) {
     mergeImportedSourcesIntoCurrent(out.imported || []);
     setSourceStatus(`Imported ${out.imported?.length || 0} source(s) into this note.`);
     renderSourcesManager();
+    renderLearningFeed();
     fireAndForgetTrack("sources.import_client", { count: out.imported?.length || 0 });
     awardXp("import", 6);
     await countImportAndMaybeShowAds();
@@ -1753,6 +1947,7 @@ async function saveNote() {
   }
   renderNotes();
   aiOutputEl.textContent = "Saved.";
+  renderLearningFeed();
   fireAndForgetTrack("notes.save", { noteId: saved.id });
 }
 
@@ -1765,6 +1960,7 @@ async function deleteNote() {
   else clearEditor();
   renderNotes();
   aiOutputEl.textContent = "Deleted.";
+  renderLearningFeed();
   fireAndForgetTrack("notes.delete", {});
 }
 
@@ -1826,9 +2022,29 @@ function clearTutorialFocus() {
   document.querySelectorAll(".tutorial-focus").forEach((el) => el.classList.remove("tutorial-focus"));
 }
 
+function tutorialViewForSelector(selector) {
+  const map = {
+    ".panel.left": "notes",
+    "#note-editor": "notes",
+    ".ai-tools": "notes",
+    "#gen-cards-btn": "study_tools",
+    "#learning-mastery": "study_tools",
+    "#save-reminder-btn": "account"
+  };
+  return map[String(selector || "")] || "";
+}
+
 function renderTutorialStep() {
   const step = tutorialSteps[tutorialStepIndex];
   if (!step) return;
+  const stepView = tutorialViewForSelector(step.selector);
+  if (stepView && stepView !== currentView) {
+    setView(stepView, { persist: false, updateUrl: false });
+  }
+  if (String(step.selector || "") === "#save-reminder-btn") {
+    const advanced = document.querySelector(".account-advanced");
+    if (advanced && "open" in advanced) advanced.setAttribute("open", "open");
+  }
   tutorialTitleEl.textContent = step.title;
   tutorialTextEl.textContent = step.text;
   tutorialProgressEl.textContent = `Step ${tutorialStepIndex + 1} of ${tutorialSteps.length}`;
@@ -2799,9 +3015,79 @@ importUrlsBtn.addEventListener("click", async () => {
   await importSources({ sources: [], urls });
 });
 
-if (tabBtnWriteEl) tabBtnWriteEl.addEventListener("click", () => setActiveTab("write"));
-if (tabBtnSourcesEl) tabBtnSourcesEl.addEventListener("click", () => setActiveTab("sources"));
-if (tabBtnStudyEl) tabBtnStudyEl.addEventListener("click", () => setActiveTab("study"));
+if (tabBtnWriteEl) {
+  tabBtnWriteEl.addEventListener("click", () => {
+    setView("notes");
+    setActiveTab("write");
+  });
+}
+if (tabBtnSourcesEl) {
+  tabBtnSourcesEl.addEventListener("click", () => {
+    setActiveTab("sources");
+    setView("sources");
+  });
+}
+if (tabBtnStudyEl) {
+  tabBtnStudyEl.addEventListener("click", () => {
+    setActiveTab("study");
+    setView("study_tools");
+  });
+}
+if (tabOpenSourcesBtn) tabOpenSourcesBtn.addEventListener("click", () => setView("sources"));
+if (tabOpenStudyBtn) tabOpenStudyBtn.addEventListener("click", () => setView("study_tools"));
+
+navViewLinkEls.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const target = String(btn.dataset.viewLink || "home");
+    setView(target);
+  });
+});
+if (railProfileBtnEl) railProfileBtnEl.addEventListener("click", () => goToAccountView());
+if (topProfileBtnEl) topProfileBtnEl.addEventListener("click", () => goToAccountView());
+
+if (homeComposeBtnEl) {
+  homeComposeBtnEl.addEventListener("click", () => {
+    runHomePrompt().catch((e) => {
+      if (tutorOutputEl) tutorOutputEl.textContent = `Tutor error: ${e.message}`;
+    });
+  });
+}
+if (homeComposerInputEl) {
+  homeComposerInputEl.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    runHomePrompt().catch((err) => {
+      if (tutorOutputEl) tutorOutputEl.textContent = `Tutor error: ${err.message}`;
+    });
+  });
+}
+if (homeChipTranscribeEl) {
+  homeChipTranscribeEl.addEventListener("click", () => {
+    setView("notes");
+    setActiveTab("write");
+    if (recordBtn && !recorder) recordBtn.click();
+  });
+}
+if (homeChipFileSummaryEl) {
+  homeChipFileSummaryEl.addEventListener("click", () => {
+    setView("sources");
+    sourceUrlsEl?.focus();
+  });
+}
+if (homeChipHomeworkEl) {
+  homeChipHomeworkEl.addEventListener("click", () => {
+    setView("study_tools");
+    tutorQuestionEl?.focus();
+  });
+}
+if (homeChipYoutubeEl) {
+  homeChipYoutubeEl.addEventListener("click", () => {
+    setView("sources");
+    sourceUrlsEl?.focus();
+  });
+}
+if (homeChipMoreEl) homeChipMoreEl.addEventListener("click", () => setView("study_tools"));
+if (homeFeedViewAllEl) homeFeedViewAllEl.addEventListener("click", () => setView("study_tools"));
 
 if (focusToggleBtn) {
   focusToggleBtn.addEventListener("click", () => {
@@ -2831,48 +3117,19 @@ if (sourcesClearBtn) {
   });
 }
 
-if (builderChatToggleEl) {
-  builderChatToggleEl.addEventListener("click", () => {
-    const open = builderChatEl && !builderChatEl.classList.contains("hidden");
-    if (open) closeBuilderChat();
-    else openBuilderChat();
-  });
-}
-if (builderChatCloseEl) builderChatCloseEl.addEventListener("click", () => closeBuilderChat());
-if (builderChatFormEl) {
-  builderChatFormEl.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const v = String(builderChatInputEl?.value || "").trim();
-    if (!v) return;
-    if (builderChatInputEl) builderChatInputEl.value = "";
-    sendBuilderChatMessage(v).catch(() => {});
-  });
-}
-builderChatChipEls.forEach((b) => {
-  b.addEventListener("click", () => {
-    const text = String(b.dataset.builderChip || "").trim();
-    if (!text) return;
-    openBuilderChat();
-    sendBuilderChatMessage(text).catch(() => {});
-  });
-});
-window.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  const open = builderChatEl && !builderChatEl.classList.contains("hidden");
-  if (open) closeBuilderChat();
-});
-
 onboardingCloseEl.addEventListener("click", closeOnboarding);
 onboardingOverlayEl.addEventListener("click", (e) => {
   if (e.target === onboardingOverlayEl) closeOnboarding();
 });
 onboardingStartEl.addEventListener("click", () => {
   closeOnboarding();
+  setView("notes");
+  setActiveTab("write");
   titleEl.focus();
 });
 onboardingStudyEl.addEventListener("click", () => {
   closeOnboarding();
-  renderStudyDue().catch((e) => (aiOutputEl.textContent = `Study error: ${e.message}`));
+  setView("study_tools");
 });
 onboardingEmailSaveEl.addEventListener("click", () => saveOnboardingEmail());
 adCheckBtn.addEventListener("click", () => runAdDiagnostics());
@@ -2897,10 +3154,17 @@ tutorialNextEl.addEventListener("click", () => {
 tutorialOverlayEl.addEventListener("click", (e) => {
   if (e.target === tutorialOverlayEl) closeTutorial(true);
 });
-themeSelectEl.addEventListener("change", () => {
-  const t = String(themeSelectEl.value || "bold");
-  applyTheme(t);
-  saveTheme(t);
+if (themeSelectEl) {
+  themeSelectEl.addEventListener("change", () => {
+    const t = String(themeSelectEl.value || "bold");
+    applyTheme(t);
+    saveTheme(t);
+  });
+}
+
+window.addEventListener("popstate", () => {
+  const fromUrl = readViewFromUrl() || "home";
+  setView(fromUrl, { persist: false, updateUrl: false });
 });
 
 (async function init() {
@@ -2920,6 +3184,11 @@ themeSelectEl.addEventListener("change", () => {
     if (focusOn) document.body.classList.add("focus-mode");
   } catch {}
   loadTheme();
+  const explicitView = readViewFromUrl();
+  const savedView = readStoredView();
+  const fromLoginPage = /\/login\.html(?:$|\?)/.test(String(document.referrer || ""));
+  const initialView = explicitView || (fromLoginPage ? "home" : savedView || "home");
+  setView(initialView, { persist: false, updateUrl: true, replaceHistory: true });
   loadOutputCounter();
   const upgradedKey = authScopedKey("upgraded_at_v1");
   const upgradedAtRaw = sessionStorage.getItem(upgradedKey) || "0";
@@ -2955,6 +3224,7 @@ themeSelectEl.addEventListener("change", () => {
   }
   // Keep safe area correct on resize/orientation changes (mobile Safari).
   window.addEventListener("resize", () => syncBottomAdSafeArea());
+  renderView();
   if (!onboardingSeen()) openOnboarding();
   else if (!tutorialSeen()) openTutorial();
 })();
