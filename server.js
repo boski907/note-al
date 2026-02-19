@@ -197,15 +197,15 @@ function json(res, status, payload) {
   res.end(body);
 }
 
-function sendFile(res, filePath) {
+function sendFile(req, res, filePath) {
   if (!filePath.startsWith(PUBLIC_DIR)) {
     res.writeHead(403, securityHeaders());
     res.end("Forbidden");
     return;
   }
 
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
+  fs.stat(filePath, (statErr, stat) => {
+    if (statErr || !stat?.isFile()) {
       res.writeHead(404, securityHeaders());
       res.end("Not found");
       return;
@@ -221,26 +221,119 @@ function sendFile(res, filePath) {
             ? "application/javascript; charset=utf-8"
             : ext === ".svg"
               ? "image/svg+xml"
-              : "application/octet-stream";
+              : ext === ".png"
+                ? "image/png"
+                : ext === ".jpg" || ext === ".jpeg"
+                  ? "image/jpeg"
+                  : ext === ".webp"
+                    ? "image/webp"
+                    : ext === ".ico"
+                      ? "image/x-icon"
+                      : ext === ".mp4"
+                        ? "video/mp4"
+                        : ext === ".json"
+                          ? "application/json; charset=utf-8"
+                          : ext === ".txt"
+                            ? "text/plain; charset=utf-8"
+                            : "application/octet-stream";
+
+    const baseHeaders = {
+      "Content-Type": contentType,
+      "Cache-Control": IS_PROD ? "public, max-age=300" : "no-store",
+      ...securityHeaders()
+    };
+
+    // Safari and most browsers rely on byte-range requests for MP4 playback.
+    if (contentType === "video/mp4") {
+      baseHeaders["Accept-Ranges"] = "bytes";
+    }
 
     if (filePath === path.join(PUBLIC_DIR, "index.html")) {
-      const html = data.toString("utf8").replaceAll("__ADSENSE_CLIENT__", ADSENSE_CLIENT || "");
-      res.writeHead(200, {
-        "Content-Type": contentType,
-        "Cache-Control": "no-store",
-        ...securityHeaders()
+      fs.readFile(filePath, (readErr, data) => {
+        if (readErr) {
+          res.writeHead(404, securityHeaders());
+          res.end("Not found");
+          return;
+        }
+        const html = data.toString("utf8").replaceAll("__ADSENSE_CLIENT__", ADSENSE_CLIENT || "");
+        res.writeHead(200, {
+          "Content-Type": contentType,
+          "Cache-Control": "no-store",
+          ...securityHeaders()
+        });
+        if (req.method === "HEAD") {
+          res.end();
+          return;
+        }
+        res.end(html);
       });
-      res.end(html);
+      return;
+    }
+
+    const total = stat.size;
+    const range = String(req.headers.range || "").trim();
+    if (range && range.startsWith("bytes=")) {
+      const m = /bytes=(\d*)-(\d*)/.exec(range);
+      if (!m) {
+        res.writeHead(416, {
+          "Content-Range": `bytes */${total}`,
+          ...baseHeaders
+        });
+        res.end();
+        return;
+      }
+      const start = m[1] === "" ? 0 : Number.parseInt(m[1], 10);
+      const end = m[2] === "" ? total - 1 : Number.parseInt(m[2], 10);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < start || start >= total) {
+        res.writeHead(416, {
+          "Content-Range": `bytes */${total}`,
+          ...baseHeaders
+        });
+        res.end();
+        return;
+      }
+      const cappedEnd = Math.min(end, total - 1);
+      const chunkSize = cappedEnd - start + 1;
+      res.writeHead(206, {
+        ...baseHeaders,
+        "Content-Range": `bytes ${start}-${cappedEnd}/${total}`,
+        "Content-Length": chunkSize
+      });
+      if (req.method === "HEAD") {
+        res.end();
+        return;
+      }
+      const stream = fs.createReadStream(filePath, { start, end: cappedEnd });
+      stream.on("error", () => {
+        if (!res.headersSent) {
+          res.writeHead(500, securityHeaders());
+          res.end("Failed to read file");
+        } else {
+          res.destroy();
+        }
+      });
+      stream.pipe(res);
       return;
     }
 
     res.writeHead(200, {
-      "Content-Type": contentType,
-      // Cache static assets a bit in production, but avoid long cache since filenames aren't hashed.
-      "Cache-Control": IS_PROD ? "public, max-age=300" : "no-store",
-      ...securityHeaders()
+      ...baseHeaders,
+      "Content-Length": total
     });
-    res.end(data);
+    if (req.method === "HEAD") {
+      res.end();
+      return;
+    }
+    const stream = fs.createReadStream(filePath);
+    stream.on("error", () => {
+      if (!res.headersSent) {
+        res.writeHead(500, securityHeaders());
+        res.end("Failed to read file");
+      } else {
+        res.destroy();
+      }
+    });
+    stream.pipe(res);
   });
 }
 
@@ -2830,7 +2923,7 @@ const server = http.createServer(async (req, res) => {
 
     const relativePath = pathname === "/" ? "/index.html" : pathname;
     const filePath = path.join(PUBLIC_DIR, relativePath);
-    sendFile(res, filePath);
+    sendFile(req, res, filePath);
   } catch (error) {
     const status = error && typeof error === "object" && error.statusCode ? Number(error.statusCode) : 500;
     const message = error instanceof Error ? error.message : "Unexpected error";
