@@ -19,6 +19,13 @@ const welcomeVideoTracks = [
   {
     name: "workplace",
     sources: ["/media/workplace-demo-v1.mp4?v=1"]
+  },
+  {
+    name: "lecture-notes",
+    sources: [
+      "/media/classroom-lecture-notes-v2.mp4?v=2",
+      "/media/classroom-lecture-notes-v1.mp4?v=1"
+    ]
   }
 ];
 let activeTrackIndex = 0;
