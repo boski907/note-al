@@ -151,6 +151,11 @@ body[data-theme="clean"] {
   display: block;
 }
 
+.brand-home-link {
+  display: inline-flex;
+  align-items: center;
+}
+
 .rail-logo {
   width: 28px;
   height: 28px;
@@ -209,6 +214,24 @@ h1 {
   border-bottom: 1px solid var(--line);
   background: rgba(250, 251, 255, 0.92);
   backdrop-filter: blur(10px);
+}
+
+.top-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.top-brand-link {
+  display: inline-flex;
+  align-items: center;
+}
+
+.top-brand-logo {
+  width: 136px;
+  height: auto;
+  display: block;
 }
 
 .top-title {
@@ -1065,16 +1088,16 @@ a.cta-btn.ghost {
   box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.2);
 }
 
-.focus-mode .left-rail,
-.focus-mode .panel.left {
+body.focus-mode[data-app-view="notes"] .left-rail,
+body.focus-mode[data-app-view="notes"] .panel.left {
   display: none;
 }
 
-.focus-mode .app-shell {
+body.focus-mode[data-app-view="notes"] .app-shell {
   grid-template-columns: 1fr;
 }
 
-.focus-mode .workspace {
+body.focus-mode[data-app-view="notes"] .workspace {
   grid-template-columns: 1fr;
 }
 
@@ -1354,6 +1377,10 @@ a.cta-btn.ghost {
 
   .top-bar {
     padding: 10px;
+  }
+
+  .top-brand-logo {
+    width: 114px;
   }
 
   .top-title {

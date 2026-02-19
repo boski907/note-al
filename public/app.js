@@ -277,6 +277,7 @@ function updateRouteNavState(view) {
 function setView(view, { persist = true, updateUrl = true, replaceHistory = true } = {}) {
   const next = isAppView(view) ? String(view) : "home";
   currentView = next;
+  document.body.setAttribute("data-app-view", next);
   routeViewEls.forEach((section) => {
     const sectionView = String(section.dataset.routeView || "");
     setHidden(section, sectionView !== next);

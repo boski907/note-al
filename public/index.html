@@ -23,7 +23,9 @@
     <main class="app-shell">
       <aside class="left-rail" id="auth-card">
         <div class="rail-brand">
-          <img src="/logo-notematica.svg" alt="Notematica" class="rail-brand-logo" />
+          <a href="/welcome.html" aria-label="Go to welcome page">
+            <img src="/logo-notematica.svg" alt="Notematica" class="rail-brand-logo" />
+          </a>
         </div>
 
         <nav class="rail-nav" aria-label="Primary navigation">
@@ -40,7 +42,12 @@
 
       <section class="main-pane">
         <header class="top-bar">
-          <div class="top-title">AI Study Assistant</div>
+          <div class="top-head">
+            <a href="/welcome.html" class="top-brand-link" aria-label="Go to welcome page">
+              <img src="/logo-notematica.svg" alt="Notematica logo" class="top-brand-logo" />
+            </a>
+            <div class="top-title">AI Study Assistant</div>
+          </div>
           <div class="row wrap top-actions">
             <select id="theme-select">
               <option value="bold">Bold</option>
