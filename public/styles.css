@@ -1087,14 +1087,6 @@ a.cta-btn.ghost {
   background: #fff;
 }
 
-.welcome-photo figcaption {
-  padding: 8px 10px;
-  font-size: 0.8rem;
-  color: var(--muted);
-  border-top: 1px solid var(--line);
-  background: #f8fbff;
-}
-
 .welcome-hero-media img:first-child,
 .welcome-hero-media img:last-child {
   min-height: 190px;
