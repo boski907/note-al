@@ -28,7 +28,7 @@ const HOST = process.env.HOST || (IS_PROD ? "0.0.0.0" : "127.0.0.1");
 const PORT = Number(process.env.PORT || 3000);
 
 // Security / abuse limits (keep these fairly generous; tune down once you have real traffic patterns).
-const DEFAULT_MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 12_000_000); // 12MB
+const DEFAULT_MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 24_000_000); // 24MB
 const TRANSCRIBE_MAX_BODY_BYTES = Number(process.env.TRANSCRIBE_MAX_BODY_BYTES || 20_000_000); // 20MB (base64 JSON)
 const STRIPE_WEBHOOK_MAX_BODY_BYTES = Number(process.env.STRIPE_WEBHOOK_MAX_BODY_BYTES || 2_000_000); // 2MB
 
@@ -1915,7 +1915,7 @@ async function extractTextFromImage(base64Payload, mimeType, fileName = "") {
 
   const imageBuffer = Buffer.from(base64, "base64");
   if (!imageBuffer.length) throw new Error("Invalid image payload");
-  if (imageBuffer.length > 8 * 1024 * 1024) throw new Error(`Image too large: ${fileName || "image"}`);
+  if (imageBuffer.length > 12 * 1024 * 1024) throw new Error(`Image too large: ${fileName || "image"}`);
 
   const safeMime = normalizeImageMimeType(mimeType, fileName);
   const response = await fetch("https://api.openai.com/v1/responses", {
@@ -1993,14 +1993,18 @@ async function importSources(body) {
     }
 
     if (kind === "image") {
-      const base64 = String(src?.base64 || "");
-      const mimeType = String(src?.mimeType || "");
-      const extracted = await extractTextFromImage(base64, mimeType, name);
-      const content = cleanImportedText(extracted).slice(0, 140000);
-      if (!content || /^no readable text found\.?$/i.test(content)) {
-        throw new Error(`No readable text found in image: ${name}`);
+      try {
+        const base64 = String(src?.base64 || "");
+        const mimeType = String(src?.mimeType || "");
+        const extracted = await extractTextFromImage(base64, mimeType, name);
+        const content = cleanImportedText(extracted).slice(0, 140000);
+        if (!content || /^no readable text found\.?$/i.test(content)) {
+          continue;
+        }
+        out.push({ name, kind: "image", content });
+      } catch (e) {
+        console.warn("Image import skipped:", name, e instanceof Error ? e.message : e);
       }
-      out.push({ name, kind: "image", content });
       continue;
     }
 

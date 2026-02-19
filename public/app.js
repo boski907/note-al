@@ -1082,6 +1082,17 @@ function formatQuotaError(e, fallback) {
   return `${fallback || "Daily limit reached."}${resetText}`;
 }
 
+function formatImportError(e) {
+  const quota = formatQuotaError(e, "Import limit reached.");
+  if (quota) return quota;
+  const msg = String(e?.message || "").trim();
+  if (Number(e?.status || 0) === 401) return "Session expired. Sign in again, then retry import.";
+  if (Number(e?.status || 0) === 413 || /payload too large/i.test(msg)) {
+    return "Upload is too large. Try fewer/smaller files (or one screenshot at a time).";
+  }
+  return `Import failed: ${msg || "Unknown error"}`;
+}
+
 async function trackEvent(eventName, payload = {}) {
   if (!token || !eventName) return;
   try {
@@ -1729,29 +1740,70 @@ function setOutputWithCitations(el, text, citations = []) {
   if (cit) el.appendChild(cit);
 }
 
+function estimateSourceUploadSizeChars(src) {
+  const b64 = String(src?.base64 || "");
+  const text = String(src?.content || "");
+  return b64.length + text.length + 600;
+}
+
+function buildSourceImportBatches(sources, { maxItems = 4, maxChars = 7_000_000 } = {}) {
+  const arr = Array.isArray(sources) ? sources : [];
+  const batches = [];
+  let current = [];
+  let currentChars = 0;
+  for (const src of arr) {
+    const est = Math.max(800, estimateSourceUploadSizeChars(src));
+    const over =
+      current.length > 0 &&
+      (current.length >= Math.max(1, Number(maxItems) || 4) || currentChars + est > Math.max(200000, Number(maxChars) || 7000000));
+    if (over) {
+      batches.push(current);
+      current = [];
+      currentChars = 0;
+    }
+    current.push(src);
+    currentChars += est;
+  }
+  if (current.length) batches.push(current);
+  return batches;
+}
+
+async function requestSourceImport({ sources = [], urls = [] } = {}) {
+  return api("/api/sources/import", {
+    method: "POST",
+    body: JSON.stringify({ sources, urls })
+  });
+}
+
+function applyImportedSources(imported = []) {
+  renderImportedSources(imported);
+  mergeImportedSourcesIntoCurrent(imported);
+  renderSourcesManager();
+  renderLearningFeed();
+}
+
 async function importSources({ sources = [], urls = [] } = {}) {
-  if (!token) return;
+  if (!token) {
+    setSourceStatus("Session expired. Sign in again, then retry import.", true);
+    return { ok: false, importedCount: 0 };
+  }
   if (!sources.length && !urls.length) {
     setSourceStatus("Select files or enter URLs first.", true);
-    return;
+    return { ok: false, importedCount: 0 };
   }
   setSourceStatus("Importing sources...");
   try {
-    const out = await api("/api/sources/import", {
-      method: "POST",
-      body: JSON.stringify({ sources, urls })
-    });
-    renderImportedSources(out.imported || []);
-    mergeImportedSourcesIntoCurrent(out.imported || []);
-    setSourceStatus(`Imported ${out.imported?.length || 0} source(s) into this note.`);
-    renderSourcesManager();
-    renderLearningFeed();
-    fireAndForgetTrack("sources.import_client", { count: out.imported?.length || 0 });
+    const out = await requestSourceImport({ sources, urls });
+    const imported = Array.isArray(out?.imported) ? out.imported : [];
+    applyImportedSources(imported);
+    setSourceStatus(`Imported ${imported.length} source(s) into this note.`);
+    fireAndForgetTrack("sources.import_client", { count: imported.length });
     awardXp("import", 6);
     await countImportAndMaybeShowAds();
+    return { ok: true, importedCount: imported.length };
   } catch (e) {
-    const quota = formatQuotaError(e, "Import limit reached.");
-    setSourceStatus(quota ? quota : `Import failed: ${e.message}`, true);
+    setSourceStatus(formatImportError(e), true);
+    return { ok: false, importedCount: 0 };
   }
 }
 
@@ -2968,9 +3020,54 @@ importFilesBtn.addEventListener("click", async () => {
     );
     return;
   }
-  await importSources({ sources, urls: [] });
+  const batches = buildSourceImportBatches(sources);
+  if (batches.length <= 1) {
+    await importSources({ sources, urls: [] });
+    if (rejected > 0) {
+      setSourceStatus(`Imported ${sources.length}. Skipped ${rejected} unsupported file(s).`);
+    }
+    return;
+  }
+
+  if (!token) {
+    setSourceStatus("Session expired. Sign in again, then retry import.", true);
+    return;
+  }
+
+  let totalImported = 0;
+  let failedFiles = 0;
+  let lastErr = null;
+  for (let i = 0; i < batches.length; i += 1) {
+    const batch = batches[i];
+    setSourceStatus(`Importing sources... (${i + 1}/${batches.length})`);
+    try {
+      const out = await requestSourceImport({ sources: batch, urls: [] });
+      const imported = Array.isArray(out?.imported) ? out.imported : [];
+      totalImported += imported.length;
+      applyImportedSources(imported);
+    } catch (e) {
+      failedFiles += batch.length;
+      lastErr = e;
+    }
+  }
+
+  if (totalImported > 0) {
+    const skipped = rejected + failedFiles;
+    setSourceStatus(
+      `Imported ${totalImported} source(s) into this note.${skipped > 0 ? ` Skipped ${skipped} file(s).` : ""}`
+    );
+    fireAndForgetTrack("sources.import_client", { count: totalImported });
+    awardXp("import", 6);
+    await countImportAndMaybeShowAds();
+    return;
+  }
+
+  if (lastErr) {
+    setSourceStatus(formatImportError(lastErr), true);
+    return;
+  }
   if (rejected > 0) {
-    setSourceStatus(`Imported ${sources.length}. Skipped ${rejected} unsupported file(s).`);
+    setSourceStatus(`No supported files selected. Skipped ${rejected} unsupported file(s).`, true);
   }
 });
 importUrlsBtn.addEventListener("click", async () => {
