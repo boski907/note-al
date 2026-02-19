@@ -1160,13 +1160,16 @@ a.cta-btn.ghost {
 }
 
 .welcome-video-inline {
-  display: grid;
-  gap: 10px;
+  display: block;
   margin-top: auto;
+}
+
+.welcome-video-frame {
+  position: relative;
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 10px;
-  background: #fff;
+  overflow: hidden;
+  background: #0f172a;
 }
 
 .welcome-video-head {
@@ -1182,18 +1185,30 @@ a.cta-btn.ghost {
 }
 
 .welcome-demo-video {
+  display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
   max-height: none;
-  border-radius: 14px;
-  border: 1px solid var(--line);
+  border-radius: 0;
+  border: 0;
   background: #0f172a;
   object-fit: cover;
 }
 
-.video-status {
-  margin: 0;
-  font-size: 0.84rem;
+.welcome-video-menu {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(6px);
+  z-index: 3;
+  box-shadow: var(--shadow);
 }
 
 .welcome-info-card {

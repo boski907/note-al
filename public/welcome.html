@@ -4,17 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Welcome | Notematica</title>
-    <link rel="icon" type="image/svg+xml" href="/logo-mark-notematica.svg?v=20260219v17" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/logo-mark-notematica.svg.png?v=20260219v17" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/logo-mark-notematica.svg.png?v=20260219v17" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/logo-mark-notematica.svg.png?v=20260219v17" />
+    <link rel="icon" type="image/svg+xml" href="/logo-mark-notematica.svg?v=20260219v18" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/logo-mark-notematica.svg.png?v=20260219v18" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/logo-mark-notematica.svg.png?v=20260219v18" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/logo-mark-notematica.svg.png?v=20260219v18" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260219v17" />
+    <link rel="stylesheet" href="/styles.css?v=20260219v18" />
   </head>
   <body class="welcome-page">
     <div class="backdrop"></div>
@@ -44,30 +44,27 @@
           </div>
 
           <div class="welcome-video-inline">
-            <div class="welcome-video-head">
-              <h3>Watch a 12s demo</h3>
-              <span class="badge">Classroom</span>
-            </div>
-            <video
-              id="welcome-demo-video"
-              class="welcome-demo-video"
-              controls
-              playsinline
-              webkit-playsinline="true"
-              preload="auto"
-              poster="/welcome-real-classroom.jpg"
-            >
-              <source src="/media/welcome-classroom-v3.mp4?v=3" type='video/mp4; codecs="avc1.4D401F, mp4a.40.2"' />
-              Your browser does not support the demo video.
-            </video>
-            <p id="welcome-video-status" class="muted video-status">If playback stalls, we'll try a compatible version automatically.</p>
-            <div class="row wrap">
-              <a id="welcome-video-open-link" class="cta-btn ghost" href="/media/welcome-classroom-v3.mp4?v=3" target="_blank" rel="noopener noreferrer">
-                Open video
-              </a>
-              <a id="welcome-video-download-link" class="cta-btn ghost" href="/media/welcome-classroom-v3.mp4?v=3" download>
-                Download
-              </a>
+            <div id="welcome-video-frame" class="welcome-video-frame">
+              <video
+                id="welcome-demo-video"
+                class="welcome-demo-video"
+                controls
+                playsinline
+                webkit-playsinline="true"
+                preload="auto"
+                poster="/welcome-real-classroom.jpg"
+              >
+                <source src="/media/welcome-classroom-v3.mp4?v=3" type='video/mp4; codecs="avc1.4D401F, mp4a.40.2"' />
+                Your browser does not support the demo video.
+              </video>
+              <div id="welcome-video-menu" class="welcome-video-menu hidden">
+                <a id="welcome-video-open-link" class="cta-btn ghost" href="/media/welcome-classroom-v3.mp4?v=3" target="_blank" rel="noopener noreferrer">
+                  Open video
+                </a>
+                <a id="welcome-video-download-link" class="cta-btn ghost" href="/media/welcome-classroom-v3.mp4?v=3" download>
+                  Download
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -124,6 +121,6 @@
       </section>
     </main>
 
-    <script src="/welcome.js?v=20260219v17"></script>
+    <script src="/welcome.js?v=20260219v18"></script>
   </body>
 </html>

@@ -1,7 +1,8 @@
 const cloudBadgeEl = document.getElementById("welcome-cloud-badge");
 const welcomeMessageEl = document.getElementById("welcome-message");
 const welcomeVideoEl = document.getElementById("welcome-demo-video");
-const welcomeVideoStatusEl = document.getElementById("welcome-video-status");
+const welcomeVideoFrameEl = document.getElementById("welcome-video-frame");
+const welcomeVideoMenuEl = document.getElementById("welcome-video-menu");
 const welcomeVideoOpenLinkEl = document.getElementById("welcome-video-open-link");
 const welcomeVideoDownloadLinkEl = document.getElementById("welcome-video-download-link");
 
@@ -13,6 +14,7 @@ const welcomeVideoSources = [
 ];
 let activeWelcomeVideoIndex = 0;
 let welcomeVideoProbeTimer = null;
+let welcomeVideoMenuTimer = null;
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
@@ -48,15 +50,36 @@ function setWelcomeMessage() {
 }
 
 function setVideoStatus(msg, isError = false) {
-  if (!welcomeVideoStatusEl) return;
-  welcomeVideoStatusEl.textContent = msg;
-  welcomeVideoStatusEl.style.color = isError ? "#b91c1c" : "";
+  if (!welcomeVideoEl) return;
+  welcomeVideoEl.title = msg;
+  if (isError) console.warn(msg);
 }
 
 function clearVideoProbe() {
   if (!welcomeVideoProbeTimer) return;
   clearTimeout(welcomeVideoProbeTimer);
   welcomeVideoProbeTimer = null;
+}
+
+function clearVideoMenuTimer() {
+  if (!welcomeVideoMenuTimer) return;
+  clearTimeout(welcomeVideoMenuTimer);
+  welcomeVideoMenuTimer = null;
+}
+
+function closeWelcomeVideoMenu() {
+  if (!welcomeVideoMenuEl) return;
+  welcomeVideoMenuEl.classList.add("hidden");
+  clearVideoMenuTimer();
+}
+
+function openWelcomeVideoMenu() {
+  if (!welcomeVideoMenuEl) return;
+  welcomeVideoMenuEl.classList.remove("hidden");
+  clearVideoMenuTimer();
+  welcomeVideoMenuTimer = setTimeout(() => {
+    closeWelcomeVideoMenu();
+  }, 7000);
 }
 
 function tryNextWelcomeVideo(reason) {
@@ -114,6 +137,20 @@ function initWelcomeVideoFallback() {
   welcomeVideoEl.addEventListener("error", () => {
     clearVideoProbe();
     tryNextWelcomeVideo("decode error");
+  });
+
+  welcomeVideoEl.addEventListener("dblclick", (e) => {
+    e.preventDefault();
+    if (!welcomeVideoMenuEl) return;
+    if (welcomeVideoMenuEl.classList.contains("hidden")) openWelcomeVideoMenu();
+    else closeWelcomeVideoMenu();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!welcomeVideoMenuEl || !welcomeVideoFrameEl) return;
+    const target = e.target;
+    if (target instanceof Node && welcomeVideoFrameEl.contains(target)) return;
+    closeWelcomeVideoMenu();
   });
 }
 
