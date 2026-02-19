@@ -12,6 +12,7 @@ const welcomeVideoSources = [
   "/media/welcome-classroom-v1.mp4?v=1"
 ];
 let activeWelcomeVideoIndex = 0;
+let welcomeVideoProbeTimer = null;
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
@@ -52,6 +53,32 @@ function setVideoStatus(msg, isError = false) {
   welcomeVideoStatusEl.style.color = isError ? "#b91c1c" : "";
 }
 
+function clearVideoProbe() {
+  if (!welcomeVideoProbeTimer) return;
+  clearTimeout(welcomeVideoProbeTimer);
+  welcomeVideoProbeTimer = null;
+}
+
+function tryNextWelcomeVideo(reason) {
+  const next = activeWelcomeVideoIndex + 1;
+  if (next < welcomeVideoSources.length) {
+    setVideoStatus(`Switching video source (${reason})...`);
+    setWelcomeVideoSource(next);
+    return;
+  }
+  setVideoStatus("Playback failed in this browser. Use the Open video button.", true);
+}
+
+function armVideoProbe() {
+  if (!welcomeVideoEl) return;
+  clearVideoProbe();
+  welcomeVideoProbeTimer = setTimeout(() => {
+    if (!welcomeVideoEl) return;
+    if (welcomeVideoEl.readyState >= 2) return;
+    tryNextWelcomeVideo("compatibility fallback");
+  }, 4500);
+}
+
 function setWelcomeVideoSource(index) {
   if (!welcomeVideoEl) return;
   if (index < 0 || index >= welcomeVideoSources.length) return;
@@ -59,6 +86,8 @@ function setWelcomeVideoSource(index) {
   const src = welcomeVideoSources[index];
   welcomeVideoEl.src = src;
   welcomeVideoEl.load();
+  setVideoStatus(`Loading demo video (${index + 1}/${welcomeVideoSources.length})...`);
+  armVideoProbe();
   if (welcomeVideoOpenLinkEl) welcomeVideoOpenLinkEl.href = src;
   if (welcomeVideoDownloadLinkEl) welcomeVideoDownloadLinkEl.href = src;
 }
@@ -69,17 +98,22 @@ function initWelcomeVideoFallback() {
   setWelcomeVideoSource(0);
 
   welcomeVideoEl.addEventListener("loadeddata", () => {
+    clearVideoProbe();
     setVideoStatus("Demo video ready.");
   });
 
+  welcomeVideoEl.addEventListener("canplay", () => {
+    clearVideoProbe();
+    setVideoStatus("Demo video ready.");
+  });
+
+  welcomeVideoEl.addEventListener("stalled", () => {
+    tryNextWelcomeVideo("stalled stream");
+  });
+
   welcomeVideoEl.addEventListener("error", () => {
-    const next = activeWelcomeVideoIndex + 1;
-    if (next < welcomeVideoSources.length) {
-      setVideoStatus("Trying another compatible video version...");
-      setWelcomeVideoSource(next);
-      return;
-    }
-    setVideoStatus("Playback failed in this browser. Use the Open video button.", true);
+    clearVideoProbe();
+    tryNextWelcomeVideo("decode error");
   });
 }
 
