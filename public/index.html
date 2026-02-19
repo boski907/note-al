@@ -32,6 +32,12 @@
             <span id="cloud-badge" class="badge">Local mode</span>
           </div>
         </div>
+        <div class="side-nav">
+          <button class="side-nav-item active" type="button">New study</button>
+          <button class="side-nav-item" type="button">My notes</button>
+          <button class="side-nav-item" type="button">Study tools</button>
+          <button class="side-nav-item" type="button">Files</button>
+        </div>
         <p class="muted">Signed in account and subscription settings.</p>
         <div id="auth-status" class="status"></div>
         <div class="row wrap">
@@ -260,15 +266,48 @@
               <div id="plan-status" class="status"></div>
             </div>
 
-            <div class="card-face">
-              <h3>Tutor</h3>
-              <div class="row wrap">
-                <input id="tutor-question" placeholder="Ask AI tutor from this note..." />
-                <button id="ask-tutor-btn" class="ghost">Ask tutor</button>
-              </div>
-              <div id="tutor-output" class="ai-output"></div>
+          <div class="card-face">
+            <h3>Tutor</h3>
+            <div class="row wrap">
+              <input id="tutor-question" placeholder="Ask AI tutor from this note..." />
+              <button id="ask-tutor-btn" class="ghost">Ask tutor</button>
+            </div>
+            <div id="tutor-output" class="ai-output"></div>
+          </div>
+
+          <div class="card-face learning-feed">
+            <div class="learning-feed-head">
+              <h3>What we're learning?</h3>
+              <a href="#" class="muted">View all</a>
+            </div>
+            <div class="learning-grid">
+              <article class="learn-card">
+                <div class="learn-thumb"></div>
+                <div class="learn-meta">Data structures sprint</div>
+              </article>
+              <article class="learn-card">
+                <div class="learn-thumb alt-a"></div>
+                <div class="learn-meta">JS fundamentals</div>
+              </article>
+              <article class="learn-card">
+                <div class="learn-thumb alt-b"></div>
+                <div class="learn-meta">Python practice</div>
+              </article>
+              <article class="learn-card">
+                <div class="learn-thumb alt-c"></div>
+                <div class="learn-meta">Exam prep set</div>
+              </article>
+              <article class="learn-card">
+                <div class="learn-thumb alt-d"></div>
+                <div class="learn-meta">C++ quick review</div>
+              </article>
+              <article class="learn-card">
+                <div class="learn-thumb alt-e"></div>
+                <div class="learn-meta">Algorithm drills</div>
+              </article>
             </div>
           </div>
+        </div>
         </section>
       </section>
     </main>
