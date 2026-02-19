@@ -1120,6 +1120,12 @@ a.cta-btn.ghost {
   margin: 0 0 10px;
 }
 
+.welcome-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .welcome-hero-media {
   display: grid;
   gap: 10px;
@@ -1153,9 +1159,14 @@ a.cta-btn.ghost {
   gap: 12px;
 }
 
-.welcome-video {
+.welcome-video-inline {
   display: grid;
   gap: 10px;
+  margin-top: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px;
+  background: #fff;
 }
 
 .welcome-video-head {
@@ -1172,7 +1183,8 @@ a.cta-btn.ghost {
 
 .welcome-demo-video {
   width: 100%;
-  max-height: 540px;
+  aspect-ratio: 16 / 9;
+  max-height: none;
   border-radius: 14px;
   border: 1px solid var(--line);
   background: #0f172a;
@@ -1305,6 +1317,10 @@ a.cta-btn.ghost {
   .home-welcome,
   .welcome-hero {
     grid-template-columns: 1fr;
+  }
+
+  .welcome-video-inline {
+    margin-top: 12px;
   }
 
   .welcome-brand-logo {
