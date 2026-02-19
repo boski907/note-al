@@ -1446,10 +1446,10 @@ function setActiveTab(name) {
 
 function loadActiveTab() {
   try {
-    const v = String(localStorage.getItem(authScopedKey("active_tab_v1")) || "write");
-    return v === "sources" || v === "study" ? v : "write";
+    const v = String(localStorage.getItem(authScopedKey("active_tab_v1")) || "study");
+    return v === "sources" || v === "write" ? v : "study";
   } catch {
-    return "write";
+    return "study";
   }
 }
 
