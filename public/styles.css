@@ -6,17 +6,17 @@
   --muted: #526172;
   --line: #dce2ee;
   --line-strong: #c9d2e3;
-  --accent: #2563eb;
+  --accent: #1d4ed8;
   --accent-soft: #e6eeff;
   --brand-blue-700: #1d4ed8;
-  --brand-blue-600: #2563eb;
+  --brand-blue-600: #1d4ed8;
   --brand-cyan-500: #0ea5e9;
   --brand-cyan-400: #38bdf8;
   --brand-orange-500: #f97316;
   --danger: #be123c;
   --shadow: 0 10px 30px rgba(30, 41, 59, 0.06);
   --shadow-strong: 0 18px 40px rgba(30, 41, 59, 0.12);
-  --ring: rgba(37, 99, 235, 0.2);
+  --ring: rgba(29, 78, 216, 0.22);
   --bottom-ad-height: 0px;
 }
 
@@ -28,12 +28,12 @@ body[data-theme="clean"] {
   --muted: #475569;
   --line: #dde3ef;
   --line-strong: #cad4e5;
-  --accent: #0f766e;
-  --accent-soft: #e6f7f4;
+  --accent: #1e40af;
+  --accent-soft: #e8edff;
   --danger: #be123c;
   --shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
   --shadow-strong: 0 16px 36px rgba(15, 23, 42, 0.1);
-  --ring: rgba(15, 118, 110, 0.2);
+  --ring: rgba(30, 64, 175, 0.22);
 }
 
 * {
@@ -54,8 +54,8 @@ body {
     radial-gradient(
       1200px 520px at 8% -12%,
       rgba(29, 78, 216, 0.24) 0%,
-      rgba(37, 99, 235, 0.14) 38%,
-      rgba(37, 99, 235, 0) 72%
+      rgba(29, 78, 216, 0.16) 38%,
+      rgba(29, 78, 216, 0) 72%
     ),
     radial-gradient(
       980px 460px at 92% -8%,
@@ -79,8 +79,8 @@ body[data-theme="clean"] {
     radial-gradient(
       1200px 520px at 8% -12%,
       rgba(29, 78, 216, 0.18) 0%,
-      rgba(37, 99, 235, 0.1) 38%,
-      rgba(37, 99, 235, 0) 72%
+      rgba(29, 78, 216, 0.12) 38%,
+      rgba(29, 78, 216, 0) 72%
     ),
     radial-gradient(
       980px 460px at 92% -8%,
@@ -142,7 +142,13 @@ body[data-theme="clean"] {
 .rail-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+}
+
+.rail-brand-logo {
+  width: min(182px, 100%);
+  height: auto;
+  display: block;
 }
 
 .rail-logo {
@@ -154,15 +160,6 @@ h1 {
   margin: 0;
   font: 800 2rem/1.18 "Fraunces", "Space Grotesk", sans-serif;
   letter-spacing: 0.01em;
-}
-
-.rail-brand h1 {
-  font-size: 1.75rem;
-}
-
-.rail-brand .muted {
-  margin: 2px 0 0;
-  font-size: 0.8rem;
 }
 
 .rail-nav {
@@ -765,8 +762,8 @@ h1 {
 }
 
 button {
-  border: 1px solid #2f63bf;
-  background: #2f63bf;
+  border: 1px solid #2757b8;
+  background: #2757b8;
   color: #f8fbff;
   border-radius: 10px;
   padding: 8px 12px;
@@ -804,8 +801,8 @@ a.cta-btn {
   justify-content: center;
   gap: 6px;
   text-decoration: none;
-  border: 1px solid #2f63bf;
-  background: #2f63bf;
+  border: 1px solid #2757b8;
+  background: #2757b8;
   color: #f8fbff;
   border-radius: 10px;
   padding: 8px 12px;
@@ -1185,6 +1182,27 @@ a.cta-btn.ghost {
   color: #334155;
 }
 
+.auth-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.login-brand-logo {
+  width: min(280px, 100%);
+  height: auto;
+  display: block;
+}
+
+.legal-brand-logo {
+  width: min(300px, 100%);
+  height: auto;
+  display: block;
+  margin-bottom: 10px;
+}
+
 .login-page {
   padding: 16px;
 }
@@ -1220,8 +1238,8 @@ a.cta-btn.ghost {
     border-bottom: 1px solid var(--line);
   }
 
-  .rail-brand .muted {
-    display: none;
+  .rail-brand-logo {
+    width: 154px;
   }
 
   .rail-nav {

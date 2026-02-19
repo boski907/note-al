@@ -1,5 +1,5 @@
 /* Notematica service worker: caches core assets for offline loads. */
-const CACHE_NAME = "notematica-v6";
+const CACHE_NAME = "notematica-v7";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -17,7 +17,9 @@ const CORE_ASSETS = [
   "/terms.html",
   "/share.html",
   "/offline.html",
-  "/favicon.ico"
+  "/logo-mark-notematica.svg",
+  "/logo-mark-notematica.svg.png",
+  "/logo-notematica.svg"
 ];
 
 self.addEventListener("install", (event) => {
