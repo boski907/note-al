@@ -316,7 +316,12 @@ function closeOutputAdsOverlay() {
   setHidden(outputAdSlotCEl, true);
 }
 
+function areAdsEnabled() {
+  return Boolean(adsenseCfg?.enabled && adsenseCfg?.client && adsenseCfg?.bottomSlot);
+}
+
 function canShowInterstitial() {
+  if (!areAdsEnabled()) return false;
   if (adFree) return false;
   const now = Date.now();
   if (sessionUpgradedAt && now - sessionUpgradedAt < 30 * 60 * 1000) return false;
@@ -444,7 +449,7 @@ async function showAdInterstitial(adCount = 2) {
 }
 
 async function countOutputAndMaybeShowAds(eventName = "output.generic") {
-  if (adFree) return;
+  if (adFree || !areAdsEnabled()) return;
   monetizedOutputCount += 1;
   saveOutputCounter();
   if (monetizedOutputCount % 4 !== 0) return;
@@ -453,7 +458,7 @@ async function countOutputAndMaybeShowAds(eventName = "output.generic") {
 }
 
 async function countImportAndMaybeShowAds() {
-  if (adFree) return;
+  if (adFree || !areAdsEnabled()) return;
   sourceImportCount += 1;
   saveImportCounter();
   if (sourceImportCount % 4 !== 0) return;
@@ -1039,7 +1044,7 @@ async function loadBillingStatus() {
       adBottomBarEl.setAttribute("aria-hidden", "true");
       syncBottomAdSafeArea();
     } else {
-      setBillingStatus("Free plan (ads enabled).");
+      setBillingStatus(areAdsEnabled() ? "Free plan (ads enabled)." : "Free plan (ads currently disabled).");
       initAdsense().catch(() => {});
     }
     applyPremiumFeatureGates();
@@ -2389,7 +2394,7 @@ async function renderStudyDue() {
           if (idx >= cards.length) {
             stage.innerHTML = `<div class="muted">Done. You reviewed ${cards.length} cards.</div>`;
           } else {
-            if (!adFree && reviewed % 3 === 0) {
+            if (!adFree && areAdsEnabled() && reviewed % 3 === 0) {
               renderAdBreak(render);
             } else {
               render();

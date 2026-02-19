@@ -74,6 +74,7 @@ const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const ADSENSE_CLIENT = process.env.ADSENSE_CLIENT || "";
 const ADSENSE_SLOT_BOTTOM = process.env.ADSENSE_SLOT_BOTTOM || "";
 const ADSENSE_SLOT_BREAK = process.env.ADSENSE_SLOT_BREAK || "";
+const ADS_ENABLED = (process.env.ADS_ENABLED || "0") === "1";
 
 // Owner-only features (like the in-app Builder chatbox). Comma-separated emails.
 const OWNER_EMAILS = (process.env.OWNER_EMAILS || "lboski@live.com")
@@ -2231,7 +2232,7 @@ const server = http.createServer(async (req, res) => {
           provider: USE_SUPABASE ? "supabase" : "local",
           authMode: USE_SUPABASE ? "supabase" : "local",
           adsense: {
-            enabled: Boolean(ADSENSE_CLIENT && ADSENSE_SLOT_BOTTOM),
+            enabled: Boolean(ADS_ENABLED && ADSENSE_CLIENT && ADSENSE_SLOT_BOTTOM),
             client: ADSENSE_CLIENT,
             bottomSlot: ADSENSE_SLOT_BOTTOM,
             breakSlot: ADSENSE_SLOT_BREAK || ADSENSE_SLOT_BOTTOM
@@ -2262,7 +2263,7 @@ const server = http.createServer(async (req, res) => {
         }
         return json(res, 200, {
           appBaseUrl: APP_BASE_URL,
-          adsEnabled: Boolean(ADSENSE_CLIENT && ADSENSE_SLOT_BOTTOM),
+          adsEnabled: Boolean(ADS_ENABLED && ADSENSE_CLIENT && ADSENSE_SLOT_BOTTOM),
           clientConfigured: Boolean(ADSENSE_CLIENT),
           bottomSlotConfigured: Boolean(ADSENSE_SLOT_BOTTOM),
           breakSlotConfigured: Boolean(ADSENSE_SLOT_BREAK || ADSENSE_SLOT_BOTTOM),
