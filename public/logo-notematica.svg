@@ -1,34 +1,34 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="240" viewBox="0 0 960 240" role="img" aria-label="Notematica logo">
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="260" viewBox="0 0 1100 260" role="img" aria-label="Notematica modern logo">
   <defs>
-    <linearGradient id="nmGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#06b6d4" />
-      <stop offset="100%" stop-color="#0f766e" />
+    <linearGradient id="nmWordBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1d4ed8" />
+      <stop offset="55%" stop-color="#2563eb" />
+      <stop offset="100%" stop-color="#0ea5e9" />
     </linearGradient>
-    <linearGradient id="nmWarm" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#fb923c" />
+    <linearGradient id="nmWordStripe" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" />
       <stop offset="100%" stop-color="#f97316" />
     </linearGradient>
-    <filter id="nmShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.2" />
+    <filter id="nmWordShadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#0f172a" flood-opacity="0.16" />
     </filter>
   </defs>
 
-  <rect width="960" height="240" fill="none" />
-
-  <g transform="translate(24 24)" filter="url(#nmShadow)">
-    <rect x="0" y="0" width="192" height="192" rx="42" fill="url(#nmGrad)" />
-    <path d="M42 132V60h18l52 52V60h24v72h-18l-52-52v52z" fill="#ffffff" />
-    <path d="M128 38h40l-24 24h-40z" fill="url(#nmWarm)" />
-    <circle cx="152" cy="152" r="16" fill="#ffffff" fill-opacity="0.95" />
+  <rect width="1100" height="260" fill="none" />
+  <g transform="translate(24,24)" filter="url(#nmWordShadow)">
+    <rect x="0" y="0" width="208" height="208" rx="52" fill="url(#nmWordBg)" />
+    <path d="M44 154V58h32l28 40 28-40h32v96h-28V98l-32 43-32-43v56z" fill="#ffffff" />
+    <rect x="40" y="164" width="128" height="12" rx="6" fill="url(#nmWordStripe)" />
+    <circle cx="170" cy="48" r="12" fill="#ffffff" />
   </g>
 
-  <g transform="translate(248 0)">
+  <g transform="translate(260,0)">
     <text x="0" y="118" font-family="'Space Grotesk', 'Avenir Next', Arial, sans-serif" font-size="88" font-weight="700" fill="#0f172a" letter-spacing="-1">
       Notematica
     </text>
-    <rect x="2" y="136" width="398" height="8" rx="4" fill="url(#nmGrad)" />
+    <rect x="2" y="136" width="468" height="8" rx="4" fill="url(#nmWordBg)" />
     <text x="2" y="182" font-family="'IBM Plex Mono', Menlo, monospace" font-size="30" font-weight="500" fill="#334155">
-      Learn faster. Remember longer.
+      Study faster. Learn deeper.
     </text>
   </g>
 </svg>

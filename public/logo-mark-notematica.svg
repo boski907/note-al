@@ -1,17 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Notematica mark">
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Notematica modern logo mark">
   <defs>
-    <linearGradient id="markGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#06b6d4" />
-      <stop offset="100%" stop-color="#0f766e" />
+    <linearGradient id="nmMkBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1d4ed8" />
+      <stop offset="55%" stop-color="#2563eb" />
+      <stop offset="100%" stop-color="#0ea5e9" />
     </linearGradient>
-    <linearGradient id="markWarm" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#fb923c" />
+    <linearGradient id="nmMkStripe" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" />
       <stop offset="100%" stop-color="#f97316" />
     </linearGradient>
   </defs>
-
-  <rect width="1024" height="1024" rx="230" fill="url(#markGrad)" />
-  <path d="M230 696V326h96l278 266V326h122v370h-96L352 430v266z" fill="#ffffff" />
-  <path d="M614 172h214l-118 118H496z" fill="url(#markWarm)" />
-  <circle cx="762" cy="762" r="70" fill="#ffffff" />
+  <rect width="1024" height="1024" rx="236" fill="url(#nmMkBg)" />
+  <rect x="180" y="170" width="664" height="664" rx="166" fill="rgba(255,255,255,0.12)" />
+  <path d="M272 700V322h112l128 132 128-132h112v378H640V482L512 614 384 482V700z" fill="#ffffff" />
+  <rect x="268" y="744" width="488" height="36" rx="18" fill="url(#nmMkStripe)" />
+  <circle cx="780" cy="244" r="54" fill="#ffffff" fill-opacity="0.95" />
 </svg>

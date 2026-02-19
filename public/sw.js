@@ -1,5 +1,5 @@
 /* Notematica service worker: caches core assets for offline loads. */
-const CACHE_NAME = "notematica-v3";
+const CACHE_NAME = "notematica-v5";
 const CORE_ASSETS = [
   "/",
   "/index.html",

@@ -10,15 +10,20 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://images.pexels.com" />
     <link
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260219v7" />
+    <link rel="stylesheet" href="/styles.css?v=20260219v11" />
   </head>
   <body class="welcome-page">
     <div class="backdrop"></div>
     <main class="welcome-shell">
+      <header class="welcome-brand-head card-face">
+        <img src="/logo-notematica.svg" alt="Notematica logo" class="welcome-brand-logo" />
+      </header>
+
       <section class="welcome-hero card-face">
         <div class="welcome-copy">
           <div class="welcome-badge-row">
@@ -40,24 +45,45 @@
           </div>
         </div>
         <div class="welcome-hero-media">
-          <img src="/logo-header.png" alt="Notematica header" />
-          <img src="/app-icon-512.png" alt="Notematica app icon" />
+          <figure class="welcome-photo">
+            <img
+              src="https://images.pexels.com/photos/6238012/pexels-photo-6238012.jpeg?auto=compress&cs=tinysrgb&w=1600"
+              alt="African American teacher leading a lesson with a diverse classroom"
+            />
+            <figcaption>African American teacher leading a diverse classroom.</figcaption>
+          </figure>
+          <figure class="welcome-photo">
+            <img
+              src="https://images.pexels.com/photos/5905554/pexels-photo-5905554.jpeg?auto=compress&cs=tinysrgb&w=1600"
+              alt="Students from different races studying together at one table"
+            />
+            <figcaption>Diverse students studying and sharing ideas together.</figcaption>
+          </figure>
         </div>
       </section>
 
       <section class="welcome-info-grid">
         <article class="welcome-info-card card-face">
-          <img src="/app-icon-1024.png" alt="Import and organize" />
+          <img
+            src="https://images.pexels.com/photos/5905622/pexels-photo-5905622.jpeg?auto=compress&cs=tinysrgb&w=1600"
+            alt="Classroom hall with students of different races learning"
+          />
           <h3>Import Everything</h3>
           <p class="muted">Add PDFs, DOCX, websites, YouTube links, and media transcripts as study sources.</p>
         </article>
         <article class="welcome-info-card card-face">
-          <img src="/logo-header.png" alt="AI study tools" />
+          <img
+            src="https://images.pexels.com/photos/6238012/pexels-photo-6238012.jpeg?auto=compress&cs=tinysrgb&w=1600"
+            alt="Teacher and students learning in an inclusive classroom"
+          />
           <h3>Study with AI</h3>
           <p class="muted">Generate summaries, writing feedback, tutor answers, and tasks from your notes.</p>
         </article>
         <article class="welcome-info-card card-face">
-          <img src="/app-icon-512.png" alt="Progress and test prep" />
+          <img
+            src="https://images.pexels.com/photos/5905486/pexels-photo-5905486.jpeg?auto=compress&cs=tinysrgb&w=1600"
+            alt="Multiracial study group preparing for exams"
+          />
           <h3>Prep for Tests</h3>
           <p class="muted">Create flashcards, practice exams, and a daily study plan with progress tracking.</p>
         </article>
@@ -73,6 +99,6 @@
       </section>
     </main>
 
-    <script src="/welcome.js?v=20260219v7"></script>
+    <script src="/welcome.js?v=20260219v11"></script>
   </body>
 </html>
