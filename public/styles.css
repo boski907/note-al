@@ -1153,6 +1153,32 @@ a.cta-btn.ghost {
   gap: 12px;
 }
 
+.welcome-video {
+  display: grid;
+  gap: 10px;
+}
+
+.welcome-video-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.welcome-video-head h3 {
+  margin: 0;
+}
+
+.welcome-demo-video {
+  width: 100%;
+  max-height: 540px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #0f172a;
+  object-fit: cover;
+}
+
 .welcome-info-card {
   display: grid;
   gap: 8px;
