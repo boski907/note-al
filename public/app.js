@@ -1002,7 +1002,7 @@ async function initAdsense() {
   renderAdInto(
     adBottomSlotEl,
     { client: adsenseCfg.client, slot: adsenseCfg.bottomSlot },
-    { responsive: true, autoHideIfEmpty: true, emptyCheckMs: 2500 }
+    { responsive: false, autoHideIfEmpty: true, emptyCheckMs: 2500 }
   );
   setTimeout(() => {
     try {
