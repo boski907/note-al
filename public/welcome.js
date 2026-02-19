@@ -7,14 +7,25 @@ const welcomeVideoOpenLinkEl = document.getElementById("welcome-video-open-link"
 const welcomeVideoDownloadLinkEl = document.getElementById("welcome-video-download-link");
 
 let token = localStorage.getItem("ai_notes_token") || "";
-const welcomeVideoSources = [
-  "/media/welcome-classroom-v3.mp4?v=3",
-  "/media/welcome-classroom-v2.mp4?v=2",
-  "/media/welcome-classroom-v1.mp4?v=1"
+const welcomeVideoTracks = [
+  {
+    name: "classroom",
+    sources: [
+      "/media/welcome-classroom-v3.mp4?v=3",
+      "/media/welcome-classroom-v2.mp4?v=2",
+      "/media/welcome-classroom-v1.mp4?v=1"
+    ]
+  },
+  {
+    name: "workplace",
+    sources: ["/media/workplace-demo-v1.mp4?v=1"]
+  }
 ];
-let activeWelcomeVideoIndex = 0;
+let activeTrackIndex = 0;
+let activeTrackSourceIndex = 0;
 let welcomeVideoProbeTimer = null;
 let welcomeVideoMenuTimer = null;
+let pendingTrackAutoplay = false;
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
@@ -55,6 +66,10 @@ function setVideoStatus(msg, isError = false) {
   if (isError) console.warn(msg);
 }
 
+function currentTrack() {
+  return welcomeVideoTracks[activeTrackIndex] || null;
+}
+
 function clearVideoProbe() {
   if (!welcomeVideoProbeTimer) return;
   clearTimeout(welcomeVideoProbeTimer);
@@ -83,10 +98,19 @@ function openWelcomeVideoMenu() {
 }
 
 function tryNextWelcomeVideo(reason) {
-  const next = activeWelcomeVideoIndex + 1;
-  if (next < welcomeVideoSources.length) {
+  const track = currentTrack();
+  if (!track) return;
+  const next = activeTrackSourceIndex + 1;
+  if (next < track.sources.length) {
     setVideoStatus(`Switching video source (${reason})...`);
-    setWelcomeVideoSource(next);
+    setWelcomeVideoSource(activeTrackIndex, next, { autoplay: pendingTrackAutoplay });
+    return;
+  }
+  // If this track has no more fallbacks, try the next clip in sequence.
+  const nextTrack = activeTrackIndex + 1;
+  if (nextTrack < welcomeVideoTracks.length) {
+    setVideoStatus("Switching to next clip...");
+    setWelcomeVideoSource(nextTrack, 0, { autoplay: true });
     return;
   }
   setVideoStatus("Playback failed in this browser. Use the Open video button.", true);
@@ -102,14 +126,20 @@ function armVideoProbe() {
   }, 4500);
 }
 
-function setWelcomeVideoSource(index) {
+function setWelcomeVideoSource(trackIndex, sourceIndex, opts = {}) {
   if (!welcomeVideoEl) return;
-  if (index < 0 || index >= welcomeVideoSources.length) return;
-  activeWelcomeVideoIndex = index;
-  const src = welcomeVideoSources[index];
+  if (trackIndex < 0 || trackIndex >= welcomeVideoTracks.length) return;
+  const track = welcomeVideoTracks[trackIndex];
+  if (!track || sourceIndex < 0 || sourceIndex >= track.sources.length) return;
+  activeTrackIndex = trackIndex;
+  activeTrackSourceIndex = sourceIndex;
+  pendingTrackAutoplay = Boolean(opts.autoplay);
+  const src = track.sources[sourceIndex];
   welcomeVideoEl.src = src;
   welcomeVideoEl.load();
-  setVideoStatus(`Loading demo video (${index + 1}/${welcomeVideoSources.length})...`);
+  setVideoStatus(
+    `Loading ${track.name} clip (${sourceIndex + 1}/${track.sources.length})...`
+  );
   armVideoProbe();
   if (welcomeVideoOpenLinkEl) welcomeVideoOpenLinkEl.href = src;
   if (welcomeVideoDownloadLinkEl) welcomeVideoDownloadLinkEl.href = src;
@@ -118,7 +148,7 @@ function setWelcomeVideoSource(index) {
 function initWelcomeVideoFallback() {
   if (!welcomeVideoEl) return;
 
-  setWelcomeVideoSource(0);
+  setWelcomeVideoSource(0, 0);
 
   welcomeVideoEl.addEventListener("loadeddata", () => {
     clearVideoProbe();
@@ -128,6 +158,11 @@ function initWelcomeVideoFallback() {
   welcomeVideoEl.addEventListener("canplay", () => {
     clearVideoProbe();
     setVideoStatus("Demo video ready.");
+    if (pendingTrackAutoplay) {
+      pendingTrackAutoplay = false;
+      const p = welcomeVideoEl.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    }
   });
 
   welcomeVideoEl.addEventListener("stalled", () => {
@@ -137,6 +172,14 @@ function initWelcomeVideoFallback() {
   welcomeVideoEl.addEventListener("error", () => {
     clearVideoProbe();
     tryNextWelcomeVideo("decode error");
+  });
+
+  welcomeVideoEl.addEventListener("ended", () => {
+    const nextTrack = activeTrackIndex + 1;
+    if (nextTrack < welcomeVideoTracks.length) {
+      setVideoStatus("Playing next clip...");
+      setWelcomeVideoSource(nextTrack, 0, { autoplay: true });
+    }
   });
 
   welcomeVideoEl.addEventListener("dblclick", (e) => {
