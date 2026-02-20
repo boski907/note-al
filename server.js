@@ -2,6 +2,8 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const dns = require("dns").promises;
+const net = require("net");
 const { URL } = require("url");
 
 function loadEnvFile(filePath) {
@@ -138,11 +140,32 @@ function getClientIp(req) {
   return String(req.socket?.remoteAddress || "");
 }
 
+function contentSecurityPolicyValue() {
+  const directives = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'self'",
+    "script-src 'self' https://pagead2.googlesyndication.com https://www.googletagmanager.com https://js.stripe.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "connect-src 'self' https://pagead2.googlesyndication.com https://www.google-analytics.com https://region1.google-analytics.com https://js.stripe.com",
+    "frame-src 'self' https://checkout.stripe.com https://js.stripe.com https://hooks.stripe.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://pagead2.googlesyndication.com",
+    "media-src 'self' data: blob:",
+    "worker-src 'self' blob:",
+    "form-action 'self' https://checkout.stripe.com"
+  ];
+  if (IS_PROD) directives.push("upgrade-insecure-requests");
+  return directives.join("; ");
+}
+
 function securityHeaders() {
   const headers = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "SAMEORIGIN",
     "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Content-Security-Policy": contentSecurityPolicyValue(),
     // Keep this permissive enough for your voice feature.
     "Permissions-Policy": "camera=(), geolocation=(), microphone=(self), payment=(), usb=()"
   };
@@ -954,20 +977,36 @@ async function listNotes(user) {
       null,
       user.token
     );
-    return (rows || []).map((r) => ({
-      id: r.id,
-      title: r.title || "Untitled",
-      contentText: r.content_text || "",
-      contentHtml: r.content_html || "",
-      tags: Array.isArray(r.tags) ? r.tags : [],
-      updatedAt: r.updated_at || new Date().toISOString()
-    }));
+    return (rows || []).map((r) => {
+      const safeHtml = sanitizeRichTextHtml(r.content_html || "", { maxChars: 300000 });
+      const safeText = cleanImportedText(String(r.content_text || "") || htmlToText(safeHtml)).slice(0, 300000);
+      return {
+        id: r.id,
+        title: r.title || "Untitled",
+        contentText: safeText,
+        contentHtml: safeHtml,
+        tags: Array.isArray(r.tags) ? r.tags : [],
+        updatedAt: r.updated_at || new Date().toISOString()
+      };
+    });
   }
 
   const notes = loadJson(NOTES_FILE, []);
   return notes
     .filter((n) => n.userId === user.id)
-    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+    .map((n) => {
+      const safeHtml = sanitizeRichTextHtml(n.contentHtml || "", { maxChars: 300000 });
+      const safeText = cleanImportedText(String(n.contentText || "") || htmlToText(safeHtml)).slice(0, 300000);
+      return {
+        id: n.id,
+        title: String(n.title || "Untitled").slice(0, 160),
+        contentText: safeText,
+        contentHtml: safeHtml,
+        tags: sanitizeTags(n.tags),
+        updatedAt: n.updatedAt || new Date().toISOString()
+      };
+    });
 }
 
 async function trackEvent(user, eventName, payload = {}) {
@@ -1128,13 +1167,15 @@ function applyReferral(user, code) {
 function createShareEntry(user, payload) {
   const items = loadJson(SHARES_FILE, []);
   const id = crypto.randomBytes(8).toString("hex");
+  const safeHtml = sanitizeRichTextHtml(payload.contentHtml || "", { maxChars: 300000 });
+  const safeText = cleanImportedText(String(payload.contentText || "") || htmlToText(safeHtml)).slice(0, 300000);
   items.push({
     id,
     userId: user.id,
     noteId: String(payload.noteId || ""),
     title: String(payload.title || "Shared note").slice(0, 160),
-    contentText: String(payload.contentText || "").slice(0, 300000),
-    contentHtml: String(payload.contentHtml || "").slice(0, 300000),
+    contentText: safeText,
+    contentHtml: safeHtml,
     createdAt: new Date().toISOString()
   });
   saveJson(SHARES_FILE, items.slice(-2000));
@@ -1143,7 +1184,15 @@ function createShareEntry(user, payload) {
 
 function getShareEntry(shareId) {
   const items = loadJson(SHARES_FILE, []);
-  return items.find((x) => x.id === shareId) || null;
+  const entry = items.find((x) => x.id === shareId);
+  if (!entry) return null;
+  const safeHtml = sanitizeRichTextHtml(entry.contentHtml || "", { maxChars: 300000 });
+  const safeText = cleanImportedText(String(entry.contentText || "") || htmlToText(safeHtml)).slice(0, 300000);
+  return {
+    ...entry,
+    contentText: safeText,
+    contentHtml: safeHtml
+  };
 }
 
 function saveFeedback(user, payload) {
@@ -1192,11 +1241,13 @@ async function saveOnboardingEmail(user, email, source = "onboarding_modal") {
 
 async function upsertNote(user, payload) {
   const now = new Date().toISOString();
+  const safeHtml = sanitizeRichTextHtml(payload.contentHtml || "", { maxChars: 300000 });
+  const safeText = cleanImportedText(String(payload.contentText || "") || htmlToText(safeHtml)).slice(0, 300000);
   const note = {
     id: payload.id ? String(payload.id) : crypto.randomUUID(),
     title: String(payload.title || "").trim().slice(0, 160) || "Untitled",
-    contentText: String(payload.contentText || ""),
-    contentHtml: String(payload.contentHtml || ""),
+    contentText: safeText,
+    contentHtml: safeHtml || plainTextToSafeHtml(safeText, 300000),
     tags: sanitizeTags(payload.tags),
     updatedAt: now
   };
@@ -1221,11 +1272,16 @@ async function upsertNote(user, payload) {
     );
 
     const row = rows?.[0] || {};
+    const returnedHtml = sanitizeRichTextHtml(row.content_html || note.contentHtml, { maxChars: 300000 });
+    const returnedText = cleanImportedText(String(row.content_text || note.contentText || "") || htmlToText(returnedHtml)).slice(
+      0,
+      300000
+    );
     return {
       id: row.id || note.id,
       title: row.title || note.title,
-      contentText: row.content_text || note.contentText,
-      contentHtml: row.content_html || note.contentHtml,
+      contentText: returnedText,
+      contentHtml: returnedHtml,
       tags: Array.isArray(row.tags) ? row.tags : note.tags,
       updatedAt: row.updated_at || note.updatedAt
     };
@@ -1563,6 +1619,251 @@ function decodeHtmlEntities(s) {
     });
 }
 
+const NOTE_ALLOWED_TAGS = new Set([
+  "p",
+  "br",
+  "div",
+  "span",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "u",
+  "s",
+  "ul",
+  "ol",
+  "li",
+  "blockquote",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "pre",
+  "code",
+  "a"
+]);
+const NOTE_VOID_TAGS = new Set(["br"]);
+
+function escapeHtmlText(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function normalizeSafeHref(rawHref) {
+  const decoded = decodeHtmlEntities(String(rawHref || "").trim()).replace(/[\u0000-\u001f\u007f\s]+/g, "");
+  if (!decoded) return "";
+  if (decoded.startsWith("#") || decoded.startsWith("/")) return decoded.slice(0, 800);
+  if (/^https?:\/\/.+/i.test(decoded)) return decoded.slice(0, 800);
+  if (/^mailto:[^<>]+/i.test(decoded)) return decoded.slice(0, 800);
+  if (/^tel:[+0-9(). -]+$/i.test(decoded)) return decoded.slice(0, 800);
+  return "";
+}
+
+function plainTextToSafeHtml(text, maxChars = 300000) {
+  const cleaned = cleanImportedText(String(text || "").slice(0, maxChars));
+  if (!cleaned) return "";
+  return escapeHtmlText(cleaned).replace(/\n/g, "<br>");
+}
+
+function sanitizeRichTextHtml(value, { maxChars = 300000 } = {}) {
+  let html = String(value || "");
+  if (!html) return "";
+
+  html = html.replace(/\0/g, "").slice(0, maxChars * 3);
+  html = html.replace(/<!--[\s\S]*?-->/g, "");
+  html = html.replace(
+    /<\s*(script|style|iframe|object|embed|svg|math|form|textarea|button|select|option|meta|link|base|template|noscript)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi,
+    ""
+  );
+  html = html.replace(
+    /<\s*\/?\s*(script|style|iframe|object|embed|svg|math|form|textarea|button|select|option|meta|link|base|template|noscript)[^>]*\/?\s*>/gi,
+    ""
+  );
+
+  const sanitized = html.replace(/<([^>]+)>/g, (full, inside) => {
+    const raw = String(inside || "").trim();
+    if (!raw || raw.startsWith("!")) return "";
+    const isClosing = raw.startsWith("/");
+    const tagMatch = raw.match(/^\/?\s*([a-zA-Z0-9]+)/);
+    if (!tagMatch) return "";
+    const tag = String(tagMatch[1] || "").toLowerCase();
+    if (!NOTE_ALLOWED_TAGS.has(tag)) return "";
+    if (isClosing) return NOTE_VOID_TAGS.has(tag) ? "" : `</${tag}>`;
+
+    const attrs = [];
+    if (tag === "a") {
+      let href = "";
+      let title = "";
+      let targetBlank = false;
+      const attrRe = /([^\s"'<>`=\/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+      let m;
+      while ((m = attrRe.exec(raw)) !== null) {
+        const key = String(m[1] || "").toLowerCase();
+        const val = String(m[2] ?? m[3] ?? m[4] ?? "");
+        if (key.startsWith("on")) continue;
+        if (key === "href") href = normalizeSafeHref(val);
+        if (key === "title") title = cleanImportedText(decodeHtmlEntities(val)).slice(0, 180);
+        if (key === "target" && val.toLowerCase() === "_blank") targetBlank = true;
+      }
+      if (href) {
+        attrs.push(`href="${escapeHtmlText(href)}"`);
+        if (targetBlank) {
+          attrs.push('target="_blank"');
+          attrs.push('rel="noopener noreferrer"');
+        }
+      }
+      if (title) attrs.push(`title="${escapeHtmlText(title)}"`);
+    }
+
+    return `<${tag}${attrs.length ? ` ${attrs.join(" ")}` : ""}>`;
+  });
+
+  return String(sanitized).trim().slice(0, maxChars);
+}
+
+const BLOCKED_IMPORT_HOSTS = new Set([
+  "localhost",
+  "localhost.localdomain",
+  "metadata",
+  "metadata.google.internal",
+  "169.254.169.254"
+]);
+
+function normalizeHostForCompare(hostname) {
+  return String(hostname || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\.+$/g, "");
+}
+
+function isUnsafeIPv4Address(ip) {
+  const parts = String(ip || "")
+    .split(".")
+    .map((p) => Number(p));
+  if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) return true;
+  const [a, b] = parts;
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a >= 224) return true;
+  return false;
+}
+
+function isUnsafeIPv6Address(ip) {
+  const normalized = String(ip || "").toLowerCase();
+  if (!normalized) return true;
+  if (normalized === "::" || normalized === "::1") return true;
+  if (
+    normalized.startsWith("fe8") ||
+    normalized.startsWith("fe9") ||
+    normalized.startsWith("fea") ||
+    normalized.startsWith("feb")
+  ) {
+    return true; // fe80::/10 link-local
+  }
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // fc00::/7 unique-local
+  if (normalized.startsWith("::ffff:")) {
+    const mapped = normalized.slice("::ffff:".length);
+    if (net.isIP(mapped) === 4) return isUnsafeIPv4Address(mapped);
+  }
+  return false;
+}
+
+function isUnsafeIpAddress(ip) {
+  const family = net.isIP(String(ip || ""));
+  if (family === 4) return isUnsafeIPv4Address(ip);
+  if (family === 6) return isUnsafeIPv6Address(ip);
+  return true;
+}
+
+async function assertSafeImportUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(String(rawUrl || "").trim());
+  } catch {
+    throw new Error("Invalid URL");
+  }
+
+  if (!/^https?:$/i.test(parsed.protocol)) {
+    throw new Error("Only http/https URLs are supported");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("URLs with credentials are not allowed");
+  }
+  if (parsed.port && parsed.port !== "80" && parsed.port !== "443") {
+    throw new Error("Only ports 80 and 443 are allowed");
+  }
+
+  const host = normalizeHostForCompare(parsed.hostname);
+  if (!host) throw new Error("Invalid hostname");
+  if (
+    BLOCKED_IMPORT_HOSTS.has(host) ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local") ||
+    host.endsWith(".internal")
+  ) {
+    throw new Error("Blocked host for security reasons");
+  }
+
+  const literalIp = net.isIP(host);
+  if (literalIp && isUnsafeIpAddress(host)) {
+    throw new Error("Blocked host for security reasons");
+  }
+
+  if (!literalIp) {
+    let resolved = [];
+    try {
+      resolved = await dns.lookup(host, { all: true, verbatim: true });
+    } catch {
+      throw new Error("Could not resolve host");
+    }
+    const ips = (resolved || []).map((r) => String(r?.address || "")).filter(Boolean);
+    if (!ips.length || ips.some((ip) => isUnsafeIpAddress(ip))) {
+      throw new Error("Blocked host for security reasons");
+    }
+  }
+
+  return parsed.toString();
+}
+
+async function fetchSafeUrlWithRedirects(rawUrl, { timeoutMs = 9000, maxRedirects = 4, headers = {} } = {}) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    let current = await assertSafeImportUrl(rawUrl);
+    for (let i = 0; i <= maxRedirects; i += 1) {
+      const res = await fetch(current, {
+        method: "GET",
+        redirect: "manual",
+        signal: ac.signal,
+        headers
+      });
+
+      const status = Number(res.status || 0);
+      if (status >= 300 && status < 400) {
+        const location = String(res.headers.get("location") || "").trim();
+        if (!location) throw new Error(`Redirect missing location (${status})`);
+        current = await assertSafeImportUrl(new URL(location, current).toString());
+        continue;
+      }
+
+      return { response: res, finalUrl: current };
+    }
+    throw new Error("Too many redirects");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function extractHtmlTitle(html) {
   const raw = String(html || "");
   const m = raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
@@ -1859,22 +2160,13 @@ async function fetchYoutubeTranscript(url) {
 async function fetchUrlAsSource(url) {
   const raw = String(url || "").trim();
   if (!/^https?:\/\//i.test(raw)) throw new Error("Only http/https URLs are supported");
-
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 9000);
-  let response;
-  try {
-    response = await fetch(raw, {
-      method: "GET",
-      redirect: "follow",
-      signal: ac.signal,
-      headers: {
-        "User-Agent": "NotematicaSourceFetcher/1.0"
-      }
-    });
-  } finally {
-    clearTimeout(timer);
-  }
+  const { response } = await fetchSafeUrlWithRedirects(raw, {
+    timeoutMs: 9000,
+    maxRedirects: 4,
+    headers: {
+      "User-Agent": "NotematicaSourceFetcher/1.0"
+    }
+  });
 
   if (!response.ok) throw new Error(`Fetch failed (${response.status})`);
   const ctype = String(response.headers.get("content-type") || "").toLowerCase();

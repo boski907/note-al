@@ -1,5 +1,5 @@
 /* Notematica service worker: caches core assets for offline loads. */
-const CACHE_NAME = "notematica-v9";
+const CACHE_NAME = "notematica-v10";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -16,6 +16,7 @@ const CORE_ASSETS = [
   "/privacy.html",
   "/terms.html",
   "/share.html",
+  "/share.js",
   "/offline.html",
   "/logo-mark-notematica.svg",
   "/logo-mark-notematica.svg.png",
@@ -75,6 +76,7 @@ self.addEventListener("fetch", (event) => {
   const isHotAsset =
     url.pathname === "/styles.css" ||
     url.pathname === "/app.js" ||
+    url.pathname === "/share.js" ||
     url.pathname === "/welcome.js" ||
     url.pathname === "/login.js" ||
     url.pathname === "/welcome.html" ||
