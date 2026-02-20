@@ -1534,7 +1534,7 @@ function formatSourcesForPrompt(sources) {
 
 function citationsFromSources(sources) {
   const srcs = Array.isArray(sources) ? sources : [];
-  return srcs.map((s) => ({ id: s.id, name: s.name, url: s.url || "" }));
+  return srcs.map((s) => ({ id: s.id, name: s.name, url: s.url || "", kind: s.kind || "" }));
 }
 
 function cleanImportedText(value) {
@@ -1890,6 +1890,126 @@ async function fetchUrlAsSource(url) {
   return parsed;
 }
 
+function normalizeSearchResultUrl(href) {
+  const raw = decodeHtmlEntities(String(href || "").trim()).replace(/&amp;/g, "&");
+  if (!raw) return "";
+  const withProto = raw.startsWith("//") ? `https:${raw}` : raw;
+  try {
+    const u = new URL(withProto);
+    if (u.hostname.includes("duckduckgo.com") && u.pathname.startsWith("/l/")) {
+      const uddg = u.searchParams.get("uddg");
+      if (uddg) {
+        try {
+          return decodeURIComponent(uddg);
+        } catch {
+          return uddg;
+        }
+      }
+    }
+    return u.toString();
+  } catch {
+    return "";
+  }
+}
+
+function extractDuckDuckGoResults(html, { limit = 6, kind = "web" } = {}) {
+  const raw = String(html || "");
+  const out = [];
+  const seen = new Set();
+  const anchorRe = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = anchorRe.exec(raw)) !== null) {
+    if (out.length >= Math.max(1, Number(limit) || 6)) break;
+    const url = normalizeSearchResultUrl(m[1]);
+    if (!/^https?:\/\//i.test(url)) continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    const title = cleanImportedText(
+      decodeHtmlEntities(String(m[2] || "").replace(/<[^>]+>/g, " "))
+        .replace(/\s+/g, " ")
+        .trim()
+    );
+    if (!title) continue;
+    const near = raw.slice(m.index, Math.min(raw.length, m.index + 2400));
+    let snippet = "";
+    const snippetMatch = near.match(/<(?:a|div)[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/(?:a|div)>/i);
+    if (snippetMatch) {
+      snippet = cleanImportedText(
+        decodeHtmlEntities(String(snippetMatch[1] || "").replace(/<[^>]+>/g, " "))
+          .replace(/\s+/g, " ")
+          .trim()
+      );
+    }
+    out.push({
+      title: title.slice(0, 180),
+      url,
+      snippet: snippet.slice(0, 420),
+      kind
+    });
+  }
+  return out;
+}
+
+async function searchDuckDuckGo(query, { limit = 6 } = {}) {
+  const q = String(query || "").trim();
+  if (!q) return [];
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 9000);
+  try {
+    const res = await fetch(`https://duckduckgo.com/html/?q=${encodeURIComponent(q)}&kl=us-en`, {
+      method: "GET",
+      signal: ac.signal,
+      headers: {
+        "User-Agent": "NotematicaSearchBot/1.0"
+      }
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    return extractDuckDuckGoResults(html, { limit, kind: "web" });
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function buildLearningSearchSources(question, { maxSources = 6 } = {}) {
+  const n = Math.max(1, Math.min(10, Number(maxSources) || 6));
+  const [web, videos] = await Promise.all([
+    searchDuckDuckGo(question, { limit: Math.max(3, n) }),
+    searchDuckDuckGo(`site:youtube.com ${question}`, { limit: Math.max(2, Math.ceil(n / 2)) })
+  ]);
+
+  const merged = [];
+  const seen = new Set();
+  const pushUnique = (rows, kind) => {
+    for (const r of rows) {
+      const url = String(r?.url || "").trim();
+      if (!/^https?:\/\//i.test(url) || seen.has(url)) continue;
+      seen.add(url);
+      merged.push({
+        name: String(r?.title || url).slice(0, 160),
+        url,
+        kind,
+        content: cleanImportedText(
+          [
+            String(r?.title || "").trim(),
+            String(r?.snippet || "").trim(),
+            `URL: ${url}`
+          ]
+            .filter(Boolean)
+            .join("\n")
+        ).slice(0, 18000)
+      });
+      if (merged.length >= n) return;
+    }
+  };
+
+  pushUnique(web, "web_search");
+  if (merged.length < n) pushUnique(videos, "video_search");
+  return normalizeImportedSources(merged, { maxSources: n, maxCharsPerSource: 18000 });
+}
+
 function normalizeImageMimeType(rawMime, fileName = "") {
   const safe = String(rawMime || "")
     .split(";")[0]
@@ -2174,9 +2294,13 @@ async function generateStudyPlan(user, days = 7, minutesPerDay = 20) {
   };
 }
 
-async function runTutorAnswer(noteText, question, sources = []) {
+async function runTutorAnswer(noteText, question, sources = [], { mode = "local_context" } = {}) {
   if (!OPENAI_API_KEY) throw new Error("Missing OPENAI_API_KEY");
   const srcBlock = formatSourcesForPrompt(sources);
+  const usingWebSearch = mode === "web_search";
+  const systemPrompt = usingWebSearch
+    ? "You are a learning search tutor. Use ONLY the provided web sources. Prioritize high-signal study facts, skip irrelevant details, and be clear about uncertainty. Add bracket citations like [S1] for factual claims. End with 2-4 bullet points under 'Related resources' and reference source titles."
+    : "You are a study tutor. Use ONLY the provided context (note + sources). If uncertain, say what is missing. When you state a factual claim derived from sources, add bracket citations like [S1] inline.";
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -2188,12 +2312,11 @@ async function runTutorAnswer(noteText, question, sources = []) {
       input: [
         {
           role: "system",
-          content:
-            "You are a study tutor. Use ONLY the provided context (note + sources). If uncertain, say what is missing. When you state a factual claim derived from sources, add bracket citations like [S1] inline."
+          content: systemPrompt
         },
         {
           role: "user",
-          content: `Context note:\n${noteText}\n\n${srcBlock ? `Sources:\n${srcBlock}\n\n` : ""}Student question:\n${question}\n\nRespond with: direct answer, short explanation, and one follow-up question.`
+          content: `Context note:\n${noteText}\n\n${srcBlock ? `Sources:\n${srcBlock}\n\n` : ""}${usingWebSearch ? "Student search request" : "Student question"}:\n${question}\n\nRespond with: direct answer, short explanation, and ${usingWebSearch ? "key takeaways." : "one follow-up question."}`
         }
       ]
     })
@@ -2866,11 +2989,30 @@ const server = http.createServer(async (req, res) => {
         const body = parseJsonBody(await readBody(req));
         const noteText = String(body.noteText || "");
         const question = String(body.question || "");
-        const sources = normalizeImportedSources(body.sources, { maxSources: 6, maxCharsPerSource: 18000 });
+        const preferWebSearch = Boolean(body.preferWebSearch);
+        let sources = normalizeImportedSources(body.sources, { maxSources: 6, maxCharsPerSource: 18000 });
         if (!question.trim()) return json(res, 400, { error: "question is required" });
-        if (!noteText.trim() && !sources.length) return json(res, 400, { error: "noteText or sources are required" });
-        const answer = await runTutorAnswer(noteText, question, sources);
-        return json(res, 200, { answer, citations: citationsFromSources(sources) });
+        let mode = "local_context";
+        let tutorNoteText = noteText;
+
+        if (preferWebSearch) {
+          const webSources = await buildLearningSearchSources(question, { maxSources: 6 });
+          if (webSources.length) {
+            sources = webSources;
+            tutorNoteText = "";
+            mode = "web_search";
+          } else if (!tutorNoteText.trim() && !sources.length) {
+            return json(res, 502, { error: "Could not find web results right now. Try a more specific query." });
+          }
+        } else if (!tutorNoteText.trim() && !sources.length) {
+          sources = await buildLearningSearchSources(question, { maxSources: 6 });
+          mode = "web_search";
+          if (!sources.length) {
+            return json(res, 502, { error: "Could not find web results right now. Try a more specific query." });
+          }
+        }
+        const answer = await runTutorAnswer(tutorNoteText, question, sources, { mode });
+        return json(res, 200, { answer, citations: citationsFromSources(sources), mode });
       }
 
       if (pathname === "/api/assistant/chat" && req.method === "POST") {

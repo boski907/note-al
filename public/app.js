@@ -517,14 +517,9 @@ async function runHomePrompt() {
   if (!prompt) return;
   if (tutorQuestionEl) tutorQuestionEl.value = prompt;
   if (homeComposerInputEl) homeComposerInputEl.value = "";
+  setHomeComposeStatus("Searching web and video learning sources...");
   setView("study_tools");
-  const noteText = editorEl.innerText.trim();
-  const sources = getAiSourcesForRequest(6);
-  if (!noteText && !sources.length) {
-    tutorOutputEl.textContent = "Add notes or import files first, then ask tutor.";
-    return;
-  }
-  await askTutor();
+  await askTutor({ preferWebSearch: true, source: "home" });
 }
 
 function authScopedKey(prefix) {
@@ -1743,9 +1738,11 @@ function renderCitationsInline(citations = []) {
     const id = String(c?.id || "").trim();
     const url = String(c?.url || "").trim();
     const name = String(c?.name || "").trim();
+    const kind = String(c?.kind || "").trim().toLowerCase();
     const label = id || `S${i + 1}`;
+    const title = name ? name.slice(0, 66) : kind.includes("video") ? "Video result" : "Source";
     const a = document.createElement("a");
-    a.textContent = `[${label}]`;
+    a.textContent = `[${label}] ${title}`;
     a.style.marginRight = "0.45rem";
     a.style.fontWeight = "800";
     a.style.color = "#164e63";
@@ -1903,24 +1900,32 @@ async function importPreparedSources(sources, rejected = 0, { setStatus = setSou
   return { ok: false, importedCount: 0 };
 }
 
-async function askTutor() {
+async function askTutor({ preferWebSearch = false, source = "study_tools" } = {}) {
   const question = String(tutorQuestionEl.value || "").trim();
   const noteText = editorEl.innerText.trim();
   const sources = getAiSourcesForRequest(6);
+  const shouldPreferWeb = Boolean(preferWebSearch);
   if (!question) return (tutorOutputEl.textContent = "Enter a tutor question.");
-  if (!noteText && !sources.length) return (tutorOutputEl.textContent = "Add note text or import files first.");
-  tutorOutputEl.textContent = "Tutor is thinking...";
+  tutorOutputEl.textContent =
+    shouldPreferWeb || !(noteText || sources.length)
+      ? "Searching the web for learning resources..."
+      : "Tutor is thinking...";
   try {
     const out = await api("/api/tutor", {
       method: "POST",
-      body: JSON.stringify({ question, noteText, sources })
+      body: JSON.stringify({ question, noteText, sources, preferWebSearch: shouldPreferWeb })
     });
     setOutputWithCitations(tutorOutputEl, out.answer || "No tutor response.", out.citations || []);
+    if (source === "home") {
+      if (out.mode === "web_search") setHomeComposeStatus("Showing web pages and videos for your topic.");
+      else setHomeComposeStatus("Using your current note and attached files.");
+    }
     awardXp("tutor", 8);
     await countOutputAndMaybeShowAds("tutor.ask");
   } catch (e) {
     const quota = formatQuotaError(e, "Tutor limit reached.");
     tutorOutputEl.textContent = quota ? quota : `Tutor error: ${e.message}`;
+    if (source === "home") setHomeComposeStatus(quota ? quota : `Tutor error: ${e.message}`, true);
   }
 }
 
