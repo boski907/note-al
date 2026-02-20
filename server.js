@@ -35,6 +35,7 @@ const TRANSCRIBE_MAX_BODY_BYTES = Number(process.env.TRANSCRIBE_MAX_BODY_BYTES |
 const STRIPE_WEBHOOK_MAX_BODY_BYTES = Number(process.env.STRIPE_WEBHOOK_MAX_BODY_BYTES || 2_000_000); // 2MB
 
 const RATE_LIMIT_ENABLED = (process.env.RATE_LIMIT_ENABLED || (IS_PROD ? "1" : "0")) !== "0";
+const RATE_LIMIT_SHARED = (process.env.RATE_LIMIT_SHARED || (IS_PROD ? "1" : "0")) !== "0";
 const RL_AUTH_WINDOW_MS = Number(process.env.RL_AUTH_WINDOW_MS || 10 * 60 * 1000); // 10 min
 const RL_AUTH_LOGIN_MAX = Number(process.env.RL_AUTH_LOGIN_MAX || 20);
 const RL_AUTH_REGISTER_MAX = Number(process.env.RL_AUTH_REGISTER_MAX || 10);
@@ -93,6 +94,7 @@ const ADSENSE_CLIENT = process.env.ADSENSE_CLIENT || "";
 const ADSENSE_SLOT_BOTTOM = process.env.ADSENSE_SLOT_BOTTOM || "";
 const ADSENSE_SLOT_BREAK = process.env.ADSENSE_SLOT_BREAK || "";
 const ADS_ENABLED = (process.env.ADS_ENABLED || "0") === "1";
+const CSRF_ORIGIN_CHECK_ENABLED = (process.env.CSRF_ORIGIN_CHECK_ENABLED || (IS_PROD ? "1" : "0")) !== "0";
 const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || "notematica_auth";
 const AUTH_COOKIE_MAX_AGE_SEC = Math.max(60, Number(process.env.AUTH_COOKIE_MAX_AGE_SEC || 60 * 60 * 24 * 30)); // 30d
 const AUTH_COOKIE_SAMESITE = String(process.env.AUTH_COOKIE_SAMESITE || "Lax");
@@ -220,6 +222,59 @@ function getCorsAllowedOrigin(origin) {
   return allow.has(o) ? o : "";
 }
 
+function isStateChangingMethod(method) {
+  const m = String(method || "").toUpperCase();
+  return m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE";
+}
+
+function normalizeOriginFromUrl(raw) {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+  try {
+    return new URL(v).origin.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function requestHostOrigins(req) {
+  const host = String(req?.headers?.host || "").trim().toLowerCase();
+  if (!host) return new Set();
+  return new Set([`https://${host}`, `http://${host}`]);
+}
+
+function isTrustedRequestOrigin(req, origin) {
+  const o = String(origin || "").trim().toLowerCase();
+  if (!o) return false;
+  if (getCorsAllowedOrigin(o)) return true;
+  if (requestHostOrigins(req).has(o)) return true;
+
+  const appOrigin = normalizeOriginFromUrl(APP_BASE_URL);
+  if (appOrigin && o === appOrigin) return true;
+  return false;
+}
+
+function validateCsrfOrigin(req) {
+  const method = String(req?.method || "").toUpperCase();
+  const route = safeRequestPath(req);
+  if (!isStateChangingMethod(method) || !route.startsWith("/api/")) {
+    return { ok: true, reason: "not_state_changing" };
+  }
+
+  const origin = normalizeOriginFromUrl(req?.headers?.origin || "");
+  const refererOrigin = normalizeOriginFromUrl(req?.headers?.referer || "");
+  const candidate = origin || refererOrigin;
+  if (!candidate) {
+    // Non-browser clients may omit these. Keep local/dev usable while enforcing in production.
+    return { ok: !IS_PROD, reason: "missing_origin_or_referer" };
+  }
+
+  if (!isTrustedRequestOrigin(req, candidate)) {
+    return { ok: false, reason: "untrusted_origin", origin: candidate };
+  }
+  return { ok: true, reason: "trusted_origin", origin: candidate };
+}
+
 function applyCors(req, res) {
   const origin = req.headers.origin || "";
   const allowed = getCorsAllowedOrigin(origin);
@@ -243,6 +298,16 @@ function json(res, status, payload) {
 }
 
 function sendFile(req, res, filePath) {
+  const method = String(req?.method || "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD") {
+    res.writeHead(405, {
+      Allow: "GET, HEAD",
+      ...securityHeaders()
+    });
+    res.end("Method not allowed");
+    return;
+  }
+
   if (!filePath.startsWith(PUBLIC_DIR)) {
     res.writeHead(403, securityHeaders());
     res.end("Forbidden");
@@ -483,7 +548,46 @@ function getAuthToken(req) {
 }
 
 const _rateBuckets = new Map();
-function rateLimitConsume(key, limit, windowMs) {
+let _sharedRateLimitWarned = false;
+let _sharedRateLimitUnavailable = false;
+
+async function rateLimitConsumeShared(key, limit, windowMs) {
+  if (!RATE_LIMIT_SHARED || !USE_SUPABASE || !SUPABASE_SERVICE_ROLE_KEY || _sharedRateLimitUnavailable) return null;
+  try {
+    const rows = await supabaseAdminRestRequest("/rest/v1/rpc/consume_security_rate_limit", "POST", {
+      p_key: String(key || "").slice(0, 220),
+      p_limit: Math.max(1, Math.floor(Number(limit) || 1)),
+      p_window_ms: Math.max(1000, Math.floor(Number(windowMs) || 1000))
+    });
+    const rec = Array.isArray(rows) ? rows[0] : rows;
+    if (!rec || typeof rec !== "object") return null;
+
+    const ok = Boolean(rec.ok);
+    const remaining = Math.max(0, Number(rec.remaining) || 0);
+    const resetAtMs = parseIsoMs(rec.reset_at);
+    return {
+      ok,
+      remaining,
+      resetAt: resetAtMs > 0 ? resetAtMs : Date.now() + Math.max(1000, Number(windowMs) || 1000)
+    };
+  } catch (e) {
+    _sharedRateLimitUnavailable = true;
+    if (!_sharedRateLimitWarned) {
+      _sharedRateLimitWarned = true;
+      try {
+        console.warn("Shared rate limiter unavailable; falling back to local memory buckets:", e instanceof Error ? e.message : e);
+      } catch {
+        // ignore logging errors
+      }
+    }
+    return null;
+  }
+}
+
+async function rateLimitConsume(key, limit, windowMs) {
+  const shared = await rateLimitConsumeShared(key, limit, windowMs);
+  if (shared) return shared;
+
   const now = Date.now();
   const bucket = _rateBuckets.get(key);
   if (!bucket || now >= bucket.resetAt) {
@@ -918,9 +1022,9 @@ function logSecurityEvent(eventType, options = {}) {
   return event;
 }
 
-function rateLimitOr429(res, key, limit, windowMs, context = {}) {
+async function rateLimitOr429(res, key, limit, windowMs, context = {}) {
   if (!RATE_LIMIT_ENABLED) return true;
-  const out = rateLimitConsume(key, limit, windowMs);
+  const out = await rateLimitConsume(key, limit, windowMs);
   if (out.ok) return true;
 
   const parsedKey = parseRateLimitKey(key);
@@ -1198,9 +1302,34 @@ async function requireUser(req, res) {
   const cookies = parseCookieHeader(req.headers.cookie || "");
   const hasBearer = authHeader.startsWith("Bearer ");
   const hasAuthCookie = String(cookies[AUTH_COOKIE_NAME] || "").trim().length > 0;
+  const usingCookieSession = hasAuthCookie && !hasBearer;
   const ip = getClientIp(req);
   const route = safeRequestPath(req);
   const method = String(req.method || "").toUpperCase();
+
+  const enforceCsrfOr403 = (userId = "", email = "") => {
+    if (!CSRF_ORIGIN_CHECK_ENABLED || !usingCookieSession) return true;
+    const check = validateCsrfOrigin(req);
+    if (check.ok) return true;
+
+    logSecurityEvent("auth.csrf_blocked", {
+      severity: "high",
+      ip,
+      userId,
+      email,
+      route,
+      method,
+      reason: check.reason || "csrf_origin_validation_failed",
+      status: 403,
+      meta: {
+        origin: normalizeOriginFromUrl(req.headers.origin || ""),
+        refererOrigin: normalizeOriginFromUrl(req.headers.referer || "")
+      }
+    });
+    json(res, 403, { error: "Forbidden" });
+    return false;
+  };
+
   if (!token) {
     logSecurityEvent("auth.unauthorized", {
       severity: "medium",
@@ -1219,6 +1348,7 @@ async function requireUser(req, res) {
   if (USE_SUPABASE) {
     try {
       const user = await supabaseAuthRequest("/auth/v1/user", "GET", null, token);
+      if (!enforceCsrfOr403(user.id, user.email)) return null;
       if (hasBearer && !hasAuthCookie) setAuthCookie(res, token);
       return { id: user.id, email: user.email, token };
     } catch {
@@ -1273,6 +1403,7 @@ async function requireUser(req, res) {
 
   session.lastSeenAt = new Date().toISOString();
   saveJson(SESSIONS_FILE, sessions);
+  if (!enforceCsrfOr403(user.id, user.email)) return null;
   if (hasBearer && !hasAuthCookie) setAuthCookie(res, token);
   return { id: user.id, email: user.email, token };
 }
@@ -3391,7 +3522,12 @@ const server = http.createServer(async (req, res) => {
         res.end();
         return;
       }
-      if (pathname === "/api/health" && req.method === "GET") {
+      if (pathname === "/api/health" && (req.method === "GET" || req.method === "HEAD")) {
+        if (req.method === "HEAD") {
+          res.writeHead(200, { "Cache-Control": "no-store", ...securityHeaders() });
+          res.end();
+          return;
+        }
         return json(res, 200, { ok: true, time: new Date().toISOString() });
       }
       if (pathname === "/api/stripe/webhook" && req.method === "POST") {
@@ -3616,11 +3752,11 @@ const server = http.createServer(async (req, res) => {
 
       if (pathname === "/api/auth/register" && req.method === "POST") {
         if (
-          !rateLimitOr429(res, `ip:${ip}:auth:register`, RL_AUTH_REGISTER_MAX, RL_AUTH_WINDOW_MS, {
+          !(await rateLimitOr429(res, `ip:${ip}:auth:register`, RL_AUTH_REGISTER_MAX, RL_AUTH_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method
-          })
+          }))
         )
           return;
         const body = parseJsonBody(await readBody(req));
@@ -3667,11 +3803,11 @@ const server = http.createServer(async (req, res) => {
 
       if (pathname === "/api/auth/login" && req.method === "POST") {
         if (
-          !rateLimitOr429(res, `ip:${ip}:auth:login`, RL_AUTH_LOGIN_MAX, RL_AUTH_WINDOW_MS, {
+          !(await rateLimitOr429(res, `ip:${ip}:auth:login`, RL_AUTH_LOGIN_MAX, RL_AUTH_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method
-          })
+          }))
         )
           return;
         const body = parseJsonBody(await readBody(req));
@@ -3832,21 +3968,21 @@ const server = http.createServer(async (req, res) => {
         if (!user) return;
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
         if (
-          !rateLimitOr429(res, `ip:${ip}:ai:flashcards`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
+          !(await rateLimitOr429(res, `ip:${ip}:ai:flashcards`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method,
             userId: user.id
-          })
+          }))
         )
           return;
         if (
-          !rateLimitOr429(res, `user:${user.id}:ai:flashcards`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
+          !(await rateLimitOr429(res, `user:${user.id}:ai:flashcards`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method,
             userId: user.id
-          })
+          }))
         )
           return;
         const tier = await getCachedEntitlements(user);
@@ -3935,21 +4071,21 @@ const server = http.createServer(async (req, res) => {
         if (!user) return;
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
         if (
-          !rateLimitOr429(res, `ip:${ip}:ai:generic`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
+          !(await rateLimitOr429(res, `ip:${ip}:ai:generic`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method,
             userId: user.id
-          })
+          }))
         )
           return;
         if (
-          !rateLimitOr429(res, `user:${user.id}:ai:generic`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
+          !(await rateLimitOr429(res, `user:${user.id}:ai:generic`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method,
             userId: user.id
-          })
+          }))
         )
           return;
         const tier = await getCachedEntitlements(user);
@@ -3978,21 +4114,21 @@ const server = http.createServer(async (req, res) => {
         if (!user) return;
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
         if (
-          !rateLimitOr429(res, `ip:${ip}:ai:tutor`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
+          !(await rateLimitOr429(res, `ip:${ip}:ai:tutor`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method,
             userId: user.id
-          })
+          }))
         )
           return;
         if (
-          !rateLimitOr429(res, `user:${user.id}:ai:tutor`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
+          !(await rateLimitOr429(res, `user:${user.id}:ai:tutor`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method,
             userId: user.id
-          })
+          }))
         )
           return;
         const tier = await getCachedEntitlements(user);
@@ -4052,21 +4188,21 @@ const server = http.createServer(async (req, res) => {
         }
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
         if (
-          !rateLimitOr429(res, `ip:${ip}:ai:assistant`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
+          !(await rateLimitOr429(res, `ip:${ip}:ai:assistant`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method,
             userId: user.id
-          })
+          }))
         )
           return;
         if (
-          !rateLimitOr429(res, `user:${user.id}:ai:assistant`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
+          !(await rateLimitOr429(res, `user:${user.id}:ai:assistant`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method,
             userId: user.id
-          })
+          }))
         )
           return;
         const tier = await getCachedEntitlements(user);
@@ -4101,21 +4237,21 @@ const server = http.createServer(async (req, res) => {
         const user = await requireUser(req, res);
         if (!user) return;
         if (
-          !rateLimitOr429(res, `ip:${ip}:ai:sources`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
+          !(await rateLimitOr429(res, `ip:${ip}:ai:sources`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method,
             userId: user.id
-          })
+          }))
         )
           return;
         if (
-          !rateLimitOr429(res, `user:${user.id}:ai:sources`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
+          !(await rateLimitOr429(res, `user:${user.id}:ai:sources`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method,
             userId: user.id
-          })
+          }))
         )
           return;
         const body = parseJsonBody(await readBody(req, { maxBytes: DEFAULT_MAX_BODY_BYTES }));
@@ -4195,21 +4331,21 @@ const server = http.createServer(async (req, res) => {
         const user = await requireUser(req, res);
         if (!user) return;
         if (
-          !rateLimitOr429(res, `ip:${ip}:ai:transcribe`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
+          !(await rateLimitOr429(res, `ip:${ip}:ai:transcribe`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method,
             userId: user.id
-          })
+          }))
         )
           return;
         if (
-          !rateLimitOr429(res, `user:${user.id}:ai:transcribe`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
+          !(await rateLimitOr429(res, `user:${user.id}:ai:transcribe`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method,
             userId: user.id
-          })
+          }))
         )
           return;
         const tier = await getCachedEntitlements(user);
@@ -4233,21 +4369,21 @@ const server = http.createServer(async (req, res) => {
         if (!user) return;
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
         if (
-          !rateLimitOr429(res, `ip:${ip}:ai:testprep`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
+          !(await rateLimitOr429(res, `ip:${ip}:ai:testprep`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method,
             userId: user.id
-          })
+          }))
         )
           return;
         if (
-          !rateLimitOr429(res, `user:${user.id}:ai:testprep`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
+          !(await rateLimitOr429(res, `user:${user.id}:ai:testprep`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
             ip,
             route: pathname,
             method: req.method,
             userId: user.id
-          })
+          }))
         )
           return;
         const tier = await getCachedEntitlements(user);
