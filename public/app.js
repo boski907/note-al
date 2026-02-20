@@ -125,6 +125,10 @@ const tabOpenSourcesBtn = document.getElementById("tab-open-sources-btn");
 const tabOpenStudyBtn = document.getElementById("tab-open-study-btn");
 const homeComposerInputEl = document.getElementById("home-composer-input");
 const homeComposeBtnEl = document.getElementById("home-compose-btn");
+const homeAttachBtnEl = document.getElementById("home-attach-btn");
+const tutorAttachBtnEl = document.getElementById("tutor-attach-btn");
+const chatAttachFilesEl = document.getElementById("chat-attach-files");
+const homeComposeStatusEl = document.getElementById("home-compose-status");
 const homeChipTranscribeEl = document.getElementById("home-chip-transcribe");
 const homeChipFileSummaryEl = document.getElementById("home-chip-file-summary");
 const homeChipHomeworkEl = document.getElementById("home-chip-homework");
@@ -791,6 +795,17 @@ function setSourceStatus(msg, isError = false) {
   sourceStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
 }
 
+function setHomeComposeStatus(msg, isError = false) {
+  if (!homeComposeStatusEl) return;
+  homeComposeStatusEl.textContent = msg;
+  homeComposeStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function setChatAttachStatus(msg, isError = false) {
+  setHomeComposeStatus(msg, isError);
+  setSourceStatus(msg, isError);
+}
+
 function setPlanStatus(msg, isError = false) {
   planStatusEl.textContent = msg;
   planStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
@@ -1363,6 +1378,7 @@ async function logout() {
   xpStatusEl.textContent = "";
   setLearningStatus("");
   setSourceStatus("");
+  setHomeComposeStatus("");
   if (sourceUrlsEl) sourceUrlsEl.value = "";
   if (sourceFilesEl) sourceFilesEl.value = "";
   window.location.href = "/welcome.html";
@@ -1470,8 +1486,8 @@ function isMediaExt(ext) {
   return [".mp4", ".mov", ".m4v", ".webm", ".mp3", ".wav", ".m4a", ".ogg"].includes(ext);
 }
 
-async function readSelectedFilesAsSources() {
-  const files = [...(sourceFilesEl.files || [])];
+async function readSelectedFilesAsSources(fileInputEl = sourceFilesEl) {
+  const files = [...(fileInputEl?.files || [])];
   const accepted = files.filter((f) => canImportFile(f)).slice(0, 20);
   const rejected = files.length - accepted.length;
   const sources = [];
@@ -1790,29 +1806,92 @@ function applyImportedSources(imported = []) {
   renderLearningFeed();
 }
 
-async function importSources({ sources = [], urls = [] } = {}) {
+async function importSources({ sources = [], urls = [], setStatus = setSourceStatus } = {}) {
   if (!token) {
-    setSourceStatus("Session expired. Sign in again, then retry import.", true);
+    setStatus("Session expired. Sign in again, then retry import.", true);
     return { ok: false, importedCount: 0 };
   }
   if (!sources.length && !urls.length) {
-    setSourceStatus("Select files or enter URLs first.", true);
+    setStatus("Select files or enter URLs first.", true);
     return { ok: false, importedCount: 0 };
   }
-  setSourceStatus("Importing sources...");
+  setStatus("Importing sources...");
   try {
     const out = await requestSourceImport({ sources, urls });
     const imported = Array.isArray(out?.imported) ? out.imported : [];
     applyImportedSources(imported);
-    setSourceStatus(`Imported ${imported.length} source(s) into this note.`);
+    setStatus(`Imported ${imported.length} source(s) into this note.`);
     fireAndForgetTrack("sources.import_client", { count: imported.length });
     awardXp("import", 6);
     await countImportAndMaybeShowAds();
     return { ok: true, importedCount: imported.length };
   } catch (e) {
-    setSourceStatus(formatImportError(e), true);
+    setStatus(formatImportError(e), true);
     return { ok: false, importedCount: 0 };
   }
+}
+
+async function importPreparedSources(sources, rejected = 0, { setStatus = setSourceStatus } = {}) {
+  const arr = Array.isArray(sources) ? sources : [];
+  if (!arr.length) {
+    setStatus(
+      rejected > 0
+        ? "No supported files selected. Use text, PDF, DOCX, screenshots/images, or video/audio files."
+        : "Select files first.",
+      true
+    );
+    return { ok: false, importedCount: 0 };
+  }
+
+  const batches = buildSourceImportBatches(arr);
+  if (batches.length <= 1) {
+    const out = await importSources({ sources: arr, urls: [], setStatus });
+    if (out.ok && rejected > 0) {
+      setStatus(`Imported ${arr.length}. Skipped ${rejected} unsupported file(s).`);
+    }
+    return out;
+  }
+
+  if (!token) {
+    setStatus("Session expired. Sign in again, then retry import.", true);
+    return { ok: false, importedCount: 0 };
+  }
+
+  let totalImported = 0;
+  let failedFiles = 0;
+  let lastErr = null;
+  for (let i = 0; i < batches.length; i += 1) {
+    const batch = batches[i];
+    setStatus(`Importing sources... (${i + 1}/${batches.length})`);
+    try {
+      const out = await requestSourceImport({ sources: batch, urls: [] });
+      const imported = Array.isArray(out?.imported) ? out.imported : [];
+      totalImported += imported.length;
+      applyImportedSources(imported);
+    } catch (e) {
+      failedFiles += batch.length;
+      lastErr = e;
+    }
+  }
+
+  if (totalImported > 0) {
+    const skipped = rejected + failedFiles;
+    setStatus(`Imported ${totalImported} source(s) into this note.${skipped > 0 ? ` Skipped ${skipped} file(s).` : ""}`);
+    fireAndForgetTrack("sources.import_client", { count: totalImported });
+    awardXp("import", 6);
+    await countImportAndMaybeShowAds();
+    return { ok: true, importedCount: totalImported };
+  }
+
+  if (lastErr) {
+    setStatus(formatImportError(lastErr), true);
+    return { ok: false, importedCount: 0 };
+  }
+
+  if (rejected > 0) {
+    setStatus(`No supported files selected. Skipped ${rejected} unsupported file(s).`, true);
+  }
+  return { ok: false, importedCount: 0 };
 }
 
 async function askTutor() {
@@ -3018,65 +3097,9 @@ testReminderBtn.addEventListener("click", async () => {
   setReminderStatus("Test notification sent.");
 });
 importFilesBtn.addEventListener("click", async () => {
-  const { sources, rejected } = await readSelectedFilesAsSources();
-  if (!sources.length) {
-    setSourceStatus(
-      rejected > 0
-        ? "No supported files selected. Use text, PDF, DOCX, screenshots/images, or video/audio files."
-        : "Select files first.",
-      true
-    );
-    return;
-  }
-  const batches = buildSourceImportBatches(sources);
-  if (batches.length <= 1) {
-    await importSources({ sources, urls: [] });
-    if (rejected > 0) {
-      setSourceStatus(`Imported ${sources.length}. Skipped ${rejected} unsupported file(s).`);
-    }
-    return;
-  }
-
-  if (!token) {
-    setSourceStatus("Session expired. Sign in again, then retry import.", true);
-    return;
-  }
-
-  let totalImported = 0;
-  let failedFiles = 0;
-  let lastErr = null;
-  for (let i = 0; i < batches.length; i += 1) {
-    const batch = batches[i];
-    setSourceStatus(`Importing sources... (${i + 1}/${batches.length})`);
-    try {
-      const out = await requestSourceImport({ sources: batch, urls: [] });
-      const imported = Array.isArray(out?.imported) ? out.imported : [];
-      totalImported += imported.length;
-      applyImportedSources(imported);
-    } catch (e) {
-      failedFiles += batch.length;
-      lastErr = e;
-    }
-  }
-
-  if (totalImported > 0) {
-    const skipped = rejected + failedFiles;
-    setSourceStatus(
-      `Imported ${totalImported} source(s) into this note.${skipped > 0 ? ` Skipped ${skipped} file(s).` : ""}`
-    );
-    fireAndForgetTrack("sources.import_client", { count: totalImported });
-    awardXp("import", 6);
-    await countImportAndMaybeShowAds();
-    return;
-  }
-
-  if (lastErr) {
-    setSourceStatus(formatImportError(lastErr), true);
-    return;
-  }
-  if (rejected > 0) {
-    setSourceStatus(`No supported files selected. Skipped ${rejected} unsupported file(s).`, true);
-  }
+  const { sources, rejected } = await readSelectedFilesAsSources(sourceFilesEl);
+  await importPreparedSources(sources, rejected, { setStatus: setSourceStatus });
+  if (sourceFilesEl) sourceFilesEl.value = "";
 });
 importUrlsBtn.addEventListener("click", async () => {
   const urls = parseUrlInput(sourceUrlsEl.value).slice(0, 8);
@@ -3131,6 +3154,25 @@ if (homeComposerInputEl) {
     runHomePrompt().catch((err) => {
       if (tutorOutputEl) tutorOutputEl.textContent = `Tutor error: ${err.message}`;
     });
+  });
+}
+if (homeAttachBtnEl) {
+  homeAttachBtnEl.addEventListener("click", () => {
+    if (!chatAttachFilesEl) return;
+    chatAttachFilesEl.click();
+  });
+}
+if (tutorAttachBtnEl) {
+  tutorAttachBtnEl.addEventListener("click", () => {
+    if (!chatAttachFilesEl) return;
+    chatAttachFilesEl.click();
+  });
+}
+if (chatAttachFilesEl) {
+  chatAttachFilesEl.addEventListener("change", async () => {
+    const { sources, rejected } = await readSelectedFilesAsSources(chatAttachFilesEl);
+    await importPreparedSources(sources, rejected, { setStatus: setChatAttachStatus });
+    chatAttachFilesEl.value = "";
   });
 }
 if (homeChipTranscribeEl) {

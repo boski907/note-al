@@ -286,6 +286,13 @@ h1 {
   box-shadow: var(--shadow);
 }
 
+.home-composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .home-composer-input {
   width: 100%;
   border: 0;
@@ -1389,6 +1396,11 @@ body.focus-mode[data-app-view="notes"] .workspace {
 
   .home-composer {
     grid-template-columns: 1fr;
+  }
+
+  .home-composer-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .learning-grid {

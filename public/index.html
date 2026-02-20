@@ -64,8 +64,19 @@
               <h2 class="home-title">What are we studying today?</h2>
               <div class="home-composer">
                 <input id="home-composer-input" class="home-composer-input" placeholder="Ask about your lecture, homework, or readings..." />
-                <button id="home-compose-btn" class="ghost" type="button">Ask</button>
+                <div class="home-composer-actions">
+                  <button id="home-compose-btn" class="ghost" type="button">Ask</button>
+                  <button id="home-attach-btn" class="ghost" type="button">Add files</button>
+                </div>
               </div>
+              <input
+                id="chat-attach-files"
+                class="hidden"
+                type="file"
+                multiple
+                accept="image/*,video/*,audio/*,.txt,.md,.csv,.json,.html,.htm,.xml,.log,.pdf,.docx,.png,.jpg,.jpeg,.webp,.mp4,.mov,.m4v,.webm,.mp3,.wav,.m4a,.ogg"
+              />
+              <div id="home-compose-status" class="status"></div>
               <div class="home-chip-row">
                 <button id="home-chip-transcribe" class="ghost home-chip" type="button">Live transcribe</button>
                 <button id="home-chip-file-summary" class="ghost home-chip" type="button">File summary</button>
@@ -261,6 +272,7 @@
                 <div class="row wrap">
                   <input id="tutor-question" placeholder="Ask AI tutor from this note..." />
                   <button id="ask-tutor-btn" class="ghost">Ask tutor</button>
+                  <button id="tutor-attach-btn" class="ghost" type="button">Add files</button>
                 </div>
                 <div id="tutor-output" class="ai-output"></div>
               </div>
