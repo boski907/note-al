@@ -104,6 +104,8 @@ const OWNER_EMAILS = (process.env.OWNER_EMAILS || "lboski@live.com")
   .split(",")
   .map((x) => String(x || "").trim().toLowerCase())
   .filter(Boolean);
+// Temporary private mode: only owner accounts can access authenticated app features.
+const OWNER_ONLY_MODE = (process.env.OWNER_ONLY_MODE || "1") !== "0";
 
 const APP_BASE_URL = process.env.APP_BASE_URL || `http://${HOST}:${PORT}`;
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
@@ -1188,6 +1190,10 @@ function isOwnerUser(user) {
   return OWNER_EMAILS.includes(email);
 }
 
+function isOwnerEmail(email) {
+  return OWNER_EMAILS.includes(sanitizeEmail(email || ""));
+}
+
 function looksLikeEmail(value) {
   const v = sanitizeEmail(value);
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
@@ -1348,6 +1354,21 @@ async function requireUser(req, res) {
   if (USE_SUPABASE) {
     try {
       const user = await supabaseAuthRequest("/auth/v1/user", "GET", null, token);
+      if (OWNER_ONLY_MODE && !isOwnerUser(user)) {
+        logSecurityEvent("auth.owner_only_blocked", {
+          severity: "medium",
+          ip,
+          userId: user.id,
+          email: user.email,
+          route,
+          method,
+          reason: "owner_only_mode_active",
+          status: 403
+        });
+        clearAuthCookie(res);
+        json(res, 403, { error: "This app is currently private." });
+        return null;
+      }
       if (!enforceCsrfOr403(user.id, user.email)) return null;
       if (hasBearer && !hasAuthCookie) setAuthCookie(res, token);
       return { id: user.id, email: user.email, token };
@@ -1398,6 +1419,22 @@ async function requireUser(req, res) {
     });
     clearAuthCookie(res);
     json(res, 401, { error: "Unauthorized" });
+    return null;
+  }
+
+  if (OWNER_ONLY_MODE && !isOwnerUser(user)) {
+    logSecurityEvent("auth.owner_only_blocked", {
+      severity: "medium",
+      ip,
+      userId: user.id,
+      email: user.email,
+      route,
+      method,
+      reason: "owner_only_mode_active",
+      status: 403
+    });
+    clearAuthCookie(res);
+    json(res, 403, { error: "This app is currently private." });
     return null;
   }
 
@@ -3720,6 +3757,10 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (pathname.startsWith("/api/share/") && req.method === "GET") {
+        if (OWNER_ONLY_MODE) {
+          const user = await requireOwnerUser(req, res);
+          if (!user) return;
+        }
         const shareId = decodeURIComponent(pathname.replace("/api/share/", ""));
         const entry = getShareEntry(shareId);
         if (!entry) return json(res, 404, { error: "Share not found" });
@@ -3766,6 +3807,19 @@ const server = http.createServer(async (req, res) => {
         if (!email || !password || password.length < 8) {
           return json(res, 400, { error: "Email and password (min 8 chars) are required" });
         }
+        if (OWNER_ONLY_MODE && !isOwnerEmail(email)) {
+          logSecurityEvent("auth.owner_only_blocked", {
+            severity: "medium",
+            ip,
+            email,
+            route: pathname,
+            method: req.method,
+            reason: "register_denied_owner_only",
+            status: 403
+          });
+          clearAuthCookie(res);
+          return json(res, 403, { error: "This app is currently private." });
+        }
 
         if (USE_SUPABASE) {
           const result = await supabaseAuthRequest("/auth/v1/signup", "POST", { email, password });
@@ -3773,6 +3827,10 @@ const server = http.createServer(async (req, res) => {
           const expiresIn = Number(result?.session?.expires_in || result?.expires_in || 0);
           if (token) setAuthCookie(res, token, { maxAgeSec: expiresIn > 0 ? expiresIn : AUTH_COOKIE_MAX_AGE_SEC });
           const user = result?.user || result;
+          if (OWNER_ONLY_MODE && !isOwnerEmail(user?.email || email)) {
+            clearAuthCookie(res);
+            return json(res, 403, { error: "This app is currently private." });
+          }
           return json(res, 200, {
             user: { id: user?.id || "", email: user?.email || email },
             auth: { mode: "cookie", hasSession: Boolean(token) },
@@ -3813,12 +3871,30 @@ const server = http.createServer(async (req, res) => {
         const body = parseJsonBody(await readBody(req));
         const email = sanitizeEmail(body.email);
         const password = String(body.password || "");
+        if (OWNER_ONLY_MODE && !isOwnerEmail(email)) {
+          logSecurityEvent("auth.owner_only_blocked", {
+            severity: "medium",
+            ip,
+            email,
+            route: pathname,
+            method: req.method,
+            reason: "login_denied_owner_only",
+            status: 403
+          });
+          clearAuthCookie(res);
+          return json(res, 403, { error: "This app is currently private." });
+        }
 
         if (USE_SUPABASE) {
           try {
             const result = await supabaseAuthRequest("/auth/v1/token?grant_type=password", "POST", { email, password });
             const token = result.access_token;
             const expiresIn = Number(result?.expires_in || 0);
+            const loginEmail = sanitizeEmail(result?.user?.email || email);
+            if (OWNER_ONLY_MODE && !isOwnerEmail(loginEmail)) {
+              clearAuthCookie(res);
+              return json(res, 403, { error: "This app is currently private." });
+            }
             if (token) setAuthCookie(res, token, { maxAgeSec: expiresIn > 0 ? expiresIn : AUTH_COOKIE_MAX_AGE_SEC });
             return json(res, 200, {
               user: { id: result.user?.id || "", email: result.user?.email || email },
