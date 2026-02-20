@@ -1065,11 +1065,12 @@ async function api(path, options = {}) {
     "Content-Type": "application/json",
     ...(options.headers || {})
   };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (token && token !== "__cookie__") headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${base}${path}`, {
     ...options,
-    headers
+    headers,
+    credentials: "include"
   });
 
   const data = await res.json().catch(() => ({}));
@@ -1382,10 +1383,11 @@ async function logout() {
 }
 
 async function loadMe() {
-  if (!token) return;
   try {
     const data = await api("/api/auth/me", { method: "GET" });
     me = data.user;
+    token = "__cookie__";
+    localStorage.removeItem("ai_notes_token");
     setAuthStatus(`Signed in as ${me.email}`);
     updateProfileButtons();
     updateHomeWelcomeMessage();
@@ -3297,10 +3299,6 @@ window.addEventListener("popstate", () => {
 });
 
 (async function init() {
-  if (!token) {
-    window.location.href = "/welcome.html";
-    return;
-  }
   registerServiceWorker();
   await loadConfig();
   await loadMe();

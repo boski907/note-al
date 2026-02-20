@@ -24,11 +24,12 @@ async function api(path, options = {}) {
     "Content-Type": "application/json",
     ...(options.headers || {})
   };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (token && token !== "__cookie__") headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${base}${path}`, {
     ...options,
-    headers
+    headers,
+    credentials: "include"
   });
 
   const data = await res.json().catch(() => ({}));
@@ -59,8 +60,8 @@ async function login() {
         password: passwordEl.value
       })
     });
-    token = data.token;
-    localStorage.setItem("ai_notes_token", token);
+    token = data.token || "__cookie__";
+    localStorage.removeItem("ai_notes_token");
     window.location.href = "/";
   } catch (e) {
     setStatus(e.message, true);
@@ -78,7 +79,7 @@ async function register() {
     });
     token = data.token || "";
     if (token) {
-      localStorage.setItem("ai_notes_token", token);
+      localStorage.removeItem("ai_notes_token");
       window.location.href = "/";
       return;
     }
@@ -89,9 +90,10 @@ async function register() {
 }
 
 async function checkExistingSession() {
-  if (!token) return;
   try {
     await api("/api/auth/me", { method: "GET" });
+    token = "__cookie__";
+    localStorage.removeItem("ai_notes_token");
     window.location.href = "/";
   } catch {
     localStorage.removeItem("ai_notes_token");

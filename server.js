@@ -77,6 +77,9 @@ const ADSENSE_CLIENT = process.env.ADSENSE_CLIENT || "";
 const ADSENSE_SLOT_BOTTOM = process.env.ADSENSE_SLOT_BOTTOM || "";
 const ADSENSE_SLOT_BREAK = process.env.ADSENSE_SLOT_BREAK || "";
 const ADS_ENABLED = (process.env.ADS_ENABLED || "0") === "1";
+const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || "notematica_auth";
+const AUTH_COOKIE_MAX_AGE_SEC = Math.max(60, Number(process.env.AUTH_COOKIE_MAX_AGE_SEC || 60 * 60 * 24 * 30)); // 30d
+const AUTH_COOKIE_SAMESITE = String(process.env.AUTH_COOKIE_SAMESITE || "Lax");
 
 // Owner-only features (like the in-app Builder chatbox). Comma-separated emails.
 const OWNER_EMAILS = (process.env.OWNER_EMAILS || "lboski@live.com")
@@ -205,6 +208,7 @@ function applyCors(req, res) {
   if (!allowed) return;
   res.setHeader("Access-Control-Allow-Origin", allowed);
   res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
 }
@@ -400,10 +404,64 @@ function createToken() {
   return crypto.randomBytes(32).toString("hex");
 }
 
+function parseCookieHeader(cookieHeader) {
+  const out = {};
+  const raw = String(cookieHeader || "");
+  if (!raw) return out;
+  for (const part of raw.split(";")) {
+    const i = part.indexOf("=");
+    if (i <= 0) continue;
+    const key = part.slice(0, i).trim();
+    const value = part.slice(i + 1).trim();
+    if (!key) continue;
+    try {
+      out[key] = decodeURIComponent(value);
+    } catch {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function normalizeSameSite(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "none") return "None";
+  if (raw === "strict") return "Strict";
+  return "Lax";
+}
+
+function setAuthCookie(res, token, { maxAgeSec = AUTH_COOKIE_MAX_AGE_SEC } = {}) {
+  const safeToken = String(token || "").trim();
+  if (!safeToken) return;
+  const parts = [
+    `${AUTH_COOKIE_NAME}=${encodeURIComponent(safeToken)}`,
+    "Path=/",
+    "HttpOnly",
+    `Max-Age=${Math.max(0, Number(maxAgeSec) || AUTH_COOKIE_MAX_AGE_SEC)}`,
+    `SameSite=${normalizeSameSite(AUTH_COOKIE_SAMESITE)}`
+  ];
+  if (IS_PROD) parts.push("Secure");
+  res.setHeader("Set-Cookie", parts.join("; "));
+}
+
+function clearAuthCookie(res) {
+  const parts = [
+    `${AUTH_COOKIE_NAME}=`,
+    "Path=/",
+    "HttpOnly",
+    "Max-Age=0",
+    "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+    `SameSite=${normalizeSameSite(AUTH_COOKIE_SAMESITE)}`
+  ];
+  if (IS_PROD) parts.push("Secure");
+  res.setHeader("Set-Cookie", parts.join("; "));
+}
+
 function getAuthToken(req) {
   const header = req.headers.authorization || "";
-  if (!header.startsWith("Bearer ")) return "";
-  return header.slice(7).trim();
+  if (header.startsWith("Bearer ")) return header.slice(7).trim();
+  const cookies = parseCookieHeader(req.headers.cookie || "");
+  return String(cookies[AUTH_COOKIE_NAME] || "").trim();
 }
 
 const _rateBuckets = new Map();
@@ -679,6 +737,7 @@ async function supabaseAdminRestRequest(endpoint, method = "GET", body = null, p
 async function requireUser(req, res) {
   const token = getAuthToken(req);
   if (!token) {
+    clearAuthCookie(res);
     json(res, 401, { error: "Unauthorized" });
     return null;
   }
@@ -688,6 +747,7 @@ async function requireUser(req, res) {
       const user = await supabaseAuthRequest("/auth/v1/user", "GET", null, token);
       return { id: user.id, email: user.email, token };
     } catch {
+      clearAuthCookie(res);
       json(res, 401, { error: "Unauthorized" });
       return null;
     }
@@ -696,6 +756,7 @@ async function requireUser(req, res) {
   const sessions = loadJson(SESSIONS_FILE, []);
   const session = sessions.find((s) => s.token === token);
   if (!session) {
+    clearAuthCookie(res);
     json(res, 401, { error: "Unauthorized" });
     return null;
   }
@@ -703,6 +764,7 @@ async function requireUser(req, res) {
   const users = loadJson(USERS_FILE, []);
   const user = users.find((u) => u.id === session.userId);
   if (!user) {
+    clearAuthCookie(res);
     json(res, 401, { error: "Unauthorized" });
     return null;
   }
@@ -2993,6 +3055,8 @@ const server = http.createServer(async (req, res) => {
         if (USE_SUPABASE) {
           const result = await supabaseAuthRequest("/auth/v1/signup", "POST", { email, password });
           const token = result?.session?.access_token || "";
+          const expiresIn = Number(result?.session?.expires_in || result?.expires_in || 0);
+          if (token) setAuthCookie(res, token, { maxAgeSec: expiresIn > 0 ? expiresIn : AUTH_COOKIE_MAX_AGE_SEC });
           const user = result?.user || result;
           return json(res, 200, {
             token,
@@ -3017,6 +3081,7 @@ const server = http.createServer(async (req, res) => {
         const token = createToken();
         sessions.push({ token, userId: user.id, createdAt: new Date().toISOString(), lastSeenAt: new Date().toISOString() });
         saveJson(SESSIONS_FILE, sessions);
+        setAuthCookie(res, token);
 
         return json(res, 200, { token, user: { id: user.id, email: user.email } });
       }
@@ -3029,8 +3094,11 @@ const server = http.createServer(async (req, res) => {
 
         if (USE_SUPABASE) {
           const result = await supabaseAuthRequest("/auth/v1/token?grant_type=password", "POST", { email, password });
+          const token = result.access_token;
+          const expiresIn = Number(result?.expires_in || 0);
+          if (token) setAuthCookie(res, token, { maxAgeSec: expiresIn > 0 ? expiresIn : AUTH_COOKIE_MAX_AGE_SEC });
           return json(res, 200, {
-            token: result.access_token,
+            token,
             user: { id: result.user?.id || "", email: result.user?.email || email }
           });
         }
@@ -3045,12 +3113,14 @@ const server = http.createServer(async (req, res) => {
         const token = createToken();
         sessions.push({ token, userId: user.id, createdAt: new Date().toISOString(), lastSeenAt: new Date().toISOString() });
         saveJson(SESSIONS_FILE, sessions);
+        setAuthCookie(res, token);
 
         return json(res, 200, { token, user: { id: user.id, email: user.email } });
       }
 
       if (pathname === "/api/auth/logout" && req.method === "POST") {
         const token = getAuthToken(req);
+        clearAuthCookie(res);
         if (USE_SUPABASE) {
           if (!token) return json(res, 200, { ok: true });
           try {
