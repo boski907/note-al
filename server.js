@@ -42,6 +42,22 @@ const RL_AUTH_REGISTER_MAX = Number(process.env.RL_AUTH_REGISTER_MAX || 10);
 const RL_AI_WINDOW_MS = Number(process.env.RL_AI_WINDOW_MS || 60 * 1000); // 1 min
 const RL_AI_MAX_PER_IP = Number(process.env.RL_AI_MAX_PER_IP || 30);
 const RL_AI_MAX_PER_USER = Number(process.env.RL_AI_MAX_PER_USER || 60);
+const SECURITY_MONITORING_ENABLED = (process.env.SECURITY_MONITORING_ENABLED || "1") !== "0";
+const SECURITY_EVENT_RETENTION_DAYS = Math.max(1, Number(process.env.SECURITY_EVENT_RETENTION_DAYS || 14));
+const SECURITY_ALERT_RETENTION_DAYS = Math.max(1, Number(process.env.SECURITY_ALERT_RETENTION_DAYS || 30));
+const SECURITY_EVENT_MAX_ITEMS = Math.max(100, Number(process.env.SECURITY_EVENT_MAX_ITEMS || 20000));
+const SECURITY_ALERT_MAX_ITEMS = Math.max(50, Number(process.env.SECURITY_ALERT_MAX_ITEMS || 5000));
+const SECURITY_ALERT_COOLDOWN_MS = Math.max(60_000, Number(process.env.SECURITY_ALERT_COOLDOWN_MS || 15 * 60 * 1000));
+const SECURITY_ALERT_WEBHOOK_URL = String(process.env.SECURITY_ALERT_WEBHOOK_URL || "").trim();
+const SECURITY_ALERT_WEBHOOK_TIMEOUT_MS = Math.max(
+  1000,
+  Number(process.env.SECURITY_ALERT_WEBHOOK_TIMEOUT_MS || 5000)
+);
+const SECURITY_ALERT_WEBHOOK_FORMAT = String(process.env.SECURITY_ALERT_WEBHOOK_FORMAT || "auto")
+  .trim()
+  .toLowerCase();
+const SECURITY_ALERT_WEBHOOK_BEARER_TOKEN = String(process.env.SECURITY_ALERT_WEBHOOK_BEARER_TOKEN || "").trim();
+const SECURITY_ALERT_CONSOLE_ENABLED = (process.env.SECURITY_ALERT_CONSOLE_ENABLED || "1") !== "0";
 
 // Per-user quota limits (separate from burst rate limiting). Designed to cap cost exposure.
 // These apply primarily to AI / import endpoints that can incur variable costs.
@@ -105,6 +121,8 @@ const FEEDBACK_FILE = path.join(DATA_DIR, "feedback.json");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
 const USAGE_COUNTERS_FILE = path.join(DATA_DIR, "usage_counters.json");
+const SECURITY_EVENTS_FILE = path.join(DATA_DIR, "security_events.json");
+const SECURITY_ALERTS_FILE = path.join(DATA_DIR, "security_alerts.json");
 
 function ensureJsonFile(filePath, initialValue) {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -477,10 +495,450 @@ function rateLimitConsume(key, limit, windowMs) {
   return { ok: bucket.count <= limit, remaining, resetAt: bucket.resetAt };
 }
 
-function rateLimitOr429(res, key, limit, windowMs) {
+function safeRequestPath(req) {
+  try {
+    const host = String(req?.headers?.host || "localhost");
+    const pathname = new URL(String(req?.url || "/"), `http://${host}`).pathname;
+    return String(pathname || "/").slice(0, 180);
+  } catch {
+    const raw = String(req?.url || "/");
+    return String(raw.split("?")[0] || "/").slice(0, 180);
+  }
+}
+
+function sanitizeSecurityString(value, maxLen = 180) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, Math.max(1, Number(maxLen) || 180));
+}
+
+function securityHash(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 20);
+}
+
+const SECURITY_SENSITIVE_META_KEY_RE =
+  /(pass(word)?|token|authorization|cookie|secret|api[-_]?key|service[-_]?role|session|bearer)/i;
+
+function sanitizeSecurityMeta(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const out = {};
+  for (const [rawKey, rawValue] of Object.entries(input).slice(0, 30)) {
+    const key = sanitizeSecurityString(rawKey, 80);
+    if (!key) continue;
+    if (SECURITY_SENSITIVE_META_KEY_RE.test(key)) continue;
+
+    if (typeof rawValue === "string") {
+      out[key] = sanitizeSecurityString(rawValue, 240);
+      continue;
+    }
+    if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
+      out[key] = rawValue;
+      continue;
+    }
+    if (typeof rawValue === "boolean") {
+      out[key] = rawValue;
+      continue;
+    }
+    if (Array.isArray(rawValue)) {
+      out[key] = rawValue
+        .slice(0, 12)
+        .map((v) => sanitizeSecurityString(v, 120))
+        .filter(Boolean);
+      continue;
+    }
+    if (rawValue && typeof rawValue === "object") {
+      out[key] = "[object]";
+    }
+  }
+  return out;
+}
+
+function normalizeSecuritySeverity(level) {
+  const safe = String(level || "low").trim().toLowerCase();
+  if (safe === "critical" || safe === "high" || safe === "medium" || safe === "low" || safe === "info") return safe;
+  return "low";
+}
+
+function parseIsoMs(value) {
+  const ms = Date.parse(String(value || ""));
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function windowLabel(windowMs) {
+  const mins = Math.max(1, Math.round(Number(windowMs || 0) / 60000));
+  return mins === 1 ? "1 minute" : `${mins} minutes`;
+}
+
+function parseRateLimitKey(rawKey) {
+  const key = String(rawKey || "");
+  if (!key) return { scope: "unknown", identifier: "", bucket: "" };
+
+  if (key.startsWith("ip:")) {
+    const body = key.slice(3);
+    const parts = body.split(":");
+    if (parts.length >= 3) {
+      return {
+        scope: "ip",
+        identifier: parts.slice(0, -2).join(":"),
+        bucket: parts.slice(-2).join(":")
+      };
+    }
+    return { scope: "ip", identifier: body, bucket: "" };
+  }
+
+  if (key.startsWith("user:")) {
+    const body = key.slice(5);
+    const i = body.indexOf(":");
+    if (i > 0) {
+      return {
+        scope: "user",
+        identifier: body.slice(0, i),
+        bucket: body.slice(i + 1)
+      };
+    }
+    return { scope: "user", identifier: body, bucket: "" };
+  }
+
+  return { scope: "unknown", identifier: "", bucket: key };
+}
+
+const securityState = {
+  initialized: false,
+  events: [],
+  alerts: [],
+  lastAlertAtByKey: new Map()
+};
+
+const SECURITY_ALERT_RULES = [
+  {
+    id: "auth-login-failed-ip-spike",
+    eventType: "auth.login_failed",
+    requireGroup: true,
+    threshold: Math.max(2, Number(process.env.SEC_ALERT_LOGIN_FAIL_IP_THRESHOLD || 8)),
+    windowMs: Math.max(60_000, Number(process.env.SEC_ALERT_LOGIN_FAIL_IP_WINDOW_MS || 10 * 60 * 1000)),
+    cooldownMs: Math.max(60_000, Number(process.env.SEC_ALERT_LOGIN_FAIL_IP_COOLDOWN_MS || SECURITY_ALERT_COOLDOWN_MS)),
+    severity: "high",
+    title: "Potential brute-force login activity",
+    groupBy: (event) => String(event.ipHash || ""),
+    describe: (count, windowMs) => `${count} failed login attempts from one IP fingerprint within ${windowLabel(windowMs)}.`
+  },
+  {
+    id: "auth-login-failed-email-spike",
+    eventType: "auth.login_failed",
+    requireGroup: true,
+    threshold: Math.max(2, Number(process.env.SEC_ALERT_LOGIN_FAIL_EMAIL_THRESHOLD || 6)),
+    windowMs: Math.max(60_000, Number(process.env.SEC_ALERT_LOGIN_FAIL_EMAIL_WINDOW_MS || 10 * 60 * 1000)),
+    cooldownMs: Math.max(60_000, Number(process.env.SEC_ALERT_LOGIN_FAIL_EMAIL_COOLDOWN_MS || SECURITY_ALERT_COOLDOWN_MS)),
+    severity: "medium",
+    title: "Repeated login failures for one account fingerprint",
+    groupBy: (event) => String(event.emailHash || ""),
+    describe: (count, windowMs) => `${count} failed login attempts targeting one account fingerprint within ${windowLabel(windowMs)}.`
+  },
+  {
+    id: "auth-unauthorized-ip-spike",
+    eventType: "auth.unauthorized",
+    requireGroup: true,
+    threshold: Math.max(3, Number(process.env.SEC_ALERT_UNAUTHORIZED_IP_THRESHOLD || 20)),
+    windowMs: Math.max(60_000, Number(process.env.SEC_ALERT_UNAUTHORIZED_IP_WINDOW_MS || 5 * 60 * 1000)),
+    cooldownMs: Math.max(60_000, Number(process.env.SEC_ALERT_UNAUTHORIZED_IP_COOLDOWN_MS || SECURITY_ALERT_COOLDOWN_MS)),
+    severity: "medium",
+    title: "Unauthorized request burst",
+    groupBy: (event) => String(event.ipHash || ""),
+    describe: (count, windowMs) =>
+      `${count} unauthorized API requests from one IP fingerprint within ${windowLabel(windowMs)}.`
+  },
+  {
+    id: "rate-limit-exceeded-spike",
+    eventType: "rate_limit.exceeded",
+    requireGroup: true,
+    threshold: Math.max(3, Number(process.env.SEC_ALERT_RATE_LIMIT_THRESHOLD || 25)),
+    windowMs: Math.max(60_000, Number(process.env.SEC_ALERT_RATE_LIMIT_WINDOW_MS || 5 * 60 * 1000)),
+    cooldownMs: Math.max(60_000, Number(process.env.SEC_ALERT_RATE_LIMIT_COOLDOWN_MS || SECURITY_ALERT_COOLDOWN_MS)),
+    severity: "medium",
+    title: "Rate-limit spike detected",
+    groupBy: (event) => String(event.key || event.ipHash || "global"),
+    describe: (count, windowMs) => `${count} rate-limit denials observed within ${windowLabel(windowMs)}.`
+  },
+  {
+    id: "sources-import-blocked-url-spike",
+    eventType: "sources.import_url_blocked",
+    requireGroup: true,
+    threshold: Math.max(2, Number(process.env.SEC_ALERT_BLOCKED_IMPORT_THRESHOLD || 3)),
+    windowMs: Math.max(60_000, Number(process.env.SEC_ALERT_BLOCKED_IMPORT_WINDOW_MS || 30 * 60 * 1000)),
+    cooldownMs: Math.max(60_000, Number(process.env.SEC_ALERT_BLOCKED_IMPORT_COOLDOWN_MS || SECURITY_ALERT_COOLDOWN_MS)),
+    severity: "high",
+    title: "Blocked source import URL activity",
+    groupBy: (event) => String(event.ipHash || ""),
+    describe: (count, windowMs) =>
+      `${count} blocked URL import attempts from one IP fingerprint within ${windowLabel(windowMs)}.`
+  },
+  {
+    id: "stripe-webhook-invalid-spike",
+    eventType: "stripe.webhook_invalid",
+    requireGroup: true,
+    threshold: Math.max(2, Number(process.env.SEC_ALERT_STRIPE_WEBHOOK_THRESHOLD || 3)),
+    windowMs: Math.max(60_000, Number(process.env.SEC_ALERT_STRIPE_WEBHOOK_WINDOW_MS || 30 * 60 * 1000)),
+    cooldownMs: Math.max(60_000, Number(process.env.SEC_ALERT_STRIPE_WEBHOOK_COOLDOWN_MS || SECURITY_ALERT_COOLDOWN_MS)),
+    severity: "high",
+    title: "Invalid Stripe webhook signature burst",
+    groupBy: (event) => String(event.ipHash || "global"),
+    describe: (count, windowMs) => `${count} invalid Stripe webhook signature events within ${windowLabel(windowMs)}.`
+  },
+  {
+    id: "server-5xx-spike",
+    eventType: "server.error_5xx",
+    threshold: Math.max(2, Number(process.env.SEC_ALERT_5XX_THRESHOLD || 8)),
+    windowMs: Math.max(60_000, Number(process.env.SEC_ALERT_5XX_WINDOW_MS || 5 * 60 * 1000)),
+    cooldownMs: Math.max(60_000, Number(process.env.SEC_ALERT_5XX_COOLDOWN_MS || SECURITY_ALERT_COOLDOWN_MS)),
+    severity: "high",
+    title: "Server 5xx error spike",
+    groupBy: () => "global",
+    describe: (count, windowMs) => `${count} server 5xx errors detected within ${windowLabel(windowMs)}.`
+  }
+];
+
+function pruneSecurityState(nowMs = Date.now()) {
+  const eventCutoffMs = nowMs - SECURITY_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const alertCutoffMs = nowMs - SECURITY_ALERT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+  securityState.events = securityState.events
+    .filter((event) => parseIsoMs(event?.createdAt) >= eventCutoffMs)
+    .slice(-SECURITY_EVENT_MAX_ITEMS);
+  securityState.alerts = securityState.alerts
+    .filter((alert) => parseIsoMs(alert?.createdAt) >= alertCutoffMs)
+    .slice(-SECURITY_ALERT_MAX_ITEMS);
+}
+
+function initializeSecurityMonitoringState() {
+  if (!SECURITY_MONITORING_ENABLED || securityState.initialized) return;
+
+  const loadedEvents = loadJson(SECURITY_EVENTS_FILE, []);
+  const loadedAlerts = loadJson(SECURITY_ALERTS_FILE, []);
+  securityState.events = Array.isArray(loadedEvents) ? loadedEvents : [];
+  securityState.alerts = Array.isArray(loadedAlerts) ? loadedAlerts : [];
+  securityState.lastAlertAtByKey = new Map();
+
+  for (const alert of securityState.alerts) {
+    const key = sanitizeSecurityString(alert?.key || "", 220);
+    if (!key) continue;
+    const createdMs = parseIsoMs(alert?.createdAt);
+    if (!createdMs) continue;
+    const prev = Number(securityState.lastAlertAtByKey.get(key) || 0);
+    if (createdMs > prev) securityState.lastAlertAtByKey.set(key, createdMs);
+  }
+
+  pruneSecurityState();
+  saveJson(SECURITY_EVENTS_FILE, securityState.events);
+  saveJson(SECURITY_ALERTS_FILE, securityState.alerts);
+  securityState.initialized = true;
+}
+
+async function sendSecurityAlertWebhook(alert) {
+  if (!SECURITY_ALERT_WEBHOOK_URL) return;
+
+  function resolveSecurityAlertWebhookFormat(url) {
+    const explicit = ["auto", "json", "slack", "discord"].includes(SECURITY_ALERT_WEBHOOK_FORMAT)
+      ? SECURITY_ALERT_WEBHOOK_FORMAT
+      : "auto";
+    if (explicit !== "auto") return explicit;
+
+    const raw = String(url || "").toLowerCase();
+    if (raw.includes("hooks.slack.com")) return "slack";
+    if (raw.includes("discord.com/api/webhooks") || raw.includes("discordapp.com/api/webhooks")) return "discord";
+    return "json";
+  }
+
+  function securityAlertSummaryText(payload) {
+    const sev = String(payload?.severity || "low").toUpperCase();
+    const title = String(payload?.title || "Security alert");
+    const count = Number(payload?.count || 0);
+    const threshold = Number(payload?.threshold || 0);
+    const windowMins = Math.max(1, Math.round(Number(payload?.windowMs || 0) / 60000));
+    const when = String(payload?.createdAt || "");
+    return `[${sev}] ${title} | count=${count} threshold=${threshold} window=${windowMins}m | at=${when}`;
+  }
+
+  function buildSecurityAlertWebhookPayload(payload) {
+    const format = resolveSecurityAlertWebhookFormat(SECURITY_ALERT_WEBHOOK_URL);
+    const summary = securityAlertSummaryText(payload);
+    if (format === "slack") {
+      return {
+        format,
+        body: {
+          text: `${summary}\n${String(payload?.message || "").slice(0, 600)}`
+        }
+      };
+    }
+    if (format === "discord") {
+      return {
+        format,
+        body: {
+          content: `${summary}\n${String(payload?.message || "").slice(0, 600)}`
+        }
+      };
+    }
+    return {
+      format: "json",
+      body: {
+        app: "notematica",
+        generatedAt: new Date().toISOString(),
+        summary,
+        alert: payload
+      }
+    };
+  }
+
+  const built = buildSecurityAlertWebhookPayload(alert);
+  const headers = { "Content-Type": "application/json" };
+  if (SECURITY_ALERT_WEBHOOK_BEARER_TOKEN) {
+    headers.Authorization = `Bearer ${SECURITY_ALERT_WEBHOOK_BEARER_TOKEN}`;
+  }
+
+  const ac = new AbortController();
+  const timeout = setTimeout(() => ac.abort(), SECURITY_ALERT_WEBHOOK_TIMEOUT_MS);
+  try {
+    const response = await fetch(SECURITY_ALERT_WEBHOOK_URL, {
+      method: "POST",
+      signal: ac.signal,
+      headers,
+      body: JSON.stringify(built.body)
+    });
+    if (!response.ok) {
+      console.warn("Security alert webhook failed:", response.status, `format=${built.format}`);
+    }
+  } catch (e) {
+    console.warn("Security alert webhook error:", e instanceof Error ? e.message : e);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function notifySecurityAlert(alert) {
+  if (SECURITY_ALERT_CONSOLE_ENABLED) {
+    console.warn(
+      "[SECURITY ALERT]",
+      `[${String(alert.severity || "low").toUpperCase()}]`,
+      alert.title,
+      `count=${alert.count}`,
+      `windowMs=${alert.windowMs}`,
+      `group=${alert.group || "n/a"}`
+    );
+  }
+  if (SECURITY_ALERT_WEBHOOK_URL) {
+    void sendSecurityAlertWebhook(alert);
+  }
+}
+
+function maybeRaiseSecurityAlerts(event) {
+  if (!SECURITY_MONITORING_ENABLED) return [];
+  initializeSecurityMonitoringState();
+
+  const nowMs = parseIsoMs(event?.createdAt) || Date.now();
+  const created = [];
+
+  for (const rule of SECURITY_ALERT_RULES) {
+    if (rule.eventType !== event.type) continue;
+    const rawGroup = sanitizeSecurityString(rule.groupBy(event) || "", 120);
+    if (rule.requireGroup && !rawGroup) continue;
+    const group = rawGroup || "global";
+
+    const sinceMs = nowMs - Number(rule.windowMs || 0);
+    const matched = securityState.events.filter((candidate) => {
+      if (candidate.type !== rule.eventType) return false;
+      if (parseIsoMs(candidate.createdAt) < sinceMs) return false;
+      const candidateGroup = sanitizeSecurityString(rule.groupBy(candidate) || "global", 120) || "global";
+      return candidateGroup === group;
+    });
+
+    if (matched.length < Number(rule.threshold || 0)) continue;
+
+    const key = `${rule.id}:${group}`;
+    const lastAlertAt = Number(securityState.lastAlertAtByKey.get(key) || 0);
+    const cooldownMs = Math.max(60_000, Number(rule.cooldownMs || SECURITY_ALERT_COOLDOWN_MS));
+    if (lastAlertAt && nowMs - lastAlertAt < cooldownMs) continue;
+
+    const alert = {
+      id: crypto.randomUUID(),
+      key,
+      ruleId: rule.id,
+      eventType: rule.eventType,
+      severity: normalizeSecuritySeverity(rule.severity),
+      title: sanitizeSecurityString(rule.title, 160) || "Security anomaly detected",
+      message: sanitizeSecurityString(rule.describe(matched.length, rule.windowMs), 300),
+      group,
+      count: matched.length,
+      threshold: Number(rule.threshold || 0),
+      windowMs: Number(rule.windowMs || 0),
+      firstSeenAt: matched[0]?.createdAt || event.createdAt,
+      lastSeenAt: matched[matched.length - 1]?.createdAt || event.createdAt,
+      sampleEventIds: matched.slice(-5).map((x) => String(x.id || "")).filter(Boolean),
+      createdAt: new Date(nowMs).toISOString()
+    };
+    securityState.alerts.push(alert);
+    securityState.lastAlertAtByKey.set(key, nowMs);
+    created.push(alert);
+  }
+
+  if (created.length) {
+    pruneSecurityState(nowMs);
+    saveJson(SECURITY_ALERTS_FILE, securityState.alerts);
+    for (const alert of created) notifySecurityAlert(alert);
+  }
+  return created;
+}
+
+function logSecurityEvent(eventType, options = {}) {
+  if (!SECURITY_MONITORING_ENABLED) return null;
+  initializeSecurityMonitoringState();
+
+  const nowIso = new Date().toISOString();
+  const event = {
+    id: crypto.randomUUID(),
+    type: sanitizeSecurityString(eventType || "security.unknown", 80) || "security.unknown",
+    severity: normalizeSecuritySeverity(options.severity),
+    createdAt: nowIso,
+    ipHash: options.ip ? securityHash(String(options.ip)) : "",
+    userId: sanitizeSecurityString(options.userId || "", 120),
+    emailHash: options.email ? securityHash(String(options.email || "").trim().toLowerCase()) : "",
+    route: sanitizeSecurityString(options.route || "", 180),
+    method: sanitizeSecurityString(String(options.method || "").toUpperCase(), 12),
+    reason: sanitizeSecurityString(options.reason || "", 220),
+    status: Number.isFinite(options.status) ? Number(options.status) : 0,
+    key: sanitizeSecurityString(options.key || "", 220),
+    meta: sanitizeSecurityMeta(options.meta)
+  };
+
+  securityState.events.push(event);
+  pruneSecurityState(parseIsoMs(nowIso));
+  saveJson(SECURITY_EVENTS_FILE, securityState.events);
+  maybeRaiseSecurityAlerts(event);
+  return event;
+}
+
+function rateLimitOr429(res, key, limit, windowMs, context = {}) {
   if (!RATE_LIMIT_ENABLED) return true;
   const out = rateLimitConsume(key, limit, windowMs);
   if (out.ok) return true;
+
+  const parsedKey = parseRateLimitKey(key);
+  logSecurityEvent("rate_limit.exceeded", {
+    severity: "medium",
+    ip: String(context.ip || (parsedKey.scope === "ip" ? parsedKey.identifier : "")),
+    userId: String(context.userId || (parsedKey.scope === "user" ? parsedKey.identifier : "")),
+    route: String(context.route || ""),
+    method: String(context.method || ""),
+    reason: sanitizeSecurityString(parsedKey.bucket || "rate_limit", 120),
+    key: sanitizeSecurityString(key, 220),
+    meta: {
+      limit: Number(limit) || 0,
+      windowMs: Number(windowMs) || 0,
+      remaining: Number(out.remaining) || 0
+    }
+  });
+
   json(res, 429, { error: "Too many requests. Please slow down." });
   return false;
 }
@@ -740,7 +1198,19 @@ async function requireUser(req, res) {
   const cookies = parseCookieHeader(req.headers.cookie || "");
   const hasBearer = authHeader.startsWith("Bearer ");
   const hasAuthCookie = String(cookies[AUTH_COOKIE_NAME] || "").trim().length > 0;
+  const ip = getClientIp(req);
+  const route = safeRequestPath(req);
+  const method = String(req.method || "").toUpperCase();
   if (!token) {
+    logSecurityEvent("auth.unauthorized", {
+      severity: "medium",
+      ip,
+      route,
+      method,
+      reason: "missing_auth_token",
+      status: 401,
+      meta: { hasBearer, hasAuthCookie }
+    });
     clearAuthCookie(res);
     json(res, 401, { error: "Unauthorized" });
     return null;
@@ -752,6 +1222,15 @@ async function requireUser(req, res) {
       if (hasBearer && !hasAuthCookie) setAuthCookie(res, token);
       return { id: user.id, email: user.email, token };
     } catch {
+      logSecurityEvent("auth.unauthorized", {
+        severity: "medium",
+        ip,
+        route,
+        method,
+        reason: "supabase_session_invalid",
+        status: 401,
+        meta: { hasBearer, hasAuthCookie }
+      });
       clearAuthCookie(res);
       json(res, 401, { error: "Unauthorized" });
       return null;
@@ -761,6 +1240,15 @@ async function requireUser(req, res) {
   const sessions = loadJson(SESSIONS_FILE, []);
   const session = sessions.find((s) => s.token === token);
   if (!session) {
+    logSecurityEvent("auth.unauthorized", {
+      severity: "medium",
+      ip,
+      route,
+      method,
+      reason: "local_session_not_found",
+      status: 401,
+      meta: { hasBearer, hasAuthCookie }
+    });
     clearAuthCookie(res);
     json(res, 401, { error: "Unauthorized" });
     return null;
@@ -769,6 +1257,15 @@ async function requireUser(req, res) {
   const users = loadJson(USERS_FILE, []);
   const user = users.find((u) => u.id === session.userId);
   if (!user) {
+    logSecurityEvent("auth.unauthorized", {
+      severity: "medium",
+      ip,
+      route,
+      method,
+      reason: "local_user_not_found",
+      status: 401,
+      meta: { hasBearer, hasAuthCookie }
+    });
     clearAuthCookie(res);
     json(res, 401, { error: "Unauthorized" });
     return null;
@@ -778,6 +1275,24 @@ async function requireUser(req, res) {
   saveJson(SESSIONS_FILE, sessions);
   if (hasBearer && !hasAuthCookie) setAuthCookie(res, token);
   return { id: user.id, email: user.email, token };
+}
+
+async function requireOwnerUser(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  if (isOwnerUser(user)) return user;
+
+  logSecurityEvent("auth.owner_forbidden", {
+    severity: "medium",
+    ip: getClientIp(req),
+    userId: user.id,
+    route: safeRequestPath(req),
+    method: String(req.method || "").toUpperCase(),
+    reason: "owner_only_endpoint",
+    status: 403
+  });
+  json(res, 403, { error: "Forbidden" });
+  return null;
 }
 
 function stripeFormBody(obj) {
@@ -2887,6 +3402,17 @@ const server = http.createServer(async (req, res) => {
           await handleStripeWebhookEvent(event);
           return json(res, 200, { received: true });
         } catch (e) {
+          logSecurityEvent("stripe.webhook_invalid", {
+            severity: "high",
+            ip,
+            route: pathname,
+            method: req.method,
+            reason: e instanceof Error ? e.message : "invalid_webhook",
+            status: 400,
+            meta: {
+              hasStripeSignatureHeader: Boolean(req.headers["stripe-signature"])
+            }
+          });
           return json(res, 400, { error: e instanceof Error ? e.message : "Invalid webhook" });
         }
       }
@@ -3017,6 +3543,46 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, out);
       }
 
+      if (pathname === "/api/security/alerts" && req.method === "GET") {
+        const user = await requireOwnerUser(req, res);
+        if (!user) return;
+        initializeSecurityMonitoringState();
+        const limit = Math.max(1, Math.min(200, Number(reqUrl.searchParams.get("limit") || 50)));
+        const alerts = securityState.alerts.slice(-limit).reverse();
+        return json(res, 200, {
+          alerts,
+          total: securityState.alerts.length,
+          generatedAt: new Date().toISOString()
+        });
+      }
+
+      if (pathname === "/api/security/events" && req.method === "GET") {
+        const user = await requireOwnerUser(req, res);
+        if (!user) return;
+        initializeSecurityMonitoringState();
+        const limit = Math.max(1, Math.min(500, Number(reqUrl.searchParams.get("limit") || 100)));
+        const typeFilter = sanitizeSecurityString(reqUrl.searchParams.get("type") || "", 80);
+        const severityRaw = sanitizeSecurityString(reqUrl.searchParams.get("severity") || "", 20).toLowerCase();
+        const sinceMinutes = Number(reqUrl.searchParams.get("sinceMinutes") || 0);
+        const sinceMs = Number.isFinite(sinceMinutes) && sinceMinutes > 0 ? Date.now() - sinceMinutes * 60 * 1000 : 0;
+
+        let events = securityState.events;
+        if (typeFilter) events = events.filter((event) => event.type === typeFilter);
+        if (["critical", "high", "medium", "low", "info"].includes(severityRaw)) {
+          events = events.filter((event) => event.severity === severityRaw);
+        }
+        if (sinceMs > 0) {
+          events = events.filter((event) => parseIsoMs(event.createdAt) >= sinceMs);
+        }
+
+        events = events.slice(-limit).reverse();
+        return json(res, 200, {
+          events,
+          total: securityState.events.length,
+          generatedAt: new Date().toISOString()
+        });
+      }
+
       if (pathname.startsWith("/api/share/") && req.method === "GET") {
         const shareId = decodeURIComponent(pathname.replace("/api/share/", ""));
         const entry = getShareEntry(shareId);
@@ -3049,7 +3615,14 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (pathname === "/api/auth/register" && req.method === "POST") {
-        if (!rateLimitOr429(res, `ip:${ip}:auth:register`, RL_AUTH_REGISTER_MAX, RL_AUTH_WINDOW_MS)) return;
+        if (
+          !rateLimitOr429(res, `ip:${ip}:auth:register`, RL_AUTH_REGISTER_MAX, RL_AUTH_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method
+          })
+        )
+          return;
         const body = parseJsonBody(await readBody(req));
         const email = sanitizeEmail(body.email);
         const password = String(body.password || "");
@@ -3093,25 +3666,56 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (pathname === "/api/auth/login" && req.method === "POST") {
-        if (!rateLimitOr429(res, `ip:${ip}:auth:login`, RL_AUTH_LOGIN_MAX, RL_AUTH_WINDOW_MS)) return;
+        if (
+          !rateLimitOr429(res, `ip:${ip}:auth:login`, RL_AUTH_LOGIN_MAX, RL_AUTH_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method
+          })
+        )
+          return;
         const body = parseJsonBody(await readBody(req));
         const email = sanitizeEmail(body.email);
         const password = String(body.password || "");
 
         if (USE_SUPABASE) {
-          const result = await supabaseAuthRequest("/auth/v1/token?grant_type=password", "POST", { email, password });
-          const token = result.access_token;
-          const expiresIn = Number(result?.expires_in || 0);
-          if (token) setAuthCookie(res, token, { maxAgeSec: expiresIn > 0 ? expiresIn : AUTH_COOKIE_MAX_AGE_SEC });
-          return json(res, 200, {
-            user: { id: result.user?.id || "", email: result.user?.email || email },
-            auth: { mode: "cookie", hasSession: Boolean(token) }
-          });
+          try {
+            const result = await supabaseAuthRequest("/auth/v1/token?grant_type=password", "POST", { email, password });
+            const token = result.access_token;
+            const expiresIn = Number(result?.expires_in || 0);
+            if (token) setAuthCookie(res, token, { maxAgeSec: expiresIn > 0 ? expiresIn : AUTH_COOKIE_MAX_AGE_SEC });
+            return json(res, 200, {
+              user: { id: result.user?.id || "", email: result.user?.email || email },
+              auth: { mode: "cookie", hasSession: Boolean(token) }
+            });
+          } catch {
+            logSecurityEvent("auth.login_failed", {
+              severity: "medium",
+              ip,
+              route: pathname,
+              method: req.method,
+              email,
+              reason: "invalid_credentials",
+              status: 401,
+              meta: { provider: "supabase" }
+            });
+            return json(res, 401, { error: "Invalid credentials" });
+          }
         }
 
         const users = loadJson(USERS_FILE, []);
         const user = users.find((u) => u.email === email);
         if (!user || !verifyPassword(password, user.passwordHash)) {
+          logSecurityEvent("auth.login_failed", {
+            severity: "medium",
+            ip,
+            route: pathname,
+            method: req.method,
+            email,
+            reason: "invalid_credentials",
+            status: 401,
+            meta: { provider: "local" }
+          });
           return json(res, 401, { error: "Invalid credentials" });
         }
 
@@ -3227,8 +3831,24 @@ const server = http.createServer(async (req, res) => {
         const user = await requireUser(req, res);
         if (!user) return;
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
-        if (!rateLimitOr429(res, `ip:${ip}:ai:flashcards`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
-        if (!rateLimitOr429(res, `user:${user.id}:ai:flashcards`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        if (
+          !rateLimitOr429(res, `ip:${ip}:ai:flashcards`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method,
+            userId: user.id
+          })
+        )
+          return;
+        if (
+          !rateLimitOr429(res, `user:${user.id}:ai:flashcards`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method,
+            userId: user.id
+          })
+        )
+          return;
         const tier = await getCachedEntitlements(user);
         const limits = usageLimitsForTier(tier);
         if (
@@ -3314,8 +3934,24 @@ const server = http.createServer(async (req, res) => {
         const user = await requireUser(req, res);
         if (!user) return;
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
-        if (!rateLimitOr429(res, `ip:${ip}:ai:generic`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
-        if (!rateLimitOr429(res, `user:${user.id}:ai:generic`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        if (
+          !rateLimitOr429(res, `ip:${ip}:ai:generic`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method,
+            userId: user.id
+          })
+        )
+          return;
+        if (
+          !rateLimitOr429(res, `user:${user.id}:ai:generic`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method,
+            userId: user.id
+          })
+        )
+          return;
         const tier = await getCachedEntitlements(user);
         const limits = usageLimitsForTier(tier);
         if (
@@ -3341,8 +3977,24 @@ const server = http.createServer(async (req, res) => {
         const user = await requireUser(req, res);
         if (!user) return;
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
-        if (!rateLimitOr429(res, `ip:${ip}:ai:tutor`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
-        if (!rateLimitOr429(res, `user:${user.id}:ai:tutor`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        if (
+          !rateLimitOr429(res, `ip:${ip}:ai:tutor`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method,
+            userId: user.id
+          })
+        )
+          return;
+        if (
+          !rateLimitOr429(res, `user:${user.id}:ai:tutor`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method,
+            userId: user.id
+          })
+        )
+          return;
         const tier = await getCachedEntitlements(user);
         const limits = usageLimitsForTier(tier);
         if (
@@ -3386,10 +4038,37 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/assistant/chat" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
-        if (!isOwnerUser(user)) return json(res, 403, { error: "Forbidden" });
+        if (!isOwnerUser(user)) {
+          logSecurityEvent("auth.owner_forbidden", {
+            severity: "medium",
+            ip,
+            userId: user.id,
+            route: pathname,
+            method: req.method,
+            reason: "assistant_chat_owner_only",
+            status: 403
+          });
+          return json(res, 403, { error: "Forbidden" });
+        }
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
-        if (!rateLimitOr429(res, `ip:${ip}:ai:assistant`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
-        if (!rateLimitOr429(res, `user:${user.id}:ai:assistant`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        if (
+          !rateLimitOr429(res, `ip:${ip}:ai:assistant`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method,
+            userId: user.id
+          })
+        )
+          return;
+        if (
+          !rateLimitOr429(res, `user:${user.id}:ai:assistant`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method,
+            userId: user.id
+          })
+        )
+          return;
         const tier = await getCachedEntitlements(user);
         const limits = usageLimitsForTier(tier);
         if (
@@ -3421,8 +4100,24 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/sources/import" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
-        if (!rateLimitOr429(res, `ip:${ip}:ai:sources`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
-        if (!rateLimitOr429(res, `user:${user.id}:ai:sources`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        if (
+          !rateLimitOr429(res, `ip:${ip}:ai:sources`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method,
+            userId: user.id
+          })
+        )
+          return;
+        if (
+          !rateLimitOr429(res, `user:${user.id}:ai:sources`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method,
+            userId: user.id
+          })
+        )
+          return;
         const body = parseJsonBody(await readBody(req, { maxBytes: DEFAULT_MAX_BODY_BYTES }));
         const tier = await getCachedEntitlements(user);
         const limits = usageLimitsForTier(tier);
@@ -3462,7 +4157,29 @@ const server = http.createServer(async (req, res) => {
           )
             return;
         }
-        const imported = await importSources(body);
+        let imported = [];
+        try {
+          imported = await importSources(body);
+        } catch (e) {
+          const message = e instanceof Error ? e.message : "Import failed";
+          const looksSecurityBlocked = /Blocked host for security reasons|Could not resolve host|Only http\/https URLs are supported|URLs with credentials are not allowed|Only ports 80 and 443 are allowed|Invalid URL/i.test(
+            message
+          );
+          if (looksSecurityBlocked) {
+            logSecurityEvent("sources.import_url_blocked", {
+              severity: "high",
+              ip,
+              userId: user.id,
+              route: pathname,
+              method: req.method,
+              reason: message,
+              status: 400,
+              meta: { requestedUrls: urls.length }
+            });
+            return json(res, 400, { error: message });
+          }
+          throw e;
+        }
         if (!imported.length) {
           return json(res, 400, { error: "No readable sources were imported" });
         }
@@ -3477,8 +4194,24 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/transcribe" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
-        if (!rateLimitOr429(res, `ip:${ip}:ai:transcribe`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
-        if (!rateLimitOr429(res, `user:${user.id}:ai:transcribe`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        if (
+          !rateLimitOr429(res, `ip:${ip}:ai:transcribe`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method,
+            userId: user.id
+          })
+        )
+          return;
+        if (
+          !rateLimitOr429(res, `user:${user.id}:ai:transcribe`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method,
+            userId: user.id
+          })
+        )
+          return;
         const tier = await getCachedEntitlements(user);
         const limits = usageLimitsForTier(tier);
         if (
@@ -3499,8 +4232,24 @@ const server = http.createServer(async (req, res) => {
         const user = await requireUser(req, res);
         if (!user) return;
         if (!OPENAI_API_KEY) return json(res, 400, { error: "Missing OPENAI_API_KEY" });
-        if (!rateLimitOr429(res, `ip:${ip}:ai:testprep`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS)) return;
-        if (!rateLimitOr429(res, `user:${user.id}:ai:testprep`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS)) return;
+        if (
+          !rateLimitOr429(res, `ip:${ip}:ai:testprep`, RL_AI_MAX_PER_IP, RL_AI_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method,
+            userId: user.id
+          })
+        )
+          return;
+        if (
+          !rateLimitOr429(res, `user:${user.id}:ai:testprep`, RL_AI_MAX_PER_USER, RL_AI_WINDOW_MS, {
+            ip,
+            route: pathname,
+            method: req.method,
+            userId: user.id
+          })
+        )
+          return;
         const tier = await getCachedEntitlements(user);
         const limits = usageLimitsForTier(tier);
         if (
@@ -3531,6 +4280,17 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     const status = error && typeof error === "object" && error.statusCode ? Number(error.statusCode) : 500;
     const message = error instanceof Error ? error.message : "Unexpected error";
+    if (status >= 500) {
+      logSecurityEvent("server.error_5xx", {
+        severity: "high",
+        ip: getClientIp(req),
+        route: safeRequestPath(req),
+        method: req.method,
+        reason: message,
+        status,
+        meta: { requestId }
+      });
+    }
     try {
       console.error(`[${requestId}] ${req.method} ${String(req.url || "")} -> ${status}:`, error);
     } catch {
@@ -3551,6 +4311,9 @@ server.listen(PORT, HOST, () => {
   ensureJsonFile(REFERRALS_FILE, []);
   ensureJsonFile(FEEDBACK_FILE, []);
   ensureJsonFile(USAGE_COUNTERS_FILE, {});
+  ensureJsonFile(SECURITY_EVENTS_FILE, []);
+  ensureJsonFile(SECURITY_ALERTS_FILE, []);
+  initializeSecurityMonitoringState();
   console.log(`AI note app running on http://${HOST}:${PORT}`);
   console.log(`Storage mode: ${USE_SUPABASE ? "Supabase RLS mode" : "Local fallback mode"}`);
 });
