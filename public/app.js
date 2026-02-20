@@ -518,8 +518,10 @@ async function runHomePrompt() {
   if (tutorQuestionEl) tutorQuestionEl.value = prompt;
   if (homeComposerInputEl) homeComposerInputEl.value = "";
   setView("study_tools");
-  if (!editorEl.innerText.trim()) {
-    tutorOutputEl.textContent = "Add notes or import sources first, then ask tutor.";
+  const noteText = editorEl.innerText.trim();
+  const sources = getAiSourcesForRequest(6);
+  if (!noteText && !sources.length) {
+    tutorOutputEl.textContent = "Add notes or import files first, then ask tutor.";
     return;
   }
   await askTutor();
@@ -1653,14 +1655,21 @@ function renderSourcesManager() {
   const list = loadSourcesForCurrentNote();
   sourcesListEl.innerHTML = "";
 
-  if (!currentId) {
-    sourcesListEl.innerHTML = `<div class="muted">Open or save a note to attach sources.</div>`;
+  if (!list.length) {
+    if (!currentId) {
+      sourcesListEl.innerHTML = `<div class="muted">No note open yet. Imported files are attached to a draft and move to your first saved note.</div>`;
+      return;
+    }
+    sourcesListEl.innerHTML = `<div class="muted">No sources yet. Import files or URLs above.</div>`;
     return;
   }
 
-  if (!list.length) {
-    sourcesListEl.innerHTML = `<div class="muted">No sources yet. Import files or URLs above.</div>`;
-    return;
+  if (!currentId) {
+    const draftHint = document.createElement("div");
+    draftHint.className = "muted";
+    draftHint.style.marginBottom = "0.6rem";
+    draftHint.textContent = "Draft sources (no note saved yet). Save a note and these attachments will move with it.";
+    sourcesListEl.appendChild(draftHint);
   }
 
   const sorted = list
@@ -1897,13 +1906,14 @@ async function importPreparedSources(sources, rejected = 0, { setStatus = setSou
 async function askTutor() {
   const question = String(tutorQuestionEl.value || "").trim();
   const noteText = editorEl.innerText.trim();
+  const sources = getAiSourcesForRequest(6);
   if (!question) return (tutorOutputEl.textContent = "Enter a tutor question.");
-  if (!noteText) return (tutorOutputEl.textContent = "Add note text first.");
+  if (!noteText && !sources.length) return (tutorOutputEl.textContent = "Add note text or import files first.");
   tutorOutputEl.textContent = "Tutor is thinking...";
   try {
     const out = await api("/api/tutor", {
       method: "POST",
-      body: JSON.stringify({ question, noteText, sources: getAiSourcesForRequest(6) })
+      body: JSON.stringify({ question, noteText, sources })
     });
     setOutputWithCitations(tutorOutputEl, out.answer || "No tutor response.", out.citations || []);
     awardXp("tutor", 8);
@@ -2072,8 +2082,9 @@ async function deleteNote() {
 
 async function runAi(action) {
   const noteText = editorEl.innerText.trim();
-  if (!noteText) {
-    aiOutputEl.textContent = "Add note text first.";
+  const sources = getAiSourcesForRequest(6);
+  if (!noteText && !sources.length) {
+    aiOutputEl.textContent = "Add note text or import files first.";
     return;
   }
 
@@ -2082,7 +2093,7 @@ async function runAi(action) {
     const selectedText = getSelectionTextWithinEditor();
     const data = await api("/api/ai", {
       method: "POST",
-      body: JSON.stringify({ action, noteText, selectedText, sources: getAiSourcesForRequest(6) })
+      body: JSON.stringify({ action, noteText, selectedText, sources })
     });
     setOutputWithCitations(aiOutputEl, data.output || "(No output)", data.citations || []);
     fireAndForgetTrack("ai.action", { action });

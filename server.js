@@ -2840,10 +2840,8 @@ const server = http.createServer(async (req, res) => {
         const action = String(body.action || "summarize");
         const noteText = String(body.noteText || "");
         const selectedText = String(body.selectedText || "");
-
-        if (!noteText.trim()) return json(res, 400, { error: "noteText is required" });
-
         const sources = normalizeImportedSources(body.sources, { maxSources: 6, maxCharsPerSource: 18000 });
+        if (!noteText.trim() && !sources.length) return json(res, 400, { error: "noteText or sources are required" });
         const output = await runAiAction(action, noteText, selectedText, sources);
         return json(res, 200, { output, citations: citationsFromSources(sources) });
       }
@@ -2868,8 +2866,9 @@ const server = http.createServer(async (req, res) => {
         const body = parseJsonBody(await readBody(req));
         const noteText = String(body.noteText || "");
         const question = String(body.question || "");
-        if (!noteText.trim() || !question.trim()) return json(res, 400, { error: "noteText and question are required" });
         const sources = normalizeImportedSources(body.sources, { maxSources: 6, maxCharsPerSource: 18000 });
+        if (!question.trim()) return json(res, 400, { error: "question is required" });
+        if (!noteText.trim() && !sources.length) return json(res, 400, { error: "noteText or sources are required" });
         const answer = await runTutorAnswer(noteText, question, sources);
         return json(res, 200, { answer, citations: citationsFromSources(sources) });
       }
