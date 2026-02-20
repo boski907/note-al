@@ -1412,7 +1412,9 @@ function parseUrlInput(raw) {
     .filter(Boolean);
 }
 
-function canImportFile(name) {
+function canImportFile(fileOrName, mimeType = "") {
+  const name = typeof fileOrName === "string" ? fileOrName : String(fileOrName?.name || "");
+  const mime = (typeof fileOrName === "string" ? mimeType : String(fileOrName?.type || "")).toLowerCase();
   const lower = String(name || "").toLowerCase();
   const allowed = [
     ".txt",
@@ -1438,7 +1440,12 @@ function canImportFile(name) {
     ".m4a",
     ".ogg"
   ];
-  return allowed.some((ext) => lower.endsWith(ext));
+  if (allowed.some((ext) => lower.endsWith(ext))) return true;
+  if (/^image\//i.test(mime)) return true;
+  if (/^(audio|video)\//i.test(mime)) return true;
+  if (mime === "application/pdf") return true;
+  if (mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return true;
+  return false;
 }
 
 function extOf(name) {
@@ -1465,12 +1472,13 @@ function isMediaExt(ext) {
 
 async function readSelectedFilesAsSources() {
   const files = [...(sourceFilesEl.files || [])];
-  const accepted = files.filter((f) => canImportFile(f.name)).slice(0, 20);
+  const accepted = files.filter((f) => canImportFile(f)).slice(0, 20);
   const rejected = files.length - accepted.length;
   const sources = [];
   for (const f of accepted) {
     const ext = extOf(f.name);
-    if (isPdfExt(ext)) {
+    const mime = String(f.type || "").toLowerCase();
+    if (isPdfExt(ext) || mime === "application/pdf") {
       const base64 = await blobToBase64(f);
       sources.push({
         name: f.name,
@@ -1480,7 +1488,7 @@ async function readSelectedFilesAsSources() {
       continue;
     }
 
-    if (isDocxExt(ext)) {
+    if (isDocxExt(ext) || mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
       const base64 = await blobToBase64(f);
       sources.push({
         name: f.name,
@@ -1490,7 +1498,7 @@ async function readSelectedFilesAsSources() {
       continue;
     }
 
-    if (isImageExt(ext)) {
+    if (isImageExt(ext) || /^image\//i.test(mime)) {
       const base64 = await blobToBase64(f);
       const mimeType = f.type || (ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg");
       sources.push({
@@ -1502,7 +1510,7 @@ async function readSelectedFilesAsSources() {
       continue;
     }
 
-    if (isMediaExt(ext)) {
+    if (isMediaExt(ext) || /^(audio|video)\//i.test(mime)) {
       const base64 = await blobToBase64(f);
       sources.push({
         name: f.name,
