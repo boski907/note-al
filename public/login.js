@@ -60,7 +60,12 @@ async function login() {
         password: passwordEl.value
       })
     });
-    token = data.token || "__cookie__";
+    const hasSession = Boolean(data?.auth?.hasSession || data?.token);
+    if (!hasSession) {
+      setStatus("Sign-in completed but no session cookie was set.", true);
+      return;
+    }
+    token = "__cookie__";
     localStorage.removeItem("ai_notes_token");
     window.location.href = "/";
   } catch (e) {
@@ -77,8 +82,9 @@ async function register() {
         password: passwordEl.value
       })
     });
-    token = data.token || "";
-    if (token) {
+    const hasSession = Boolean(data?.auth?.hasSession || data?.token);
+    if (hasSession) {
+      token = "__cookie__";
       localStorage.removeItem("ai_notes_token");
       window.location.href = "/";
       return;

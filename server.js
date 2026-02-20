@@ -3065,8 +3065,8 @@ const server = http.createServer(async (req, res) => {
           if (token) setAuthCookie(res, token, { maxAgeSec: expiresIn > 0 ? expiresIn : AUTH_COOKIE_MAX_AGE_SEC });
           const user = result?.user || result;
           return json(res, 200, {
-            token,
             user: { id: user?.id || "", email: user?.email || email },
+            auth: { mode: "cookie", hasSession: Boolean(token) },
             message: token ? "Registered" : "Registered. Confirm email if your project requires it."
           });
         }
@@ -3089,7 +3089,7 @@ const server = http.createServer(async (req, res) => {
         saveJson(SESSIONS_FILE, sessions);
         setAuthCookie(res, token);
 
-        return json(res, 200, { token, user: { id: user.id, email: user.email } });
+        return json(res, 200, { user: { id: user.id, email: user.email }, auth: { mode: "cookie", hasSession: true } });
       }
 
       if (pathname === "/api/auth/login" && req.method === "POST") {
@@ -3104,8 +3104,8 @@ const server = http.createServer(async (req, res) => {
           const expiresIn = Number(result?.expires_in || 0);
           if (token) setAuthCookie(res, token, { maxAgeSec: expiresIn > 0 ? expiresIn : AUTH_COOKIE_MAX_AGE_SEC });
           return json(res, 200, {
-            token,
-            user: { id: result.user?.id || "", email: result.user?.email || email }
+            user: { id: result.user?.id || "", email: result.user?.email || email },
+            auth: { mode: "cookie", hasSession: Boolean(token) }
           });
         }
 
@@ -3121,7 +3121,7 @@ const server = http.createServer(async (req, res) => {
         saveJson(SESSIONS_FILE, sessions);
         setAuthCookie(res, token);
 
-        return json(res, 200, { token, user: { id: user.id, email: user.email } });
+        return json(res, 200, { user: { id: user.id, email: user.email }, auth: { mode: "cookie", hasSession: true } });
       }
 
       if (pathname === "/api/auth/logout" && req.method === "POST") {
