@@ -736,6 +736,10 @@ async function supabaseAdminRestRequest(endpoint, method = "GET", body = null, p
 
 async function requireUser(req, res) {
   const token = getAuthToken(req);
+  const authHeader = String(req.headers.authorization || "");
+  const cookies = parseCookieHeader(req.headers.cookie || "");
+  const hasBearer = authHeader.startsWith("Bearer ");
+  const hasAuthCookie = String(cookies[AUTH_COOKIE_NAME] || "").trim().length > 0;
   if (!token) {
     clearAuthCookie(res);
     json(res, 401, { error: "Unauthorized" });
@@ -745,6 +749,7 @@ async function requireUser(req, res) {
   if (USE_SUPABASE) {
     try {
       const user = await supabaseAuthRequest("/auth/v1/user", "GET", null, token);
+      if (hasBearer && !hasAuthCookie) setAuthCookie(res, token);
       return { id: user.id, email: user.email, token };
     } catch {
       clearAuthCookie(res);
@@ -771,6 +776,7 @@ async function requireUser(req, res) {
 
   session.lastSeenAt = new Date().toISOString();
   saveJson(SESSIONS_FILE, sessions);
+  if (hasBearer && !hasAuthCookie) setAuthCookie(res, token);
   return { id: user.id, email: user.email, token };
 }
 
