@@ -1086,6 +1086,13 @@ async function getCachedEntitlements(user) {
   const now = Date.now();
   if (cached && cached.expiresAt > now) return cached.value;
 
+  // Owners always get full premium entitlements regardless of Stripe state.
+  if (isOwnerUser(user)) {
+    const ownerValue = { adFree: true, isOwner: true };
+    entitlementCache.set(key, { expiresAt: now + 60_000, value: ownerValue });
+    return ownerValue;
+  }
+
   // Avoid calling Stripe for every request. Use the last known billing profile state.
   let adFree = false;
   if (USE_SUPABASE) {
@@ -1097,7 +1104,7 @@ async function getCachedEntitlements(user) {
     }
   }
 
-  const value = { adFree };
+  const value = { adFree, isOwner: false };
   entitlementCache.set(key, { expiresAt: now + 60_000, value }); // 60s TTL
   return value;
 }
@@ -1144,6 +1151,7 @@ async function tryConsumeUsage(user, { scope, period = "day", inc = 1, limit = 0
 }
 
 async function enforceUsageOr429(res, user, { scope, inc, limit, period = "day", message = "" } = {}) {
+  if (isOwnerUser(user)) return true;
   if (!USAGE_LIMITS_ENABLED) return true;
   if (!user?.id) return true;
   const safeLimit = Number(limit);
@@ -1696,6 +1704,9 @@ async function handleStripeWebhookEvent(event) {
 }
 
 async function computeAdFreeStatus(user) {
+  if (isOwnerUser(user)) {
+    return { adFree: true, status: "owner", currentPeriodEnd: null };
+  }
   const profile = await getBillingProfile(user);
   if (!profile?.stripe_subscription_id) {
     return { adFree: false, status: profile?.subscription_status || "none", currentPeriodEnd: profile?.current_period_end || null };
@@ -3607,6 +3618,9 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/billing/status" && req.method === "GET") {
         const user = await requireUser(req, res);
         if (!user) return;
+        if (isOwnerUser(user)) {
+          return json(res, 200, { adFree: true, status: "owner", currentPeriodEnd: null });
+        }
         if (!USE_SUPABASE) return json(res, 400, { error: "Billing requires Supabase mode" });
         if (!STRIPE_SECRET_KEY) return json(res, 400, { error: "Stripe is not configured" });
         const out = await computeAdFreeStatus(user);
@@ -3616,8 +3630,8 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/ads/check" && req.method === "GET") {
         const user = await requireUser(req, res);
         if (!user) return;
-        let adFree = false;
-        if (USE_SUPABASE && STRIPE_SECRET_KEY) {
+        let adFree = isOwnerUser(user);
+        if (!adFree && USE_SUPABASE && STRIPE_SECRET_KEY) {
           try {
             const billing = await computeAdFreeStatus(user);
             adFree = Boolean(billing.adFree);
