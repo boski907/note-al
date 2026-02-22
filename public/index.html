@@ -85,7 +85,20 @@
                   </div>
                   <p id="home-welcome-message" class="muted">Your study dashboard is ready.</p>
                   <div class="home-composer">
-                    <input id="home-composer-input" class="home-composer-input" placeholder="Type a topic, assignment, or exam objective. Notematica will build your study path." />
+                    <input
+                      id="home-composer-input"
+                      class="home-composer-input"
+                      type="search"
+                      name="study_prompt"
+                      autocomplete="off"
+                      autocorrect="off"
+                      autocapitalize="none"
+                      spellcheck="false"
+                      enterkeyhint="search"
+                      aria-autocomplete="none"
+                      data-lpignore="true"
+                      placeholder="Type a topic, assignment, or exam objective. Notematica will build your study path."
+                    />
                     <div class="home-composer-actions">
                       <button id="home-compose-btn" type="button">Build plan</button>
                       <button id="home-attach-btn" class="ghost" type="button">Add files</button>
