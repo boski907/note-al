@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260222v06" />
+    <link rel="stylesheet" href="/styles.css?v=20260222v07" />
   </head>
   <body>
     <div class="backdrop"></div>
@@ -198,9 +198,22 @@
             </section>
           </section>
 
-          <section class="route-view hidden" data-route-view="notes" id="view-notes">
-            <section class="workspace">
-              <aside class="panel left">
+          <section class="route-view hidden notebook-view" data-route-view="notes" id="view-notes">
+            <section class="view-hero notebook-hero">
+              <div class="view-hero-copy">
+                <span class="view-hero-kicker">Notebook flow</span>
+                <h2>Capture fast. Refine with AI. Export polished notes.</h2>
+                <p>Use one focused workspace for writing, source-backed edits, and final outputs.</p>
+              </div>
+              <div class="view-hero-pills">
+                <span class="view-pill">Write</span>
+                <span class="view-pill">Cite</span>
+                <span class="view-pill">Summarize</span>
+                <span class="view-pill">Publish</span>
+              </div>
+            </section>
+            <section class="workspace notebook-workspace">
+              <aside class="panel left notebook-left-panel">
                 <header class="left-header">
                   <strong>Notes</strong>
                   <button id="new-note-btn">New</button>
@@ -211,7 +224,7 @@
                 <div id="notes-list" class="notes-list"></div>
               </aside>
 
-              <section class="panel right">
+              <section class="panel right notebook-main-panel">
                 <header class="editor-header">
                   <input id="note-title" placeholder="Untitled note" />
                   <input id="note-tags" placeholder="tags: work, ideas" />
@@ -328,9 +341,22 @@
             </div>
           </section>
 
-          <section class="route-view hidden" data-route-view="study_tools" id="view-study-tools">
-            <div class="view-stack">
-              <div class="card-face">
+          <section class="route-view hidden study-lab-view" data-route-view="study_tools" id="view-study-tools">
+            <section class="view-hero study-lab-hero">
+              <div class="view-hero-copy">
+                <span class="view-hero-kicker">Study lab</span>
+                <h2>Train smarter with flashcards, tutor coaching, and test drills.</h2>
+                <p>Build recall, close weak spots, and keep a daily plan with measurable progress.</p>
+              </div>
+              <div class="view-hero-pills">
+                <span class="view-pill">Flashcards</span>
+                <span class="view-pill">Tutor</span>
+                <span class="view-pill">Practice test</span>
+                <span class="view-pill">Learning plan</span>
+              </div>
+            </section>
+            <div class="view-stack study-lab-stack">
+              <div class="card-face study-card study-hub-card">
                 <h3>Study hub</h3>
                 <p class="muted">Generate flashcards, practice tests, and an auto study plan from your current note.</p>
                 <div class="row wrap">
@@ -345,7 +371,7 @@
                 </div>
               </div>
 
-              <div class="card-face">
+              <div class="card-face study-card study-tutor-card">
                 <h3>Tutor</h3>
                 <div class="row wrap">
                   <input id="tutor-question" placeholder="Ask anything to learn. Uses your note/files, or web search when needed." />
@@ -357,7 +383,7 @@
                 <div id="tutor-output" class="ai-output"></div>
               </div>
 
-              <div class="card-face">
+              <div class="card-face study-card study-plan-card">
                 <h3>Auto study plan</h3>
                 <div class="row wrap">
                   <input id="plan-days" type="number" min="1" max="30" value="7" />
@@ -367,7 +393,7 @@
                 <div id="plan-status" class="status"></div>
               </div>
 
-              <div class="card-face">
+              <div class="card-face study-card study-learning-card">
                 <div class="row wrap" style="justify-content: space-between; align-items: center">
                   <h3 style="margin: 0">Personalized Learning</h3>
                   <div class="row wrap">
