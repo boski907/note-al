@@ -940,6 +940,49 @@ a.cta-btn.ghost {
   overflow: auto;
 }
 
+.momentum-preview {
+  display: grid;
+  gap: 10px;
+}
+
+.momentum-preview-meta {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #526a8f;
+}
+
+.momentum-preview-title {
+  margin: 0;
+  color: #132b52;
+  font-size: 1.05rem;
+}
+
+.momentum-preview-image,
+.momentum-preview-media {
+  width: 100%;
+  max-height: min(72vh, 760px);
+  border-radius: 12px;
+  border: 1px solid rgba(73, 104, 163, 0.3);
+  background: #0f172a;
+}
+
+.momentum-preview-image {
+  object-fit: contain;
+  background: #e5ecfa;
+}
+
+.momentum-preview-embed {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid rgba(73, 104, 163, 0.3);
+  border-radius: 12px;
+  background: #0f172a;
+}
+
+.momentum-preview-actions {
+  margin-top: 2px;
+}
+
 .ad-bottom {
   position: fixed;
   left: 0;

@@ -216,6 +216,10 @@ let lastTypingAt = 0;
 let tutorialStepIndex = 0;
 const SOURCE_UPLOAD_HINT = "No files selected yet. Tap Add files, drag/drop, or paste screenshots/files.";
 const CHAT_UPLOAD_HINT = "Attach screenshots/files from your device with Add files, drag/drop, or paste.";
+const SOURCE_ASSET_DB_NAME = "notematica_source_assets_v1";
+const SOURCE_ASSET_STORE = "assets";
+let sourceAssetDbPromise = null;
+let overlayObjectUrls = [];
 const tutorialSteps = [
   {
     title: "Your workspace",
@@ -412,11 +416,17 @@ function collectSourceMetadata(limit = 120) {
         const kind = String(s?.kind || (s?.url ? "url" : "source")).trim().slice(0, 32);
         const url = String(s?.url || "").trim();
         const previewImage = sanitizePreviewImage(s?.previewImage, 180000);
+        const assetId = String(s?.assetId || "").trim();
+        const mimeType = String(s?.mimeType || "").trim();
+        const mediaKind = String(s?.mediaKind || "").trim().toLowerCase();
         all.push({
           name,
           kind,
           url,
           previewImage,
+          assetId,
+          mimeType,
+          mediaKind,
           addedAt: Number(s?.addedAt || 0)
         });
       });
@@ -429,7 +439,21 @@ function collectSourceMetadata(limit = 120) {
 }
 
 /**
- * @typedef {{ id: string, title: string, topic: string, updatedAt: string|number, thumbStyle: string, sourceRef: string, previewImage?: string }} FeedCard
+ * @typedef {{
+ * id: string,
+ * title: string,
+ * topic: string,
+ * updatedAt: string|number,
+ * thumbStyle: string,
+ * sourceRef: string,
+ * previewImage?: string,
+ * sourceKind?: string,
+ * sourceName?: string,
+ * sourceUrl?: string,
+ * sourceAssetId?: string,
+ * sourceMimeType?: string,
+ * sourceMediaKind?: string
+ * }} FeedCard
  */
 
 function buildLearningFeed(noteRows = [], sourceRows = [], analytics = null, { resetAt = 0, showStarterFallback = true } = {}) {
@@ -483,7 +507,13 @@ function buildLearningFeed(noteRows = [], sourceRows = [], analytics = null, { r
       updatedAt: Number(s?._added || Date.now()),
       thumbStyle: thumbStyleFromSeed(`${topic}-${title}`),
       sourceRef: `source:${s?.url || s?.name || index}`,
-      previewImage: sanitizePreviewImage(s?.previewImage, 180000)
+      previewImage: sanitizePreviewImage(s?.previewImage, 180000),
+      sourceKind: String(s?.kind || ""),
+      sourceName: String(s?.name || ""),
+      sourceUrl: String(s?.url || ""),
+      sourceAssetId: String(s?.assetId || ""),
+      sourceMimeType: String(s?.mimeType || ""),
+      sourceMediaKind: String(s?.mediaKind || "")
     });
   };
 
@@ -614,13 +644,216 @@ function renderLearningFeed() {
         return;
       }
       if (ref.startsWith("source:")) {
-        setView("sources");
+        openMomentumSourceCard(card).catch(() => {
+          setView("sources");
+        });
         return;
       }
       setView("study_tools");
     });
     homeLearningGridEl.appendChild(item);
   });
+}
+
+function safeHttpUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    return u.toString();
+  } catch {
+    return "";
+  }
+}
+
+function trackOverlayObjectUrl(url) {
+  const u = String(url || "").trim();
+  if (!u) return;
+  overlayObjectUrls.push(u);
+}
+
+function releaseOverlayObjectUrls() {
+  if (!Array.isArray(overlayObjectUrls) || !overlayObjectUrls.length) return;
+  overlayObjectUrls.forEach((u) => {
+    try {
+      URL.revokeObjectURL(u);
+    } catch {
+      // ignore
+    }
+  });
+  overlayObjectUrls = [];
+}
+
+function createMomentumPreviewHeader(topic, updatedAt) {
+  const meta = document.createElement("div");
+  meta.className = "momentum-preview-meta";
+  const parts = [];
+  if (topic) parts.push(String(topic));
+  if (updatedAt) parts.push(`Updated ${formatRelativeDate(updatedAt)}`);
+  meta.textContent = parts.join(" • ");
+  return meta;
+}
+
+async function openMomentumSourceCard(card) {
+  const kind = String(card?.sourceKind || "").toLowerCase();
+  const title = String(card?.sourceName || card?.title || "Source").trim() || "Source";
+  const sourceUrl = safeHttpUrl(card?.sourceUrl);
+  const sourceAssetId = String(card?.sourceAssetId || "").trim();
+  const sourceMimeType = String(card?.sourceMimeType || "").trim().toLowerCase();
+  const sourceMediaKind = String(card?.sourceMediaKind || "").trim().toLowerCase();
+  const previewImage = sanitizePreviewImage(card?.previewImage, 180000);
+  const isImageKind =
+    kind.includes("image") || kind.includes("screenshot") || sourceMediaKind === "image" || /^image\//.test(sourceMimeType);
+  const isVideoKind =
+    sourceMediaKind === "video" ||
+    kind.includes("video") ||
+    /^video\//.test(sourceMimeType) ||
+    isLikelyVideoUrl(sourceUrl);
+  const isAudioKind =
+    sourceMediaKind === "audio" ||
+    kind.includes("audio") ||
+    /^audio\//.test(sourceMimeType) ||
+    isLikelyAudioUrl(sourceUrl);
+  const isMedia = kind.includes("media") || isVideoKind || isAudioKind;
+  const isImage = isImageKind || (!isMedia && (Boolean(previewImage) || isLikelyImageUrl(sourceUrl)));
+
+  if (!isImage && !isMedia && sourceUrl) {
+    window.open(sourceUrl, "_blank", "noopener,noreferrer");
+    return true;
+  }
+
+  const panel = document.createElement("section");
+  panel.className = "momentum-preview";
+  panel.appendChild(createMomentumPreviewHeader(card?.topic, card?.updatedAt));
+
+  const titleEl = document.createElement("h3");
+  titleEl.className = "momentum-preview-title";
+  titleEl.textContent = title;
+  panel.appendChild(titleEl);
+
+  const actions = document.createElement("div");
+  actions.className = "row wrap momentum-preview-actions";
+  if (sourceUrl) {
+    const openLink = document.createElement("a");
+    openLink.className = "cta-btn ghost";
+    openLink.href = sourceUrl;
+    openLink.target = "_blank";
+    openLink.rel = "noopener noreferrer";
+    openLink.textContent = "Open source";
+    actions.appendChild(openLink);
+  }
+
+  if (isImage) {
+    openOverlay("Source Preview");
+    const blob = sourceAssetId ? await readSourceAssetBlob(sourceAssetId) : null;
+    let src = "";
+    if (blob instanceof Blob && blob.size > 0) {
+      src = URL.createObjectURL(blob);
+      trackOverlayObjectUrl(src);
+    } else if (previewImage) {
+      src = previewImage;
+    } else if (sourceUrl) {
+      src = sourceUrl;
+    }
+    if (src) {
+      const img = document.createElement("img");
+      img.className = "momentum-preview-image";
+      img.loading = "eager";
+      img.decoding = "async";
+      img.alt = `${title} screenshot`;
+      img.src = src;
+      panel.appendChild(img);
+    } else {
+      const msg = document.createElement("p");
+      msg.className = "muted";
+      msg.textContent = "No preview available for this image. Re-import this screenshot to enable preview.";
+      panel.appendChild(msg);
+    }
+    if (actions.childElementCount) panel.appendChild(actions);
+    overlayBodyEl.innerHTML = "";
+    overlayBodyEl.appendChild(panel);
+    return true;
+  }
+
+  if (isMedia) {
+    openOverlay("Media Preview");
+    const blob = sourceAssetId ? await readSourceAssetBlob(sourceAssetId) : null;
+    let rendered = false;
+    if (blob instanceof Blob && blob.size > 0) {
+      const src = URL.createObjectURL(blob);
+      trackOverlayObjectUrl(src);
+      const mime = String(blob.type || sourceMimeType || "").toLowerCase();
+      const mediaKind = sourceMediaKind || inferMediaKind(extOf(title), mime);
+      if (mediaKind === "audio" || /^audio\//.test(mime) || isAudioKind) {
+        const audio = document.createElement("audio");
+        audio.className = "momentum-preview-media";
+        audio.controls = true;
+        audio.preload = "metadata";
+        audio.src = src;
+        panel.appendChild(audio);
+      } else {
+        const video = document.createElement("video");
+        video.className = "momentum-preview-media";
+        video.controls = true;
+        video.playsInline = true;
+        video.preload = "metadata";
+        video.autoplay = true;
+        video.src = src;
+        if (previewImage) video.poster = previewImage;
+        panel.appendChild(video);
+      }
+      rendered = true;
+    }
+
+    if (!rendered && sourceUrl) {
+      if (isLikelyVideoUrl(sourceUrl)) {
+        const yt = extractYoutubeVideoId(sourceUrl);
+        if (yt) {
+          const iframe = document.createElement("iframe");
+          iframe.className = "momentum-preview-embed";
+          iframe.src = `https://www.youtube.com/embed/${encodeURIComponent(yt)}`;
+          iframe.title = title;
+          iframe.allow = "accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture";
+          iframe.allowFullscreen = true;
+          panel.appendChild(iframe);
+        } else {
+          const video = document.createElement("video");
+          video.className = "momentum-preview-media";
+          video.controls = true;
+          video.playsInline = true;
+          video.preload = "metadata";
+          video.autoplay = true;
+          video.src = sourceUrl;
+          if (previewImage) video.poster = previewImage;
+          panel.appendChild(video);
+        }
+        rendered = true;
+      } else if (isLikelyAudioUrl(sourceUrl)) {
+        const audio = document.createElement("audio");
+        audio.className = "momentum-preview-media";
+        audio.controls = true;
+        audio.preload = "metadata";
+        audio.src = sourceUrl;
+        panel.appendChild(audio);
+        rendered = true;
+      }
+    }
+
+    if (!rendered) {
+      const msg = document.createElement("p");
+      msg.className = "muted";
+      msg.textContent = "Playback is unavailable for this media import on this device. Re-import this video/audio file to enable local playback.";
+      panel.appendChild(msg);
+    }
+
+    if (actions.childElementCount) panel.appendChild(actions);
+    overlayBodyEl.innerHTML = "";
+    overlayBodyEl.appendChild(panel);
+    return true;
+  }
+
+  return false;
 }
 
 function goToAccountView() {
@@ -643,6 +876,99 @@ async function runHomePrompt() {
 
 function authScopedKey(prefix) {
   return `${prefix}_${me?.id || "anon"}`;
+}
+
+function makeSourceAssetId() {
+  try {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  } catch {
+    // ignore
+  }
+  return `src_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function withIdbRequest(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error("IndexedDB request failed"));
+  });
+}
+
+function openSourceAssetDb() {
+  if (sourceAssetDbPromise) return sourceAssetDbPromise;
+  if (!window.indexedDB) {
+    sourceAssetDbPromise = Promise.resolve(null);
+    return sourceAssetDbPromise;
+  }
+  sourceAssetDbPromise = new Promise((resolve) => {
+    try {
+      const req = window.indexedDB.open(SOURCE_ASSET_DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(SOURCE_ASSET_STORE)) {
+          db.createObjectStore(SOURCE_ASSET_STORE, { keyPath: "id" });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+  return sourceAssetDbPromise;
+}
+
+async function saveSourceAssetBlob(id, blob, meta = {}) {
+  const assetId = String(id || "").trim();
+  if (!assetId || !blob) return false;
+  const db = await openSourceAssetDb();
+  if (!db) return false;
+  try {
+    const tx = db.transaction(SOURCE_ASSET_STORE, "readwrite");
+    const store = tx.objectStore(SOURCE_ASSET_STORE);
+    await withIdbRequest(
+      store.put({
+        id: assetId,
+        blob,
+        name: String(meta?.name || ""),
+        kind: String(meta?.kind || ""),
+        mimeType: String(meta?.mimeType || blob.type || ""),
+        createdAt: Date.now()
+      })
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readSourceAssetBlob(id) {
+  const assetId = String(id || "").trim();
+  if (!assetId) return null;
+  const db = await openSourceAssetDb();
+  if (!db) return null;
+  try {
+    const tx = db.transaction(SOURCE_ASSET_STORE, "readonly");
+    const store = tx.objectStore(SOURCE_ASSET_STORE);
+    const row = await withIdbRequest(store.get(assetId));
+    return row?.blob || null;
+  } catch {
+    return null;
+  }
+}
+
+async function deleteSourceAssetBlob(id) {
+  const assetId = String(id || "").trim();
+  if (!assetId) return;
+  const db = await openSourceAssetDb();
+  if (!db) return;
+  try {
+    const tx = db.transaction(SOURCE_ASSET_STORE, "readwrite");
+    const store = tx.objectStore(SOURCE_ASSET_STORE);
+    await withIdbRequest(store.delete(assetId));
+  } catch {
+    // ignore
+  }
 }
 
 function homeFeedResetKey() {
@@ -1932,6 +2258,98 @@ function isMediaExt(ext) {
   return [".mp4", ".mov", ".m4v", ".webm", ".mp3", ".wav", ".m4a", ".ogg"].includes(ext);
 }
 
+function inferMediaKind(ext, mime = "") {
+  const m = String(mime || "").toLowerCase();
+  if (/^video\//i.test(m)) return "video";
+  if (/^audio\//i.test(m)) return "audio";
+  if ([".mp4", ".mov", ".m4v", ".webm"].includes(ext)) return "video";
+  if ([".mp3", ".wav", ".m4a", ".ogg"].includes(ext)) return "audio";
+  return "media";
+}
+
+function extractYoutubeVideoId(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const u = new URL(raw);
+    const host = String(u.hostname || "").toLowerCase();
+    if (host.includes("youtu.be")) return u.pathname.replace("/", "").slice(0, 20);
+    if (host.includes("youtube.com")) {
+      const qv = String(u.searchParams.get("v") || "").trim();
+      if (qv) return qv.slice(0, 20);
+      const parts = u.pathname.split("/").filter(Boolean);
+      const marker = parts.findIndex((x) => x === "embed" || x === "shorts" || x === "live");
+      if (marker >= 0 && parts[marker + 1]) return String(parts[marker + 1]).slice(0, 20);
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return "";
+}
+
+function isLikelyVideoUrl(value) {
+  const v = String(value || "").trim().toLowerCase();
+  return /^https?:\/\//.test(v) && (/\.(mp4|webm|m4v|mov)(\?|#|$)/.test(v) || Boolean(extractYoutubeVideoId(v)));
+}
+
+function isLikelyAudioUrl(value) {
+  const v = String(value || "").trim().toLowerCase();
+  return /^https?:\/\//.test(v) && /\.(mp3|wav|m4a|ogg)(\?|#|$)/.test(v);
+}
+
+function isLikelyImageUrl(value) {
+  const v = String(value || "").trim().toLowerCase();
+  return /^https?:\/\//.test(v) && /\.(png|jpg|jpeg|webp|gif)(\?|#|$)/.test(v);
+}
+
+async function buildVideoPreviewDataUrl(file, { maxWidth = 460, maxHeight = 280, quality = 0.72 } = {}) {
+  if (!file) return "";
+  let objectUrl = "";
+  try {
+    objectUrl = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    video.src = objectUrl;
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      const done = (ok) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        video.removeEventListener("loadeddata", onLoadedData);
+        video.removeEventListener("error", onError);
+        if (ok) resolve();
+        else reject(new Error("Video preview failed"));
+      };
+      const onLoadedData = () => done(true);
+      const onError = () => done(false);
+      const timeout = setTimeout(() => done(false), 3500);
+      video.addEventListener("loadeddata", onLoadedData, { once: true });
+      video.addEventListener("error", onError, { once: true });
+    });
+    const srcW = Math.max(1, Number(video.videoWidth || 0));
+    const srcH = Math.max(1, Number(video.videoHeight || 0));
+    if (!srcW || !srcH) return "";
+    const scale = Math.min(1, maxWidth / srcW, maxHeight / srcH);
+    const width = Math.max(96, Math.round(srcW * scale));
+    const height = Math.max(72, Math.round(srcH * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+    ctx.drawImage(video, 0, 0, width, height);
+    const out = canvas.toDataURL("image/jpeg", Math.max(0.45, Math.min(0.9, Number(quality) || 0.72)));
+    return sanitizePreviewImage(out, 180000);
+  } catch {
+    return "";
+  } finally {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+}
+
 function uniqueFiles(files = [], max = 20) {
   const arr = Array.isArray(files) ? files : Array.from(files || []);
   const seen = new Set();
@@ -2040,11 +2458,14 @@ async function readFilesAsSources(files = []) {
       const base64 = await blobToBase64(f);
       const mimeType = f.type || (ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg");
       const previewImage = await buildImagePreviewDataUrl(f, { maxWidth: 460, maxHeight: 280, quality: 0.72 });
+      const assetId = makeSourceAssetId();
+      await saveSourceAssetBlob(assetId, f, { name: f.name, kind: "image", mimeType });
       sources.push({
         name: f.name,
         kind: "image",
         mimeType,
         previewImage,
+        assetId,
         base64
       });
       continue;
@@ -2052,10 +2473,18 @@ async function readFilesAsSources(files = []) {
 
     if (isMediaExt(ext) || /^(audio|video)\//i.test(mime)) {
       const base64 = await blobToBase64(f);
+      const mimeType = f.type || "audio/webm";
+      const mediaKind = inferMediaKind(ext, mimeType);
+      const previewImage = mediaKind === "video" ? await buildVideoPreviewDataUrl(f, { maxWidth: 460, maxHeight: 280, quality: 0.68 }) : "";
+      const assetId = makeSourceAssetId();
+      await saveSourceAssetBlob(assetId, f, { name: f.name, kind: "media", mimeType });
       sources.push({
         name: f.name,
         kind: "media",
-        mimeType: f.type || "audio/webm",
+        mimeType,
+        mediaKind,
+        previewImage,
+        assetId,
         base64
       });
       continue;
@@ -2256,11 +2685,17 @@ function dedupeSourceEntries(list = [], { maxKeep = 40, threshold = 0.92, imageT
       if (previewImage && !sanitizePreviewImage(out[duplicateAt]?.previewImage, 180000)) {
         out[duplicateAt].previewImage = previewImage;
       }
+      if (!out[duplicateAt]?.assetId && row?.assetId) out[duplicateAt].assetId = String(row.assetId);
+      if (!out[duplicateAt]?.mimeType && row?.mimeType) out[duplicateAt].mimeType = String(row.mimeType);
+      if (!out[duplicateAt]?.mediaKind && row?.mediaKind) out[duplicateAt].mediaKind = String(row.mediaKind);
       continue;
     }
     const nextRow = { ...row };
     if (previewImage) nextRow.previewImage = previewImage;
     else delete nextRow.previewImage;
+    if (nextRow.assetId) nextRow.assetId = String(nextRow.assetId).trim();
+    if (nextRow.mimeType) nextRow.mimeType = String(nextRow.mimeType).trim();
+    if (nextRow.mediaKind) nextRow.mediaKind = String(nextRow.mediaKind).trim().toLowerCase();
     out.push(nextRow);
   }
   return out.slice(-Math.max(6, Number(maxKeep) || 40));
@@ -2285,6 +2720,9 @@ function mergeImportedSourcesIntoCurrent(imported = []) {
       addedAt: now
     };
     if (previewImage) row.previewImage = previewImage;
+    if (s?.assetId) row.assetId = String(s.assetId).trim();
+    if (s?.mimeType) row.mimeType = String(s.mimeType).trim();
+    if (s?.mediaKind) row.mediaKind = String(s.mediaKind).trim().toLowerCase();
     next.push(row);
   }
   const deduped = dedupeSourceEntries(next, { maxKeep: 40, threshold: 0.92, imageThreshold: 0.86 });
@@ -2387,10 +2825,12 @@ function renderSourcesManager() {
     rm.className = "ghost danger";
     rm.type = "button";
     rm.textContent = "Remove";
-    rm.addEventListener("click", () => {
+    rm.addEventListener("click", async () => {
       const next = loadSourcesForCurrentNote();
+      const removed = next[i];
       next.splice(i, 1);
       saveSourcesForCurrentNote(next);
+      await deleteSourceAssetBlob(String(removed?.assetId || ""));
       renderSourcesManager();
     });
     actions.appendChild(rm);
@@ -2488,28 +2928,41 @@ async function requestSourceImport({ sources = [], urls = [] } = {}) {
   });
 }
 
-function hydrateImportedPreviewImages(imported = [], preparedSources = []) {
+function hydrateImportedVisualData(imported = [], preparedSources = []) {
   const rows = Array.isArray(imported) ? imported : [];
   const prepared = Array.isArray(preparedSources) ? preparedSources : [];
   if (!rows.length || !prepared.length) return rows;
-  const byName = new Map();
-  let singlePreview = "";
+  const bySource = new Map();
+  let fallbackVisual = null;
   prepared.forEach((src) => {
+    const name = String(src?.name || "").trim().toLowerCase();
+    const kind = String(src?.kind || "").trim().toLowerCase();
     const preview = sanitizePreviewImage(src?.previewImage, 180000);
-    if (!preview) return;
-    const key = String(src?.name || "").trim().toLowerCase();
-    if (key) byName.set(key, preview);
-    if (!singlePreview) singlePreview = preview;
+    const assetId = String(src?.assetId || "").trim();
+    const mimeType = String(src?.mimeType || "").trim();
+    const mediaKind = String(src?.mediaKind || "").trim().toLowerCase();
+    if (!name) return;
+    const visual = {
+      previewImage: preview || "",
+      assetId: assetId || "",
+      mimeType: mimeType || "",
+      mediaKind: mediaKind || ""
+    };
+    bySource.set(`${kind}:${name}`, visual);
+    bySource.set(name, visual);
+    if (!fallbackVisual && (visual.previewImage || visual.assetId)) fallbackVisual = visual;
   });
-  if (!singlePreview) return rows;
+  if (!fallbackVisual) return rows;
   return rows.map((row) => {
     const out = { ...row };
-    const existing = sanitizePreviewImage(out?.previewImage, 180000);
-    if (existing) return out;
-    if (String(out?.kind || "").toLowerCase() !== "image") return out;
     const key = String(out?.name || "").trim().toLowerCase();
-    const match = (key && byName.get(key)) || singlePreview;
-    if (match) out.previewImage = match;
+    const kind = String(out?.kind || "").trim().toLowerCase();
+    const match = bySource.get(`${kind}:${key}`) || bySource.get(key) || fallbackVisual;
+    const existingPreview = sanitizePreviewImage(out?.previewImage, 180000);
+    if (!existingPreview && match?.previewImage) out.previewImage = match.previewImage;
+    if (!out.assetId && match?.assetId) out.assetId = match.assetId;
+    if (!out.mimeType && match?.mimeType) out.mimeType = match.mimeType;
+    if (!out.mediaKind && match?.mediaKind) out.mediaKind = match.mediaKind;
     return out;
   });
 }
@@ -2534,7 +2987,7 @@ async function importSources({ sources = [], urls = [], setStatus = setSourceSta
   try {
     const out = await requestSourceImport({ sources, urls });
     const importedRaw = Array.isArray(out?.imported) ? out.imported : [];
-    const imported = hydrateImportedPreviewImages(importedRaw, sources);
+    const imported = hydrateImportedVisualData(importedRaw, sources);
     applyImportedSources(imported);
     setStatus(`Imported ${imported.length} source(s) into this note.`);
     fireAndForgetTrack("sources.import_client", { count: imported.length });
@@ -2582,7 +3035,7 @@ async function importPreparedSources(sources, rejected = 0, { setStatus = setSou
     try {
       const out = await requestSourceImport({ sources: batch, urls: [] });
       const importedRaw = Array.isArray(out?.imported) ? out.imported : [];
-      const imported = hydrateImportedPreviewImages(importedRaw, batch);
+      const imported = hydrateImportedVisualData(importedRaw, batch);
       totalImported += imported.length;
       applyImportedSources(imported);
     } catch (e) {
@@ -2826,12 +3279,14 @@ async function runAi(action) {
 }
 
 function openOverlay(title) {
+  releaseOverlayObjectUrls();
   overlayTitleEl.textContent = title;
   overlayEl.classList.remove("hidden");
   overlayEl.setAttribute("aria-hidden", "false");
 }
 
 function closeOverlay() {
+  releaseOverlayObjectUrls();
   overlayEl.classList.add("hidden");
   overlayEl.setAttribute("aria-hidden", "true");
   overlayBodyEl.innerHTML = "";
@@ -4096,11 +4551,13 @@ if (clearOutputBtn) {
 
 if (sourcesRefreshBtn) sourcesRefreshBtn.addEventListener("click", () => renderSourcesManager());
 if (sourcesClearBtn) {
-  sourcesClearBtn.addEventListener("click", () => {
-    if (!currentId) return;
+  sourcesClearBtn.addEventListener("click", async () => {
     if (!confirm("Clear all sources attached to this note?")) return;
+    const existing = loadSourcesForCurrentNote();
+    await Promise.all(existing.map((row) => deleteSourceAssetBlob(String(row?.assetId || ""))));
     saveSourcesForCurrentNote([]);
     renderSourcesManager();
+    renderLearningFeed();
     setSourceStatus("Cleared sources for this note.");
   });
 }
