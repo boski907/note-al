@@ -37,6 +37,7 @@ const formatButtons = [...document.querySelectorAll("[data-cmd]")];
 const clearFormatBtn = document.getElementById("clear-format-btn");
 const cleanSourceBlocksBtn = document.getElementById("clean-source-blocks-btn");
 const recordBtn = document.getElementById("record-btn");
+const clearRecordingBtn = document.getElementById("clear-recording-btn");
 const genCardsBtn = document.getElementById("gen-cards-btn");
 const studyBtn = document.getElementById("study-btn");
 const testprepBtn = document.getElementById("testprep-btn");
@@ -4275,6 +4276,16 @@ async function stopRecording() {
   recordBtn.textContent = "Record voice note";
 }
 
+function clearTranscriptionArea() {
+  if (recorder) {
+    aiOutputEl.textContent = "Stop recording first, then clear transcript.";
+    return;
+  }
+  recordingChunks = [];
+  recordingMimeType = "";
+  aiOutputEl.textContent = "";
+}
+
 async function startRecording() {
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     aiOutputEl.textContent = "Voice recording is not supported in this browser.";
@@ -4375,16 +4386,23 @@ editorEl.addEventListener("input", () => {
 });
 
 aiButtons.forEach((btn) => btn.addEventListener("click", () => runAi(btn.dataset.ai)));
-recordBtn.addEventListener("click", () => {
-  if (recorder) {
-    stopRecording();
-  } else {
-    startRecording().catch((e) => {
-      aiOutputEl.textContent = `Recording error: ${e.message}`;
-      recorder = null;
-    });
-  }
-});
+if (recordBtn) {
+  recordBtn.addEventListener("click", () => {
+    if (recorder) {
+      stopRecording();
+    } else {
+      startRecording().catch((e) => {
+        aiOutputEl.textContent = `Recording error: ${e.message}`;
+        recorder = null;
+      });
+    }
+  });
+}
+if (clearRecordingBtn) {
+  clearRecordingBtn.addEventListener("click", () => {
+    clearTranscriptionArea();
+  });
+}
 
 overlayCloseEl.addEventListener("click", closeOverlay);
 overlayEl.addEventListener("click", (e) => {
