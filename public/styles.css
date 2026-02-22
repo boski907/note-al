@@ -2285,6 +2285,11 @@ body[data-theme="clean"] {
     linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(250, 252, 255, 0.96));
 }
 
+#view-notes .note-editor .transcript-entry {
+  border-left: 3px solid rgba(42, 88, 188, 0.42);
+  padding-left: 10px;
+}
+
 #view-notes .ai-tools {
   border-top-color: rgba(73, 103, 162, 0.24);
   padding-top: 12px;

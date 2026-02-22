@@ -215,6 +215,8 @@ let interstitialsThisSession = 0;
 let sessionUpgradedAt = 0;
 let lastTypingAt = 0;
 let tutorialStepIndex = 0;
+let lastTranscriptSnapshot = "";
+let lastTranscriptEntryId = 0;
 const SOURCE_UPLOAD_HINT = "No files selected yet. Tap Add files, drag/drop, or paste screenshots/files.";
 const CHAT_UPLOAD_HINT = "Attach screenshots/files from your device with Add files, drag/drop, or paste.";
 const SOURCE_ASSET_DB_NAME = "notematica_source_assets_v1";
@@ -4276,10 +4278,46 @@ async function stopRecording() {
   recordBtn.textContent = "Record voice note";
 }
 
+function appendTranscriptToEditor(text) {
+  const transcript = String(text || "").trim();
+  if (!transcript || !editorEl) return false;
+  lastTranscriptSnapshot = editorEl.innerHTML;
+  if (String(editorEl.textContent || "").trim()) {
+    const spacer = document.createElement("div");
+    spacer.setAttribute("data-transcript-divider", "1");
+    spacer.innerHTML = "<br>";
+    editorEl.appendChild(spacer);
+  }
+  const block = document.createElement("div");
+  block.className = "transcript-entry";
+  block.setAttribute("data-transcript-entry", "1");
+  block.setAttribute("data-transcript-id", String(++lastTranscriptEntryId));
+  block.textContent = transcript;
+  editorEl.appendChild(block);
+  return true;
+}
+
 function clearTranscriptionArea() {
   if (recorder) {
     aiOutputEl.textContent = "Stop recording first, then clear transcript.";
     return;
+  }
+  const transcriptNodes = [
+    ...editorEl.querySelectorAll('[data-transcript-entry="1"]'),
+    ...editorEl.querySelectorAll('[data-transcript-divider="1"]')
+  ];
+  if (transcriptNodes.length) {
+    transcriptNodes.forEach((node) => node.remove());
+    lastTranscriptSnapshot = "";
+  } else if (lastTranscriptSnapshot) {
+    editorEl.innerHTML = lastTranscriptSnapshot;
+    lastTranscriptSnapshot = "";
+  } else {
+    const outputText = String(aiOutputEl.textContent || "").trim();
+    const editorText = String(editorEl.innerText || "").trim();
+    if (outputText && editorText && editorText === outputText) {
+      editorEl.innerHTML = "";
+    }
   }
   recordingChunks = [];
   recordingMimeType = "";
@@ -4336,7 +4374,7 @@ async function startRecording() {
         })
       });
       if (data.text) {
-        editorEl.innerHTML += `${editorEl.innerHTML ? "<br><br>" : ""}${escapeHtml(data.text)}`;
+        appendTranscriptToEditor(data.text);
       }
       aiOutputEl.textContent = data.text || "No transcript returned.";
       fireAndForgetTrack("notes.transcribe", {});
