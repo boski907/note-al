@@ -723,6 +723,40 @@ h1 {
   white-space: pre-wrap;
 }
 
+.upload-selection {
+  margin-top: 0.4rem;
+  font-size: 0.84rem;
+}
+
+.upload-drop-zone {
+  margin-top: 0.45rem;
+  border: 1px dashed #bcc9df;
+  border-radius: 12px;
+  background: #f8fbff;
+  color: #334155;
+  padding: 10px 12px;
+  font: 600 0.84rem/1.35 "Space Grotesk", sans-serif;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.upload-drop-zone.compact {
+  width: min(680px, 100%);
+  margin: 10px auto 0;
+}
+
+.upload-drop-zone.drag-active {
+  border-color: #1d4ed8;
+  background: #eaf0ff;
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
+}
+
+.upload-drop-zone:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 .divider {
   height: 1px;
   background: var(--line);

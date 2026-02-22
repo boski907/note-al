@@ -39,15 +39,20 @@ const genCardsBtn = document.getElementById("gen-cards-btn");
 const studyBtn = document.getElementById("study-btn");
 const testprepBtn = document.getElementById("testprep-btn");
 const sourceFilesEl = document.getElementById("source-files");
+const sourceAddFilesBtn = document.getElementById("source-add-files-btn");
 const sourceUrlsEl = document.getElementById("source-urls");
 const importFilesBtn = document.getElementById("import-files-btn");
 const importUrlsBtn = document.getElementById("import-urls-btn");
 const upgradeSourcesBtn = document.getElementById("upgrade-sources-btn");
 const sourceStatusEl = document.getElementById("source-status");
+const sourceFileSelectionEl = document.getElementById("source-file-selection");
+const sourceDropZoneEl = document.getElementById("source-drop-zone");
 const examModeEl = document.getElementById("exam-mode");
 const tutorQuestionEl = document.getElementById("tutor-question");
 const askTutorBtn = document.getElementById("ask-tutor-btn");
 const tutorOutputEl = document.getElementById("tutor-output");
+const tutorDropZoneEl = document.getElementById("tutor-drop-zone");
+const tutorAttachSelectionEl = document.getElementById("tutor-attach-selection");
 const planDaysEl = document.getElementById("plan-days");
 const planMinutesEl = document.getElementById("plan-minutes");
 const autoPlanBtn = document.getElementById("auto-plan-btn");
@@ -126,6 +131,8 @@ const tabOpenStudyBtn = document.getElementById("tab-open-study-btn");
 const homeComposerInputEl = document.getElementById("home-composer-input");
 const homeComposeBtnEl = document.getElementById("home-compose-btn");
 const homeAttachBtnEl = document.getElementById("home-attach-btn");
+const homeDropZoneEl = document.getElementById("home-drop-zone");
+const homeAttachSelectionEl = document.getElementById("home-attach-selection");
 const tutorAttachBtnEl = document.getElementById("tutor-attach-btn");
 const chatAttachFilesEl = document.getElementById("chat-attach-files");
 const homeComposeStatusEl = document.getElementById("home-compose-status");
@@ -186,6 +193,8 @@ let interstitialsThisSession = 0;
 let sessionUpgradedAt = 0;
 let lastTypingAt = 0;
 let tutorialStepIndex = 0;
+const SOURCE_UPLOAD_HINT = "No files selected yet. Tap Add files, drag/drop, or paste screenshots/files.";
+const CHAT_UPLOAD_HINT = "Attach screenshots/files from your device with Add files, drag/drop, or paste.";
 const tutorialSteps = [
   {
     title: "Your workspace",
@@ -798,9 +807,24 @@ function setHomeComposeStatus(msg, isError = false) {
   homeComposeStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
 }
 
+function setUploadSelection(el, msg, isError = false) {
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = isError ? "#b91c1c" : "var(--muted)";
+}
+
+function setSourceFileSelection(msg, isError = false) {
+  setUploadSelection(sourceFileSelectionEl, msg, isError);
+}
+
+function setChatAttachSelection(msg, isError = false) {
+  setUploadSelection(homeAttachSelectionEl, msg, isError);
+  setUploadSelection(tutorAttachSelectionEl, msg, isError);
+}
+
 function setChatAttachStatus(msg, isError = false) {
   setHomeComposeStatus(msg, isError);
-  setSourceStatus(msg, isError);
+  setChatAttachSelection(msg, isError);
 }
 
 function setPlanStatus(msg, isError = false) {
@@ -1377,6 +1401,8 @@ async function logout() {
   setLearningStatus("");
   setSourceStatus("");
   setHomeComposeStatus("");
+  setSourceFileSelection(SOURCE_UPLOAD_HINT);
+  setChatAttachSelection(CHAT_UPLOAD_HINT);
   if (sourceUrlsEl) sourceUrlsEl.value = "";
   if (sourceFilesEl) sourceFilesEl.value = "";
   window.location.href = "/welcome.html";
@@ -1485,10 +1511,86 @@ function isMediaExt(ext) {
   return [".mp4", ".mov", ".m4v", ".webm", ".mp3", ".wav", ".m4a", ".ogg"].includes(ext);
 }
 
-async function readSelectedFilesAsSources(fileInputEl = sourceFilesEl) {
-  const files = [...(fileInputEl?.files || [])];
-  const accepted = files.filter((f) => canImportFile(f)).slice(0, 20);
-  const rejected = files.length - accepted.length;
+function uniqueFiles(files = [], max = 20) {
+  const arr = Array.isArray(files) ? files : Array.from(files || []);
+  const seen = new Set();
+  const out = [];
+  for (const f of arr) {
+    if (!f || typeof f.name !== "string") continue;
+    const key = `${String(f.name)}:${Number(f.size || 0)}:${Number(f.lastModified || 0)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(f);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function summarizeFileNames(files = [], limit = 3) {
+  const arr = Array.isArray(files) ? files : [];
+  if (!arr.length) return "";
+  const names = arr.slice(0, limit).map((f) => String(f?.name || "file").slice(0, 60));
+  const more = arr.length > limit ? ` +${arr.length - limit} more` : "";
+  return `${names.join(", ")}${more}`;
+}
+
+function extractFilesFromDataTransfer(dataTransfer) {
+  if (!dataTransfer) return [];
+  const fromFiles = uniqueFiles(dataTransfer.files ? [...dataTransfer.files] : []);
+  if (fromFiles.length) return fromFiles;
+  const items = Array.from(dataTransfer.items || []);
+  const fromItems = [];
+  for (const item of items) {
+    if (!item || item.kind !== "file") continue;
+    const file = item.getAsFile?.();
+    if (file) fromItems.push(file);
+  }
+  return uniqueFiles(fromItems);
+}
+
+function bindDropZone(el, { onFiles, onOpenPicker } = {}) {
+  if (!el) return;
+  let dragDepth = 0;
+  const activate = () => el.classList.add("drag-active");
+  const deactivate = () => el.classList.remove("drag-active");
+
+  el.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    dragDepth += 1;
+    activate();
+  });
+  el.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    activate();
+  });
+  el.addEventListener("dragleave", (e) => {
+    e.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) deactivate();
+  });
+  el.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dragDepth = 0;
+    deactivate();
+    const files = extractFilesFromDataTransfer(e.dataTransfer);
+    if (!files.length) return;
+    onFiles?.(files);
+  });
+  el.addEventListener("click", () => {
+    onOpenPicker?.();
+  });
+  el.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    onOpenPicker?.();
+  });
+}
+
+async function readFilesAsSources(files = []) {
+  const incoming = uniqueFiles(files, 20);
+  const accepted = incoming.filter((f) => canImportFile(f)).slice(0, 20);
+  const rejected = incoming.length - accepted.length;
   const sources = [];
   for (const f of accepted) {
     const ext = extOf(f.name);
@@ -1544,7 +1646,66 @@ async function readSelectedFilesAsSources(fileInputEl = sourceFilesEl) {
       content: text.slice(0, 140000)
     });
   }
-  return { sources, rejected };
+  return { sources, rejected, accepted };
+}
+
+async function importFilesFromDevice(files, { setStatus = setSourceStatus, context = "sources" } = {}) {
+  const list = uniqueFiles(files, 20);
+  if (!list.length) {
+    setStatus("No files detected. Add screenshots/images, docs, audio, or video files.", true);
+    return { ok: false, importedCount: 0 };
+  }
+  const names = summarizeFileNames(list);
+  if (context === "sources") {
+    setSourceFileSelection(`Preparing ${list.length} file(s): ${names}`);
+  } else {
+    setChatAttachSelection(`Preparing ${list.length} file(s): ${names}`);
+  }
+  const { sources, rejected } = await readFilesAsSources(list);
+  const out = await importPreparedSources(sources, rejected, { setStatus });
+  if (context === "sources") {
+    if (out.ok) setSourceFileSelection(`Attached ${out.importedCount} file(s): ${names}`);
+    else setSourceFileSelection("Upload failed. Try again with smaller files.", true);
+  } else {
+    if (out.ok) setChatAttachSelection(`Attached ${out.importedCount} file(s): ${names}`);
+    else setChatAttachSelection("Upload failed. Try again with smaller files.", true);
+  }
+  return out;
+}
+
+async function importSourcePickerFiles() {
+  const files = [...(sourceFilesEl?.files || [])];
+  if (!files.length) {
+    setSourceFileSelection(SOURCE_UPLOAD_HINT);
+    setSourceStatus("Choose files first.", true);
+    return { ok: false, importedCount: 0 };
+  }
+  const out = await importFilesFromDevice(files, { setStatus: setSourceStatus, context: "sources" });
+  if (sourceFilesEl) sourceFilesEl.value = "";
+  return out;
+}
+
+async function importChatPickerFiles() {
+  const files = [...(chatAttachFilesEl?.files || [])];
+  if (!files.length) {
+    setChatAttachSelection(CHAT_UPLOAD_HINT);
+    return { ok: false, importedCount: 0 };
+  }
+  const out = await importFilesFromDevice(files, { setStatus: setChatAttachStatus, context: "chat" });
+  if (chatAttachFilesEl) chatAttachFilesEl.value = "";
+  return out;
+}
+
+async function handlePasteUpload(e) {
+  const files = extractFilesFromDataTransfer(e.clipboardData);
+  if (!files.length) return;
+  if (!["home", "study_tools", "sources"].includes(currentView)) return;
+  e.preventDefault();
+  if (currentView === "sources") {
+    await importFilesFromDevice(files, { setStatus: setSourceStatus, context: "sources" });
+    return;
+  }
+  await importFilesFromDevice(files, { setStatus: setChatAttachStatus, context: "chat" });
 }
 
 function renderImportedSources(imported = []) {
@@ -3115,10 +3276,31 @@ testReminderBtn.addEventListener("click", async () => {
   setReminderStatus("Test notification sent.");
 });
 importFilesBtn.addEventListener("click", async () => {
-  const { sources, rejected } = await readSelectedFilesAsSources(sourceFilesEl);
-  await importPreparedSources(sources, rejected, { setStatus: setSourceStatus });
-  if (sourceFilesEl) sourceFilesEl.value = "";
+  if (!sourceFilesEl) return;
+  const selected = [...(sourceFilesEl.files || [])];
+  if (!selected.length) {
+    sourceFilesEl.click();
+    setSourceFileSelection("Choose screenshots/files from your device.");
+    return;
+  }
+  await importSourcePickerFiles();
 });
+if (sourceAddFilesBtn) {
+  sourceAddFilesBtn.addEventListener("click", () => {
+    sourceFilesEl?.click();
+  });
+}
+if (sourceFilesEl) {
+  sourceFilesEl.addEventListener("change", async () => {
+    const files = [...(sourceFilesEl.files || [])];
+    if (!files.length) {
+      setSourceFileSelection(SOURCE_UPLOAD_HINT);
+      return;
+    }
+    setSourceFileSelection(`Selected ${files.length} file(s): ${summarizeFileNames(files)}`);
+    await importSourcePickerFiles();
+  });
+}
 importUrlsBtn.addEventListener("click", async () => {
   const urls = parseUrlInput(sourceUrlsEl.value).slice(0, 8);
   if (!urls.length) {
@@ -3126,6 +3308,14 @@ importUrlsBtn.addEventListener("click", async () => {
     return;
   }
   await importSources({ sources: [], urls });
+});
+bindDropZone(sourceDropZoneEl, {
+  onFiles: (files) => {
+    importFilesFromDevice(files, { setStatus: setSourceStatus, context: "sources" }).catch((e) => {
+      setSourceStatus(formatImportError(e), true);
+    });
+  },
+  onOpenPicker: () => sourceFilesEl?.click()
 });
 
 if (tabBtnWriteEl) {
@@ -3188,11 +3378,32 @@ if (tutorAttachBtnEl) {
 }
 if (chatAttachFilesEl) {
   chatAttachFilesEl.addEventListener("change", async () => {
-    const { sources, rejected } = await readSelectedFilesAsSources(chatAttachFilesEl);
-    await importPreparedSources(sources, rejected, { setStatus: setChatAttachStatus });
-    chatAttachFilesEl.value = "";
+    await importChatPickerFiles();
   });
 }
+bindDropZone(homeDropZoneEl, {
+  onFiles: (files) => {
+    importFilesFromDevice(files, { setStatus: setChatAttachStatus, context: "chat" }).catch((e) => {
+      setChatAttachStatus(formatImportError(e), true);
+    });
+  },
+  onOpenPicker: () => chatAttachFilesEl?.click()
+});
+bindDropZone(tutorDropZoneEl, {
+  onFiles: (files) => {
+    importFilesFromDevice(files, { setStatus: setChatAttachStatus, context: "chat" }).catch((e) => {
+      setChatAttachStatus(formatImportError(e), true);
+    });
+  },
+  onOpenPicker: () => chatAttachFilesEl?.click()
+});
+document.addEventListener("paste", (e) => {
+  handlePasteUpload(e).catch((err) => {
+    const msg = formatImportError(err);
+    if (currentView === "sources") setSourceStatus(msg, true);
+    else setChatAttachStatus(msg, true);
+  });
+});
 if (homeChipTranscribeEl) {
   homeChipTranscribeEl.addEventListener("click", () => {
     setView("notes");
@@ -3316,6 +3527,8 @@ window.addEventListener("popstate", () => {
   const fromLoginPage = /\/login\.html(?:$|\?)/.test(String(document.referrer || ""));
   const initialView = explicitView || (fromLoginPage ? "home" : savedView || "home");
   setView(initialView, { persist: false, updateUrl: true, replaceHistory: true });
+  setSourceFileSelection(SOURCE_UPLOAD_HINT);
+  setChatAttachSelection(CHAT_UPLOAD_HINT);
   loadOutputCounter();
   const upgradedKey = authScopedKey("upgraded_at_v1");
   const upgradedAtRaw = sessionStorage.getItem(upgradedKey) || "0";
