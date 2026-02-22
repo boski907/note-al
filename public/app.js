@@ -34,6 +34,7 @@ const feedbackAiBtn = document.querySelector('[data-ai="feedback"]');
 const upgradeAiBtn = document.getElementById("upgrade-ai-btn");
 const formatButtons = [...document.querySelectorAll("[data-cmd]")];
 const clearFormatBtn = document.getElementById("clear-format-btn");
+const cleanSourceBlocksBtn = document.getElementById("clean-source-blocks-btn");
 const recordBtn = document.getElementById("record-btn");
 const genCardsBtn = document.getElementById("gen-cards-btn");
 const studyBtn = document.getElementById("study-btn");
@@ -1095,6 +1096,32 @@ function stripLegacySourceDumpText(text) {
 function getAiReadyNoteText() {
   const raw = editorEl.innerText.trim();
   return stripLegacySourceDumpText(raw);
+}
+
+async function cleanLegacySourceBlocksInEditor() {
+  const beforeRaw = String(editorEl.innerText || "").replace(/\r/g, "");
+  const cleaned = stripLegacySourceDumpText(beforeRaw);
+  if (cleaned === beforeRaw.trim()) {
+    aiOutputEl.textContent = "No old imported source blocks found in this note.";
+    return false;
+  }
+
+  editorEl.innerHTML = cleaned ? escapeHtml(cleaned).replaceAll("\n", "<br>") : "";
+  lastTypingAt = Date.now();
+
+  if (token && currentId) {
+    try {
+      await saveNote();
+      aiOutputEl.textContent = "Removed old source blocks and saved this note.";
+      return true;
+    } catch (e) {
+      aiOutputEl.textContent = `Removed old source blocks. Save failed: ${e.message}`;
+      return true;
+    }
+  }
+
+  aiOutputEl.textContent = "Removed old source blocks. Click Save to keep changes.";
+  return true;
 }
 
 function setAuthStatus(msg, isError = false) {
@@ -3336,6 +3363,13 @@ clearFormatBtn.addEventListener("click", () => {
   document.execCommand("removeFormat");
   editorEl.focus();
 });
+if (cleanSourceBlocksBtn) {
+  cleanSourceBlocksBtn.addEventListener("click", () => {
+    cleanLegacySourceBlocksInEditor().catch((e) => {
+      aiOutputEl.textContent = `Cleanup error: ${e.message}`;
+    });
+  });
+}
 editorEl.addEventListener("input", () => {
   lastTypingAt = Date.now();
 });
