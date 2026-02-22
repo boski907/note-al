@@ -1067,6 +1067,36 @@ function appendToEditor(text) {
   editorEl.innerHTML += `${editorEl.innerHTML ? "<br><br>" : ""}${escapeHtml(clean).replaceAll("\n", "<br>")}`;
 }
 
+function stripLegacySourceDumpText(text) {
+  const raw = String(text || "").replace(/\r/g, "");
+  if (!raw) return "";
+  if (!/^##\s*(source:|imported sources\s*\()/im.test(raw)) return raw.trim();
+
+  const lines = raw.split("\n");
+  const kept = [];
+  let skipping = false;
+  for (const rawLine of lines) {
+    const line = String(rawLine || "");
+    const trimmed = line.trim();
+    const isLegacyStart = /^##\s*source:/i.test(trimmed) || /^##\s*imported sources\s*\(/i.test(trimmed);
+    if (isLegacyStart) {
+      skipping = true;
+      continue;
+    }
+    if (skipping && /^##\s+/.test(trimmed) && !/^##\s*source:/i.test(trimmed) && !/^##\s*imported sources\s*\(/i.test(trimmed)) {
+      skipping = false;
+    }
+    if (skipping) continue;
+    kept.push(line);
+  }
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function getAiReadyNoteText() {
+  const raw = editorEl.innerText.trim();
+  return stripLegacySourceDumpText(raw);
+}
+
 function setAuthStatus(msg, isError = false) {
   authStatusEl.textContent = msg;
   authStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
@@ -2148,7 +2178,7 @@ async function importPreparedSources(sources, rejected = 0, { setStatus = setSou
 
 async function askTutor({ preferWebSearch = false, source = "study_tools" } = {}) {
   const question = String(tutorQuestionEl.value || "").trim();
-  const noteText = editorEl.innerText.trim();
+  const noteText = getAiReadyNoteText();
   const sources = getAiSourcesForRequest(6);
   const shouldPreferWeb = Boolean(preferWebSearch);
   if (!question) return (tutorOutputEl.textContent = "Enter a tutor question.");
@@ -2332,7 +2362,7 @@ async function deleteNote() {
 }
 
 async function runAi(action) {
-  const noteText = editorEl.innerText.trim();
+  const noteText = getAiReadyNoteText();
   const sources = getAiSourcesForRequest(6);
   if (!noteText && !sources.length) {
     aiOutputEl.textContent = "Add note text or import files first.";
@@ -2755,7 +2785,7 @@ async function flushFlashcardReviewQueue() {
 }
 
 async function generateFlashcards() {
-  const noteText = editorEl.innerText.trim();
+  const noteText = getAiReadyNoteText();
   if (!noteText) {
     aiOutputEl.textContent = "Add note text first.";
     return;
@@ -3004,7 +3034,7 @@ async function renderStudyDue() {
 }
 
 async function renderTestPrep() {
-  const noteText = editorEl.innerText.trim();
+  const noteText = getAiReadyNoteText();
   if (!noteText) {
     aiOutputEl.textContent = "Add note text first.";
     return;
