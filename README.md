@@ -20,6 +20,13 @@ This repository includes:
 
 When using AI coding agents on GitHub, keep these instruction files aligned so behavior is consistent across tools.
 
+### Using Claude In This Repo
+
+1. Open this repository in your Claude-compatible coding tool.
+2. Start tasks in natural language (for example: "fix login bug" or "add tests for notes API").
+3. Claude will use `/Users/larryrobinson/Documents/note app/CLAUDE.md` and `/Users/larryrobinson/Documents/note app/AGENTS.md` as project instructions.
+4. Review and run changes locally before merging.
+
 ## Setup
 
 1. Install Node.js 18+.
