@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260222v02" />
+    <link rel="stylesheet" href="/styles.css?v=20260222v03" />
   </head>
   <body>
     <div class="backdrop"></div>
@@ -23,20 +23,33 @@
     <main class="app-shell">
       <aside class="left-rail" id="auth-card">
         <div class="rail-brand">
-          <a href="/welcome.html" aria-label="Go to welcome page">
+          <a href="/welcome.html" class="rail-brand-link" aria-label="Go to welcome page">
             <img src="/logo-notematica.svg" alt="Notematica" class="rail-brand-logo" />
           </a>
+          <p class="rail-kicker">Study OS</p>
         </div>
 
         <nav class="rail-nav" aria-label="Primary navigation">
-          <button class="rail-nav-item active" type="button" data-view-link="home">Home</button>
-          <button class="rail-nav-item" type="button" data-view-link="notes">My notes</button>
-          <button class="rail-nav-item" type="button" data-view-link="study_tools">Study tools</button>
-          <button class="rail-nav-item" type="button" data-view-link="sources">Files</button>
+          <button class="rail-nav-item active" type="button" data-view-link="home">
+            <span class="rail-nav-glyph">01</span>
+            <span>Launchpad</span>
+          </button>
+          <button class="rail-nav-item" type="button" data-view-link="notes">
+            <span class="rail-nav-glyph">02</span>
+            <span>Notebook</span>
+          </button>
+          <button class="rail-nav-item" type="button" data-view-link="study_tools">
+            <span class="rail-nav-glyph">03</span>
+            <span>Study Lab</span>
+          </button>
+          <button class="rail-nav-item" type="button" data-view-link="sources">
+            <span class="rail-nav-glyph">04</span>
+            <span>Source Vault</span>
+          </button>
         </nav>
 
         <div class="rail-bottom">
-          <button id="rail-profile-btn" class="ghost" type="button">Profile</button>
+          <button id="rail-profile-btn" class="ghost rail-profile-btn" type="button">Profile</button>
         </div>
       </aside>
 
@@ -46,7 +59,10 @@
             <a href="/welcome.html" class="top-brand-link" aria-label="Go to welcome page">
               <img src="/logo-notematica.svg" alt="Notematica logo" class="top-brand-logo" />
             </a>
-            <div class="top-title">AI Study Assistant</div>
+            <div class="top-head-copy">
+              <div class="top-kicker">Notematica Studio</div>
+              <div class="top-title">Design your next learning win</div>
+            </div>
           </div>
           <div class="row wrap top-actions">
             <select id="theme-select">
@@ -60,99 +76,106 @@
 
         <section id="workspace" class="route-canvas">
           <section class="route-view" data-route-view="home" id="view-home">
-            <div class="home-hero">
-              <h2 class="home-title">What are we studying today?</h2>
-              <div class="home-composer">
-                <input id="home-composer-input" class="home-composer-input" placeholder="Ask anything to learn. We can search web pages and videos." />
-                <div class="home-composer-actions">
-                  <button id="home-compose-btn" class="ghost" type="button">Search</button>
-                  <button id="home-attach-btn" class="ghost" type="button">Add files</button>
-                </div>
-              </div>
-              <div id="home-drop-zone" class="upload-drop-zone compact" role="button" tabindex="0">Drop or paste screenshots/files here</div>
-              <div id="home-attach-selection" class="upload-selection muted">Attach screenshots/files from your device with Add files, drag/drop, or paste.</div>
-              <p class="muted" style="margin: 0.35rem 0 0">No uploads needed. Ask a topic and Notematica will find relevant pages/videos for you.</p>
-              <input
-                id="chat-attach-files"
-                class="hidden"
-                type="file"
-                multiple
-                accept="image/*,video/*,audio/*,.txt,.md,.csv,.json,.html,.htm,.xml,.log,.pdf,.docx,.png,.jpg,.jpeg,.webp,.mp4,.mov,.m4v,.webm,.mp3,.wav,.m4a,.ogg"
-              />
-              <div id="home-compose-status" class="status"></div>
-              <div class="home-chip-row">
-                <button id="home-chip-transcribe" class="ghost home-chip" type="button">Live transcribe</button>
-                <button id="home-chip-file-summary" class="ghost home-chip" type="button">File summary</button>
-                <button id="home-chip-homework" class="ghost home-chip" type="button">Homework solver</button>
-                <button id="home-chip-youtube" class="ghost home-chip" type="button">YouTube summary</button>
-                <button id="home-chip-more" class="ghost home-chip" type="button">More</button>
-              </div>
-            </div>
+            <section class="home-stage">
+              <div class="home-orbit-grid">
+                <article class="card-face home-command">
+                  <div class="home-command-head">
+                    <span class="home-label">Mission control</span>
+                    <h2 class="home-title">What are we studying in this focus block?</h2>
+                  </div>
+                  <p id="home-welcome-message" class="muted">Your study dashboard is ready.</p>
+                  <div class="home-composer">
+                    <input id="home-composer-input" class="home-composer-input" placeholder="Type a topic, assignment, or exam objective. Notematica will build your study path." />
+                    <div class="home-composer-actions">
+                      <button id="home-compose-btn" type="button">Build plan</button>
+                      <button id="home-attach-btn" class="ghost" type="button">Add files</button>
+                    </div>
+                  </div>
+                  <div id="home-drop-zone" class="upload-drop-zone compact" role="button" tabindex="0">Drop or paste screenshots/files here</div>
+                  <div id="home-attach-selection" class="upload-selection muted">Attach screenshots/files from your device with Add files, drag/drop, or paste.</div>
+                  <input
+                    id="chat-attach-files"
+                    class="hidden"
+                    type="file"
+                    multiple
+                    accept="image/*,video/*,audio/*,.txt,.md,.csv,.json,.html,.htm,.xml,.log,.pdf,.docx,.png,.jpg,.jpeg,.webp,.mp4,.mov,.m4v,.webm,.mp3,.wav,.m4a,.ogg"
+                  />
+                  <div class="home-chip-row">
+                    <button id="home-chip-transcribe" class="ghost home-chip" type="button">Live transcribe</button>
+                    <button id="home-chip-file-summary" class="ghost home-chip" type="button">File summary</button>
+                    <button id="home-chip-homework" class="ghost home-chip" type="button">Homework solver</button>
+                    <button id="home-chip-youtube" class="ghost home-chip" type="button">YouTube summary</button>
+                    <button id="home-chip-more" class="ghost home-chip" type="button">More actions</button>
+                  </div>
+                  <div id="home-compose-status" class="status"></div>
+                </article>
 
-            <div class="home-quick card-face">
-              <div class="home-quick-head">
-                <h3>Start fast</h3>
-                <p id="home-welcome-message" class="muted">Your study dashboard is ready.</p>
+                <aside class="card-face home-sprint">
+                  <h3>Quick launch</h3>
+                  <p class="muted">Jump into the exact tool you need right now.</p>
+                  <div class="home-action-stack">
+                    <button id="home-action-new-note" type="button">Start a note</button>
+                    <button id="home-action-import" class="ghost" type="button">Import sources</button>
+                    <button id="home-action-study" class="ghost" type="button">Open study lab</button>
+                  </div>
+                  <div id="home-quick-status" class="status"></div>
+                  <div class="home-sprint-meta">
+                    <div id="home-next-action" class="status"></div>
+                    <div id="home-focus-topic" class="status muted"></div>
+                  </div>
+                </aside>
               </div>
-              <div class="row wrap">
-                <button id="home-action-new-note" type="button">New note</button>
-                <button id="home-action-import" class="ghost" type="button">Import sources</button>
-                <button id="home-action-study" class="ghost" type="button">Open study tools</button>
-              </div>
-              <div id="home-quick-status" class="status"></div>
-            </div>
 
-            <div class="home-outcomes card-face">
-              <div class="home-outcomes-head">
-                <h3>Study outcomes</h3>
-                <button id="home-refresh-metrics-btn" class="ghost" type="button">Refresh</button>
-              </div>
-              <div class="metrics-grid home-metrics-grid">
-                <article class="metric-card">
-                  <div class="metric-label">7d actions</div>
-                  <div id="home-metric-actions" class="metric-value">-</div>
-                </article>
-                <article class="metric-card">
-                  <div class="metric-label">AI outputs (7d)</div>
-                  <div id="home-metric-ai" class="metric-value">-</div>
-                </article>
-                <article class="metric-card">
-                  <div class="metric-label">Cards due now</div>
-                  <div id="home-metric-due" class="metric-value">-</div>
-                </article>
-                <article class="metric-card">
-                  <div class="metric-label">Mastery</div>
-                  <div id="home-metric-mastery" class="metric-value">-</div>
-                </article>
-                <article class="metric-card">
-                  <div class="metric-label">Study streak</div>
-                  <div id="home-metric-streak" class="metric-value">-</div>
-                </article>
-                <article class="metric-card">
-                  <div class="metric-label">XP level</div>
-                  <div id="home-metric-level" class="metric-value">-</div>
-                </article>
-              </div>
-              <div id="home-next-action" class="status"></div>
-              <div id="home-focus-topic" class="status muted"></div>
-              <div id="home-upgrade-card" class="home-upgrade hidden">
-                <div id="home-upgrade-message" class="home-upgrade-message">
-                  Upgrade to Premium for higher daily limits and uninterrupted study sessions.
+              <section class="home-outcomes card-face">
+                <div class="home-outcomes-head">
+                  <h3>Performance board</h3>
+                  <button id="home-refresh-metrics-btn" class="ghost" type="button">Refresh</button>
                 </div>
-                <div class="row wrap">
-                  <button id="home-upgrade-btn" type="button">Upgrade to Premium</button>
-                  <button id="home-upgrade-dismiss" class="ghost" type="button">Maybe later</button>
+                <div class="metrics-grid home-metrics-grid">
+                  <article class="metric-card">
+                    <div class="metric-label">7d actions</div>
+                    <div id="home-metric-actions" class="metric-value">-</div>
+                  </article>
+                  <article class="metric-card">
+                    <div class="metric-label">AI outputs (7d)</div>
+                    <div id="home-metric-ai" class="metric-value">-</div>
+                  </article>
+                  <article class="metric-card">
+                    <div class="metric-label">Cards due now</div>
+                    <div id="home-metric-due" class="metric-value">-</div>
+                  </article>
+                  <article class="metric-card">
+                    <div class="metric-label">Mastery</div>
+                    <div id="home-metric-mastery" class="metric-value">-</div>
+                  </article>
+                  <article class="metric-card">
+                    <div class="metric-label">Study streak</div>
+                    <div id="home-metric-streak" class="metric-value">-</div>
+                  </article>
+                  <article class="metric-card">
+                    <div class="metric-label">XP level</div>
+                    <div id="home-metric-level" class="metric-value">-</div>
+                  </article>
                 </div>
-              </div>
-            </div>
+                <div id="home-upgrade-card" class="home-upgrade hidden">
+                  <div id="home-upgrade-message" class="home-upgrade-message">
+                    Upgrade to Premium for higher daily limits and uninterrupted study sessions.
+                  </div>
+                  <div class="row wrap">
+                    <button id="home-upgrade-btn" type="button">Upgrade to Premium</button>
+                    <button id="home-upgrade-dismiss" class="ghost" type="button">Maybe later</button>
+                  </div>
+                </div>
+              </section>
 
-            <div class="home-feed card-face">
-              <div class="home-feed-head">
-                <h3>What we're learning?</h3>
-                <button id="home-feed-view-all" class="ghost" type="button">View all</button>
-              </div>
-              <div id="home-learning-grid" class="learning-grid"></div>
-            </div>
+              <section class="home-feed card-face">
+                <div class="home-feed-head">
+                  <h3>Momentum feed</h3>
+                  <button id="home-feed-view-all" class="ghost" type="button">View all</button>
+                </div>
+                <div id="home-learning-grid" class="learning-grid"></div>
+              </section>
+            </section>
           </section>
 
           <section class="route-view hidden" data-route-view="notes" id="view-notes">
@@ -540,6 +563,6 @@
       <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a>
     </footer>
 
-    <script src="/app.js?v=20260222v02"></script>
+    <script src="/app.js?v=20260222v03"></script>
   </body>
 </html>

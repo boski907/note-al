@@ -505,18 +505,20 @@ function renderLearningFeed() {
   const sources = collectSourceMetadata(100);
   const cards = buildLearningFeed(notes, sources, analyticsSummary);
   homeLearningGridEl.innerHTML = "";
-  cards.forEach((card) => {
+  cards.forEach((card, index) => {
     const item = document.createElement("article");
-    item.className = "home-feed-card";
+    item.className = "learning-card";
     item.innerHTML = `
-      <div class="home-feed-thumb"></div>
-      <div class="home-feed-body">
-        <span class="home-feed-topic">${escapeHtml(card.topic || "Study")}</span>
-        <h4 class="home-feed-title">${escapeHtml(card.title || "Learning item")}</h4>
-        <p class="home-feed-meta">${escapeHtml(formatRelativeDate(card.updatedAt))}</p>
+      <div class="learning-card-thumb">
+        <span class="learning-card-index">${String(index + 1).padStart(2, "0")}</span>
+      </div>
+      <div class="learning-card-body">
+        <span class="learning-card-topic">${escapeHtml(card.topic || "Study")}</span>
+        <h4 class="learning-card-title">${escapeHtml(card.title || "Learning item")}</h4>
+        <p class="learning-card-meta">${escapeHtml(formatRelativeDate(card.updatedAt))}</p>
       </div>
     `;
-    const thumb = item.querySelector(".home-feed-thumb");
+    const thumb = item.querySelector(".learning-card-thumb");
     if (thumb) thumb.style.background = card.thumbStyle;
     item.addEventListener("click", () => {
       const ref = String(card.sourceRef || "");
