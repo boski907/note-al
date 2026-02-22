@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260220v01" />
+    <link rel="stylesheet" href="/styles.css?v=20260222v02" />
   </head>
   <body>
     <div class="backdrop"></div>
@@ -89,32 +89,60 @@
               </div>
             </div>
 
-            <div class="home-welcome card-face">
-              <div class="home-welcome-copy">
-                <h3>Welcome to Notematica</h3>
+            <div class="home-quick card-face">
+              <div class="home-quick-head">
+                <h3>Start fast</h3>
                 <p id="home-welcome-message" class="muted">Your study dashboard is ready.</p>
-                <p class="muted">
-                  Import class material, capture key notes, then turn everything into flashcards, tutor answers, and test prep in one place.
-                </p>
-                <ul class="home-welcome-list">
-                  <li>Import PDFs, DOCX, websites, YouTube links, and media.</li>
-                  <li>Generate summaries, feedback, tasks, and practice tests.</li>
-                  <li>Track progress with learning metrics and due flashcards.</li>
-                </ul>
               </div>
-              <div class="home-welcome-gallery">
-                <img
-                  src="/welcome-real-classroom.jpg"
-                  alt="African American teacher leading class"
-                />
-                <img
-                  src="/welcome-real-study-group.jpg"
-                  alt="Diverse students studying together"
-                />
-                <img
-                  src="/welcome-real-learning-hall.jpg"
-                  alt="Classroom with students learning"
-                />
+              <div class="row wrap">
+                <button id="home-action-new-note" type="button">New note</button>
+                <button id="home-action-import" class="ghost" type="button">Import sources</button>
+                <button id="home-action-study" class="ghost" type="button">Open study tools</button>
+              </div>
+              <div id="home-quick-status" class="status"></div>
+            </div>
+
+            <div class="home-outcomes card-face">
+              <div class="home-outcomes-head">
+                <h3>Study outcomes</h3>
+                <button id="home-refresh-metrics-btn" class="ghost" type="button">Refresh</button>
+              </div>
+              <div class="metrics-grid home-metrics-grid">
+                <article class="metric-card">
+                  <div class="metric-label">7d actions</div>
+                  <div id="home-metric-actions" class="metric-value">-</div>
+                </article>
+                <article class="metric-card">
+                  <div class="metric-label">AI outputs (7d)</div>
+                  <div id="home-metric-ai" class="metric-value">-</div>
+                </article>
+                <article class="metric-card">
+                  <div class="metric-label">Cards due now</div>
+                  <div id="home-metric-due" class="metric-value">-</div>
+                </article>
+                <article class="metric-card">
+                  <div class="metric-label">Mastery</div>
+                  <div id="home-metric-mastery" class="metric-value">-</div>
+                </article>
+                <article class="metric-card">
+                  <div class="metric-label">Study streak</div>
+                  <div id="home-metric-streak" class="metric-value">-</div>
+                </article>
+                <article class="metric-card">
+                  <div class="metric-label">XP level</div>
+                  <div id="home-metric-level" class="metric-value">-</div>
+                </article>
+              </div>
+              <div id="home-next-action" class="status"></div>
+              <div id="home-focus-topic" class="status muted"></div>
+              <div id="home-upgrade-card" class="home-upgrade hidden">
+                <div id="home-upgrade-message" class="home-upgrade-message">
+                  Upgrade to Premium for higher daily limits and uninterrupted study sessions.
+                </div>
+                <div class="row wrap">
+                  <button id="home-upgrade-btn" type="button">Upgrade to Premium</button>
+                  <button id="home-upgrade-dismiss" class="ghost" type="button">Maybe later</button>
+                </div>
               </div>
             </div>
 
@@ -512,6 +540,6 @@
       <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a>
     </footer>
 
-    <script src="/app.js?v=20260222v01"></script>
+    <script src="/app.js?v=20260222v02"></script>
   </body>
 </html>

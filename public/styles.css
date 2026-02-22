@@ -321,54 +321,50 @@ h1 {
   font-size: 0.85rem !important;
 }
 
-.home-welcome {
+.home-quick,
+.home-outcomes {
+  margin-top: 10px;
+}
+
+.home-quick-head {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 12px;
-  align-items: start;
+  gap: 2px;
+  margin-bottom: 8px;
 }
 
-.home-welcome-copy h3 {
-  margin: 0 0 8px;
-}
-
-.home-welcome-copy .muted {
-  margin: 0 0 8px;
-}
-
-.home-welcome-list {
+.home-quick-head h3 {
   margin: 0;
-  padding-left: 18px;
-  display: grid;
-  gap: 4px;
-  color: #334155;
-  font-size: 0.9rem;
 }
 
-.home-welcome-gallery {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  align-content: start;
-  overflow: hidden;
+.home-outcomes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.home-outcomes-head h3 {
+  margin: 0;
+}
+
+.home-metrics-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.home-upgrade {
+  margin-top: 10px;
+  border: 1px solid #bfd0fb;
   border-radius: 12px;
-  min-width: 0;
+  background: linear-gradient(135deg, rgba(236, 243, 255, 0.98), rgba(242, 248, 255, 0.96));
+  padding: 10px;
 }
 
-.home-welcome-gallery img {
-  display: block;
-  width: 100%;
-  height: clamp(132px, 16vw, 180px);
-  min-height: 0;
-  border-radius: 10px;
-  object-fit: cover;
-  border: 1px solid var(--line);
-  background: #fff;
-}
-
-.home-welcome-gallery img:first-child {
-  grid-column: 1 / span 2;
-  height: clamp(180px, 22vw, 250px);
+.home-upgrade-message {
+  margin-bottom: 8px;
+  color: #1d3658;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .home-feed {
@@ -1393,7 +1389,6 @@ body.focus-mode[data-app-view="notes"] .workspace {
     font-size: 1.8rem;
   }
 
-  .home-welcome,
   .welcome-hero {
     grid-template-columns: 1fr;
   }
@@ -1450,6 +1445,10 @@ body.focus-mode[data-app-view="notes"] .workspace {
     grid-template-columns: 1fr;
   }
 
+  .home-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
   .legal-links {
     left: 10px;
     right: 10px;
@@ -1464,16 +1463,4 @@ body.focus-mode[data-app-view="notes"] .workspace {
     min-height: 36vh;
   }
 
-  .home-welcome-gallery {
-    grid-template-columns: 1fr;
-  }
-
-  .home-welcome-gallery img {
-    height: 180px;
-  }
-
-  .home-welcome-gallery img:first-child {
-    grid-column: auto;
-    height: 220px;
-  }
 }

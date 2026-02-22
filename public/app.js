@@ -145,6 +145,23 @@ const homeChipMoreEl = document.getElementById("home-chip-more");
 const homeFeedViewAllEl = document.getElementById("home-feed-view-all");
 const homeLearningGridEl = document.getElementById("home-learning-grid");
 const homeWelcomeMessageEl = document.getElementById("home-welcome-message");
+const homeActionNewNoteEl = document.getElementById("home-action-new-note");
+const homeActionImportEl = document.getElementById("home-action-import");
+const homeActionStudyEl = document.getElementById("home-action-study");
+const homeQuickStatusEl = document.getElementById("home-quick-status");
+const homeRefreshMetricsBtnEl = document.getElementById("home-refresh-metrics-btn");
+const homeMetricActionsEl = document.getElementById("home-metric-actions");
+const homeMetricAiEl = document.getElementById("home-metric-ai");
+const homeMetricDueEl = document.getElementById("home-metric-due");
+const homeMetricMasteryEl = document.getElementById("home-metric-mastery");
+const homeMetricStreakEl = document.getElementById("home-metric-streak");
+const homeMetricLevelEl = document.getElementById("home-metric-level");
+const homeNextActionEl = document.getElementById("home-next-action");
+const homeFocusTopicEl = document.getElementById("home-focus-topic");
+const homeUpgradeCardEl = document.getElementById("home-upgrade-card");
+const homeUpgradeMessageEl = document.getElementById("home-upgrade-message");
+const homeUpgradeBtnEl = document.getElementById("home-upgrade-btn");
+const homeUpgradeDismissEl = document.getElementById("home-upgrade-dismiss");
 
 let adsenseCfg = null;
 let adFree = false;
@@ -182,6 +199,7 @@ let currentView = "home";
 let activeTab = "write";
 let currentId = null;
 let analyticsSummary = null;
+let learningSummary = { masteryScore: 0, dueNow: 0, weakTags: [], nextActions: [] };
 let recorder = null;
 let recordingStream = null;
 let recordingChunks = [];
@@ -301,7 +319,11 @@ function setView(view, { persist = true, updateUrl = true, replaceHistory = true
   if (updateUrl) syncViewInUrl(next, replaceHistory);
   if (next === "notes" && activeTab !== "write") setActiveTab("write");
   if (next === "sources") renderSourcesManager();
-  if (next === "home") renderLearningFeed();
+  if (next === "home") {
+    renderLearningFeed();
+    updateHomeOutcomeMetrics();
+    evaluatePremiumPrompt();
+  }
 }
 
 function renderView() {
@@ -318,10 +340,10 @@ function updateHomeWelcomeMessage() {
   if (!homeWelcomeMessageEl) return;
   if (me?.email) {
     const user = String(me.email).split("@")[0] || "there";
-    homeWelcomeMessageEl.textContent = `Welcome back, ${user}. Pick a note or source to continue your study flow.`;
+    homeWelcomeMessageEl.textContent = `Welcome back, ${user}. Pick one focused action to keep momentum.`;
     return;
   }
-  homeWelcomeMessageEl.textContent = "Welcome. Pick a note or source to start studying.";
+  homeWelcomeMessageEl.textContent = "Welcome. Pick one focused action to start studying.";
 }
 
 function formatRelativeDate(value) {
@@ -564,10 +586,160 @@ function setMetric(el, value) {
   if (el) el.textContent = String(value);
 }
 
+function setHomeQuickStatus(msg, isError = false) {
+  if (!homeQuickStatusEl) return;
+  homeQuickStatusEl.textContent = msg;
+  homeQuickStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
 function formatEventName(name) {
   const raw = String(name || "").trim();
   if (!raw) return "-";
   return raw.replaceAll(".", " ");
+}
+
+function analyticsCount(counts, key) {
+  return Number((counts && counts[key]) || 0);
+}
+
+function aiOutputCountFromAnalytics(counts = {}) {
+  const keys = [
+    "ai.action",
+    "tutor.ask",
+    "flashcards.generate",
+    "testprep.generate",
+    "study.plan",
+    "notes.transcribe"
+  ];
+  return keys.reduce((sum, k) => sum + analyticsCount(counts, k), 0);
+}
+
+function homeNextActionText({ dueNow = 0, noteCount = 0, sourceCount = 0, aiOutputs7d = 0 } = {}) {
+  if (dueNow > 0) return `Review ${dueNow} due flashcard(s).`;
+  if (noteCount === 0) return "Create your first note, then run Summarize.";
+  if (sourceCount === 0) return "Import at least one source for grounded answers and citations.";
+  if (aiOutputs7d < 3) return "Run one AI action on your top note and save improvements.";
+  const next = Array.isArray(learningSummary?.nextActions) ? learningSummary.nextActions[0] : "";
+  if (next) return String(next);
+  return "Open Study tools and run a short practice test.";
+}
+
+function updateHomeOutcomeMetrics() {
+  const counts = analyticsSummary?.counts || {};
+  const actions7d = Number(analyticsSummary?.total || 0);
+  const aiOutputs7d = aiOutputCountFromAnalytics(counts);
+  const dueNow = Number(learningSummary?.dueNow || 0);
+  const mastery = Number(learningSummary?.masteryScore || 0);
+  const xpState = loadXpState();
+  const streak = computeStreak(xpState.days || []);
+  const noteCount = Array.isArray(notes) ? notes.length : 0;
+  const sourceCount = collectSourceMetadata(120).length;
+
+  setMetric(homeMetricActionsEl, actions7d);
+  setMetric(homeMetricAiEl, aiOutputs7d);
+  setMetric(homeMetricDueEl, dueNow);
+  setMetric(homeMetricMasteryEl, `${mastery}%`);
+  setMetric(homeMetricStreakEl, `${streak} day${streak === 1 ? "" : "s"}`);
+  setMetric(homeMetricLevelEl, `Lv ${Math.max(1, Number(xpState.level || 1))}`);
+
+  if (homeNextActionEl) {
+    homeNextActionEl.textContent = `Next best action: ${homeNextActionText({ dueNow, noteCount, sourceCount, aiOutputs7d })}`;
+  }
+  if (homeFocusTopicEl) {
+    const weak = Array.isArray(learningSummary?.weakTags) ? learningSummary.weakTags : [];
+    homeFocusTopicEl.textContent = weak.length
+      ? `Focus topic: ${weak[0].tag} (${weak[0].due} due)`
+      : "Focus topic: build cards from tagged notes to get personalized weak-topic coaching.";
+  }
+}
+
+function paywallPromptKey() {
+  return authScopedKey("home_paywall_prompt_v1");
+}
+
+function loadPaywallPromptState() {
+  try {
+    const raw = localStorage.getItem(paywallPromptKey()) || "{}";
+    const parsed = JSON.parse(raw);
+    const dismissed = parsed?.dismissed && typeof parsed.dismissed === "object" ? parsed.dismissed : {};
+    return {
+      dismissed,
+      lastReason: String(parsed?.lastReason || ""),
+      lastShownAt: Number(parsed?.lastShownAt || 0)
+    };
+  } catch {
+    return { dismissed: {}, lastReason: "", lastShownAt: 0 };
+  }
+}
+
+function savePaywallPromptState(state) {
+  try {
+    localStorage.setItem(paywallPromptKey(), JSON.stringify(state || {}));
+  } catch {
+    // ignore storage issues
+  }
+}
+
+function hideHomeUpgradePrompt() {
+  setHidden(homeUpgradeCardEl, true);
+}
+
+function showHomeUpgradePrompt(reason, { force = false, payload = {} } = {}) {
+  if (!homeUpgradeCardEl || !homeUpgradeMessageEl) return false;
+  if (adFree || IS_NATIVE_SHELL) {
+    hideHomeUpgradePrompt();
+    return false;
+  }
+  const copy = {
+    momentum: "You are using Notematica heavily this week. Upgrade to Premium ($10/mo) for higher daily limits and uninterrupted study flow.",
+    source_depth: "You are importing lots of sources. Premium ($10/mo) gives higher daily source and transcription limits.",
+    quota: "You reached a daily usage limit. Upgrade to Premium ($10/mo) to continue with higher limits today.",
+    manual: "Upgrade to Premium ($10/mo) for higher daily AI limits and ad-free sessions."
+  };
+  const cooldownMs = reason === "quota" ? 2 * 60 * 60 * 1000 : 12 * 60 * 60 * 1000;
+  const now = Date.now();
+  const state = loadPaywallPromptState();
+  const lastDismissed = Number((state.dismissed && state.dismissed[reason]) || 0);
+  const recentlyShown = now - Number(state.lastShownAt || 0) < 15 * 60 * 1000;
+  if (!force && (now - lastDismissed < cooldownMs || recentlyShown)) return false;
+
+  homeUpgradeMessageEl.textContent = copy[reason] || copy.manual;
+  setHidden(homeUpgradeCardEl, false);
+  state.lastReason = reason;
+  state.lastShownAt = now;
+  savePaywallPromptState(state);
+  fireAndForgetTrack("billing.promo_seen", { reason, ...payload });
+  return true;
+}
+
+function dismissHomeUpgradePrompt() {
+  const state = loadPaywallPromptState();
+  const reason = state.lastReason || "manual";
+  state.dismissed = state.dismissed || {};
+  state.dismissed[reason] = Date.now();
+  savePaywallPromptState(state);
+  hideHomeUpgradePrompt();
+  fireAndForgetTrack("billing.promo_dismiss", { reason });
+}
+
+function evaluatePremiumPrompt() {
+  if (adFree || IS_NATIVE_SHELL) {
+    hideHomeUpgradePrompt();
+    return;
+  }
+  const aiOutputs7d = aiOutputCountFromAnalytics(analyticsSummary?.counts || {});
+  const actions7d = Number(analyticsSummary?.total || 0);
+  if (sourceImportCount >= 3) {
+    showHomeUpgradePrompt("source_depth", { payload: { importCount: sourceImportCount } });
+    return;
+  }
+  if (aiOutputs7d >= 12 || actions7d >= 28 || monetizedOutputCount >= 4) {
+    showHomeUpgradePrompt("momentum", { payload: { aiOutputs7d, actions7d, outputCount: monetizedOutputCount } });
+  }
+}
+
+function promptUpgradeForQuota(scope = "ai") {
+  showHomeUpgradePrompt("quota", { payload: { scope } });
 }
 
 function setLearningStatus(msg, isError = false) {
@@ -591,6 +763,13 @@ function applyPremiumFeatureGates() {
   setHidden(upgradeLearningBtn, !gated);
   setHidden(upgradeSourcesBtn, !gated);
   setHidden(upgradeAiBtn, !gated);
+  if (gated) {
+    setHomeQuickStatus("Free plan active. Upgrade for higher daily limits and faster study throughput.");
+    evaluatePremiumPrompt();
+  } else {
+    setHomeQuickStatus("Premium active. Higher limits unlocked.");
+    hideHomeUpgradePrompt();
+  }
 }
 
 function loadOutputCounter() {
@@ -757,18 +936,20 @@ async function showAdInterstitial(adCount = 2) {
 }
 
 async function countOutputAndMaybeShowAds(eventName = "output.generic") {
-  if (adFree || !areAdsEnabled()) return;
   monetizedOutputCount += 1;
   saveOutputCounter();
+  evaluatePremiumPrompt();
+  if (adFree || !areAdsEnabled()) return;
   if (monetizedOutputCount % 4 !== 0) return;
   const shown = await showAdInterstitial(2);
   if (shown) fireAndForgetTrack("ads.double_interstitial_shown", { atOutput: monetizedOutputCount, trigger: eventName });
 }
 
 async function countImportAndMaybeShowAds() {
-  if (adFree || !areAdsEnabled()) return;
   sourceImportCount += 1;
   saveImportCounter();
+  evaluatePremiumPrompt();
+  if (adFree || !areAdsEnabled()) return;
   if (sourceImportCount % 4 !== 0) return;
   const shown = await showAdInterstitial(3);
   if (shown) fireAndForgetTrack("ads.triple_interstitial_shown", { atImport: sourceImportCount, trigger: "sources.import" });
@@ -895,6 +1076,7 @@ function refreshXpUi() {
   const streak = computeStreak(s.days);
   streakDaysEl.textContent = `${streak} day${streak === 1 ? "" : "s"}`;
   xpLevelEl.textContent = `Lv ${s.level} (${s.xp} XP)`;
+  updateHomeOutcomeMetrics();
 }
 
 function awardXp(action, points = 5) {
@@ -1178,7 +1360,10 @@ function formatQuotaError(e, fallback) {
 
 function formatImportError(e) {
   const quota = formatQuotaError(e, "Import limit reached.");
-  if (quota) return quota;
+  if (quota) {
+    promptUpgradeForQuota("source_import");
+    return quota;
+  }
   const msg = String(e?.message || "").trim();
   if (Number(e?.status || 0) === 401) return "Session expired. Sign in again, then retry import.";
   if (Number(e?.status || 0) === 413 || /payload too large/i.test(msg)) {
@@ -1335,9 +1520,11 @@ async function loadBillingStatus() {
       initAdsense().catch(() => {});
     }
     applyPremiumFeatureGates();
+    updateHomeOutcomeMetrics();
   } catch (e) {
     setBillingStatus(`Billing status error: ${e.message}`, true);
     applyPremiumFeatureGates();
+    updateHomeOutcomeMetrics();
   }
 }
 
@@ -1352,7 +1539,7 @@ async function loadAnalyticsSummary() {
     const flashcards = entries
       .filter(([k]) => String(k).startsWith("flashcards."))
       .reduce((sum, [, n]) => sum + Number(n || 0), 0);
-    const aiActions = Number(counts["ai.action"] || 0);
+    const aiActions = aiOutputCountFromAnalytics(counts);
     setMetric(metricTotalEl, data.total || 0);
     setMetric(metricTopEventEl, top ? `${formatEventName(top[0])} (${top[1]})` : "-");
     setMetric(metricFlashcardsEl, flashcards);
@@ -1363,6 +1550,8 @@ async function loadAnalyticsSummary() {
       counts
     };
     renderLearningFeed();
+    updateHomeOutcomeMetrics();
+    evaluatePremiumPrompt();
   } catch (e) {
     setAnalyticsStatus(`Analytics error: ${e.message}`, true);
     setMetric(metricTotalEl, "-");
@@ -1371,6 +1560,7 @@ async function loadAnalyticsSummary() {
     setMetric(metricAiEl, "-");
     analyticsSummary = null;
     renderLearningFeed();
+    updateHomeOutcomeMetrics();
   }
 }
 
@@ -1378,6 +1568,12 @@ async function loadLearningPlan() {
   if (!token) return;
   try {
     const plan = await api("/api/learning/plan", { method: "GET" });
+    learningSummary = {
+      masteryScore: Number(plan.masteryScore || 0),
+      dueNow: Number(plan.dueNow || 0),
+      weakTags: Array.isArray(plan.weakTags) ? plan.weakTags : [],
+      nextActions: Array.isArray(plan.nextActions) ? plan.nextActions : []
+    };
     setMetric(learningMasteryEl, `${plan.masteryScore ?? 0}%`);
     setMetric(learningDueEl, plan.dueNow ?? 0);
     const weak = Array.isArray(plan.weakTags) ? plan.weakTags : [];
@@ -1387,9 +1583,13 @@ async function loadLearningPlan() {
     const next = Array.isArray(plan.nextActions) ? plan.nextActions : [];
     learningNextEl.textContent = next.length ? `Next: ${next.join(" ")}` : "";
     setLearningStatus(`Plan updated ${new Date(plan.generatedAt || Date.now()).toLocaleTimeString()}.`);
+    updateHomeOutcomeMetrics();
+    evaluatePremiumPrompt();
   } catch (e) {
+    learningSummary = { masteryScore: 0, dueNow: 0, weakTags: [], nextActions: [] };
     clearLearningUi();
     setLearningStatus(`Learning plan error: ${e.message}`, true);
+    updateHomeOutcomeMetrics();
   }
 }
 
@@ -1443,6 +1643,7 @@ async function logout() {
   setMetric(metricTopEventEl, "-");
   setMetric(metricFlashcardsEl, "-");
   setMetric(metricAiEl, "-");
+  learningSummary = { masteryScore: 0, dueNow: 0, weakTags: [], nextActions: [] };
   monetizedOutputCount = 0;
   sourceImportCount = 0;
   lastInterstitialAt = 0;
@@ -1458,8 +1659,10 @@ async function logout() {
   setLearningStatus("");
   setSourceStatus("");
   setHomeComposeStatus("");
+  setHomeQuickStatus("");
   setSourceFileSelection(SOURCE_UPLOAD_HINT);
   setChatAttachSelection(CHAT_UPLOAD_HINT);
+  hideHomeUpgradePrompt();
   if (sourceUrlsEl) sourceUrlsEl.value = "";
   if (sourceFilesEl) sourceFilesEl.value = "";
   window.location.href = "/welcome.html";
@@ -1501,6 +1704,7 @@ async function loadNotes() {
     renderSourcesManager();
   }
   renderLearningFeed();
+  updateHomeOutcomeMetrics();
 }
 
 function parseUrlInput(raw) {
@@ -2227,6 +2431,7 @@ async function askTutor({ preferWebSearch = false, source = "study_tools" } = {}
     await countOutputAndMaybeShowAds("tutor.ask");
   } catch (e) {
     const quota = formatQuotaError(e, "Tutor limit reached.");
+    if (quota) promptUpgradeForQuota("ai_output");
     tutorOutputEl.textContent = quota ? quota : `Tutor error: ${e.message}`;
     if (source === "home") setHomeComposeStatus(quota ? quota : `Tutor error: ${e.message}`, true);
   }
@@ -2372,6 +2577,7 @@ async function saveNote() {
   renderNotes();
   aiOutputEl.textContent = "Saved.";
   renderLearningFeed();
+  updateHomeOutcomeMetrics();
   fireAndForgetTrack("notes.save", { noteId: saved.id });
 }
 
@@ -2385,6 +2591,7 @@ async function deleteNote() {
   renderNotes();
   aiOutputEl.textContent = "Deleted.";
   renderLearningFeed();
+  updateHomeOutcomeMetrics();
   fireAndForgetTrack("notes.delete", {});
 }
 
@@ -2409,6 +2616,7 @@ async function runAi(action) {
     await countOutputAndMaybeShowAds(`ai.${action}`);
   } catch (err) {
     const quota = formatQuotaError(err, "AI limit reached.");
+    if (quota) promptUpgradeForQuota("ai_output");
     aiOutputEl.textContent = quota ? quota : `Error: ${err.message}`;
   }
 }
@@ -2836,6 +3044,7 @@ async function generateFlashcards() {
     await countOutputAndMaybeShowAds("flashcards.generate");
   } catch (e) {
     const quota = formatQuotaError(e, "Flashcard limit reached.");
+    if (quota) promptUpgradeForQuota("flashcard_gen");
     aiOutputEl.textContent = quota ? quota : `Flashcards error: ${e.message}`;
   }
 }
@@ -3079,6 +3288,7 @@ async function renderTestPrep() {
     });
   } catch (e) {
     const quota = formatQuotaError(e, "Practice test limit reached.");
+    if (quota) promptUpgradeForQuota("ai_output");
     overlayBodyEl.innerHTML = `<div class="muted">${escapeHtml(quota ? quota : `Test prep error: ${e.message}`)}</div>`;
     return;
   }
@@ -3332,6 +3542,7 @@ async function startRecording() {
       fireAndForgetTrack("notes.transcribe", {});
     } catch (err) {
       const quota = formatQuotaError(err, "Transcription limit reached.");
+      if (quota) promptUpgradeForQuota("transcribe");
       aiOutputEl.textContent = quota ? quota : `Transcription error: ${err.message}`;
     } finally {
       recordingStream?.getTracks().forEach((t) => t.stop());
@@ -3578,6 +3789,52 @@ if (homeChipYoutubeEl) {
 }
 if (homeChipMoreEl) homeChipMoreEl.addEventListener("click", () => setView("study_tools"));
 if (homeFeedViewAllEl) homeFeedViewAllEl.addEventListener("click", () => setView("study_tools"));
+if (homeActionNewNoteEl) {
+  homeActionNewNoteEl.addEventListener("click", () => {
+    setView("notes");
+    clearEditor();
+    titleEl?.focus();
+    fireAndForgetTrack("home.quick_action", { action: "new_note" });
+  });
+}
+if (homeActionImportEl) {
+  homeActionImportEl.addEventListener("click", () => {
+    setView("sources");
+    sourceUrlsEl?.focus();
+    fireAndForgetTrack("home.quick_action", { action: "import_sources" });
+  });
+}
+if (homeActionStudyEl) {
+  homeActionStudyEl.addEventListener("click", () => {
+    setView("study_tools");
+    tutorQuestionEl?.focus();
+    fireAndForgetTrack("home.quick_action", { action: "study_tools" });
+  });
+}
+if (homeRefreshMetricsBtnEl) {
+  homeRefreshMetricsBtnEl.addEventListener("click", async () => {
+    setHomeQuickStatus("Refreshing study outcomes...");
+    try {
+      await Promise.all([loadBillingStatus(), loadAnalyticsSummary(), loadLearningPlan()]);
+      updateHomeOutcomeMetrics();
+      setHomeQuickStatus("Study outcomes updated.");
+    } catch (e) {
+      setHomeQuickStatus(`Could not refresh outcomes: ${e.message}`, true);
+    }
+  });
+}
+if (homeUpgradeBtnEl) {
+  homeUpgradeBtnEl.addEventListener("click", () => {
+    const state = loadPaywallPromptState();
+    fireAndForgetTrack("billing.promo_click", { reason: state.lastReason || "manual" });
+    startCheckout();
+  });
+}
+if (homeUpgradeDismissEl) {
+  homeUpgradeDismissEl.addEventListener("click", () => {
+    dismissHomeUpgradePrompt();
+  });
+}
 
 if (focusToggleBtn) {
   focusToggleBtn.addEventListener("click", () => {
