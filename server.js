@@ -82,6 +82,7 @@ function safeJsonParse(txt) {
 }
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const OPENAI_VISION_MODEL = process.env.OPENAI_VISION_MODEL || OPENAI_MODEL;
 const OPENAI_BUILDER_MODEL = process.env.OPENAI_BUILDER_MODEL || OPENAI_MODEL;
 const OPENAI_TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe";
 
@@ -2312,6 +2313,94 @@ function extractJsonArray(text) {
   return s;
 }
 
+function extractJsonObject(text) {
+  const s = String(text || "").trim();
+  const start = s.indexOf("{");
+  const end = s.lastIndexOf("}");
+  if (start >= 0 && end > start) return s.slice(start, end + 1);
+  return s;
+}
+
+function toNormalizedBulletList(value, { max = 10, maxItemChars = 260 } = {}) {
+  const rows = Array.isArray(value) ? value : String(value || "").split(/\n+/);
+  const out = [];
+  const seen = new Set();
+  for (const row of rows) {
+    if (out.length >= Math.max(1, Number(max) || 10)) break;
+    const normalized = cleanImportedText(String(row || ""))
+      .replace(/^[\s\-*•\d.)]+/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!normalized) continue;
+    if (/^(key points?|important details?|feedback|action items?|ignored (as )?irrelevant|notes?)[:]?$/i.test(normalized)) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized.slice(0, Math.max(40, Number(maxItemChars) || 260)));
+  }
+  return out;
+}
+
+function isUnreadableScreenshotText(value) {
+  const msg = cleanImportedText(String(value || ""));
+  if (!msg) return true;
+  return /^no readable text found\.?$/i.test(msg) || /^text is unreadable\.?$/i.test(msg);
+}
+
+function buildImageStudySourceText(rawText, fileName = "") {
+  const raw = cleanImportedText(String(rawText || ""));
+  if (!raw) return "";
+  if (isUnreadableScreenshotText(raw)) return "";
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(extractJsonObject(raw));
+  } catch {
+    parsed = null;
+  }
+
+  const fromParsed = (keys, max = 8) => {
+    if (!parsed || typeof parsed !== "object") return [];
+    const list = Array.isArray(keys) ? keys : [keys];
+    for (const key of list) {
+      if (!(key in parsed)) continue;
+      return toNormalizedBulletList(parsed[key], { max });
+    }
+    return [];
+  };
+
+  let readable = true;
+  if (parsed && typeof parsed === "object") {
+    if (parsed.readable_text === false || parsed.readableText === false) readable = false;
+    const statusMsg = cleanImportedText(String(parsed.message || parsed.status || ""));
+    if (statusMsg && isUnreadableScreenshotText(statusMsg)) readable = false;
+  }
+  if (!readable) return "";
+
+  let keyPoints = fromParsed(["key_points", "keyPoints", "summary"], 8);
+  const importantDetails = fromParsed(["important_details", "importantDetails", "facts"], 10);
+  const feedback = fromParsed(["feedback", "study_feedback", "studyFeedback"], 8);
+  const actionItems = fromParsed(["action_items", "actionItems", "todo"], 8);
+  const ignoredIrrelevant = fromParsed(["ignored_irrelevant", "ignoredIrrelevant", "ignored"], 6);
+
+  if (!keyPoints.length) {
+    const fallbackLines = toNormalizedBulletList(filterNoisyLines(raw), { max: 10, maxItemChars: 280 });
+    keyPoints = fallbackLines.slice(0, 8);
+  }
+  if (!keyPoints.length && !importantDetails.length && !feedback.length && !actionItems.length) return "";
+
+  const sections = [];
+  if (keyPoints.length) sections.push(`Key points\n${keyPoints.map((x) => `- ${x}`).join("\n")}`);
+  if (importantDetails.length) sections.push(`Important details\n${importantDetails.map((x) => `- ${x}`).join("\n")}`);
+  if (feedback.length) sections.push(`Feedback\n${feedback.map((x) => `- ${x}`).join("\n")}`);
+  if (actionItems.length) sections.push(`Action items\n${actionItems.map((x) => `- ${x}`).join("\n")}`);
+  if (ignoredIrrelevant.length) sections.push(`Ignored as irrelevant\n${ignoredIrrelevant.map((x) => `- ${x}`).join("\n")}`);
+
+  const title = cleanImportedText(String(fileName || "").slice(0, 120));
+  const combined = cleanImportedText(`${title ? `Screenshot: ${title}\n\n` : ""}${sections.join("\n\n")}`);
+  return combined.slice(0, 140000);
+}
+
 function normalizeImportedSources(rawSources, { maxSources = 6, maxCharsPerSource = 18000 } = {}) {
   const arr = Array.isArray(rawSources) ? rawSources : [];
   const out = [];
@@ -3099,20 +3188,33 @@ async function extractTextFromImage(base64Payload, mimeType, fileName = "") {
       Authorization: `Bearer ${OPENAI_API_KEY}`
     },
     body: JSON.stringify({
-      model: OPENAI_MODEL,
+      model: OPENAI_VISION_MODEL,
       input: [
         {
           role: "system",
-          content:
-            "Extract study-relevant information from screenshots. Keep only content that matters for learning, summarization, or feedback. Ignore browser chrome, sidebars, ads, nav menus, cookie banners, and decorative UI. Do not invent text."
+          content: "You are an OCR + study extraction engine. Return only high-signal learning content from screenshots."
         },
         {
           role: "user",
           content: [
             {
               type: "input_text",
-              text:
-                "Read this screenshot and return concise plain text with these headings: Key points, Important details, Action items (if any). Include formulas, numbers, dates, definitions, and claims that matter. If text is unreadable, return exactly: No readable text found."
+              text: `Analyze this screenshot and return ONLY JSON (no markdown, no prose) with this schema:
+{
+  "readable_text": boolean,
+  "key_points": string[],
+  "important_details": string[],
+  "feedback": string[],
+  "action_items": string[],
+  "ignored_irrelevant": string[]
+}
+Rules:
+- Keep only study-relevant content.
+- Ignore browser chrome, sidebars, ads, nav menus, cookie banners, and decorative UI.
+- Include formulas, numbers, dates, definitions, and factual claims.
+- "feedback" should include concise guidance on what to focus on or clarify while studying this content.
+- If unreadable, set "readable_text" to false and leave arrays empty.
+- Do not invent text that is not visible.`
             },
             {
               type: "input_image",
@@ -3134,7 +3236,11 @@ async function extractTextFromImage(base64Payload, mimeType, fileName = "") {
     data.output_text ||
     data.output?.map((o) => o?.content?.map((c) => c?.text).join("")).join("\n") ||
     "";
-  return cleanImportedText(String(text || ""));
+  const structured = buildImageStudySourceText(String(text || ""), fileName);
+  if (structured) return structured;
+  const fallback = cleanImportedText(filterNoisyLines(String(text || ""))).slice(0, 140000);
+  if (isUnreadableScreenshotText(fallback)) return "";
+  return fallback;
 }
 
 async function importSources(body) {
