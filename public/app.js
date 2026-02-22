@@ -220,6 +220,7 @@ const SOURCE_ASSET_DB_NAME = "notematica_source_assets_v1";
 const SOURCE_ASSET_STORE = "assets";
 let sourceAssetDbPromise = null;
 let overlayObjectUrls = [];
+let overlayKeyHandler = null;
 const tutorialSteps = [
   {
     title: "Your workspace",
@@ -683,6 +684,21 @@ function releaseOverlayObjectUrls() {
     }
   });
   overlayObjectUrls = [];
+}
+
+function setOverlayKeyHandler(handler = null) {
+  if (overlayKeyHandler) {
+    try {
+      window.removeEventListener("keydown", overlayKeyHandler);
+    } catch {
+      // ignore
+    }
+    overlayKeyHandler = null;
+  }
+  if (typeof handler === "function") {
+    overlayKeyHandler = handler;
+    window.addEventListener("keydown", overlayKeyHandler);
+  }
 }
 
 function createMomentumPreviewHeader(topic, updatedAt) {
@@ -3280,12 +3296,14 @@ async function runAi(action) {
 
 function openOverlay(title) {
   releaseOverlayObjectUrls();
+  setOverlayKeyHandler(null);
   overlayTitleEl.textContent = title;
   overlayEl.classList.remove("hidden");
   overlayEl.setAttribute("aria-hidden", "false");
 }
 
 function closeOverlay() {
+  setOverlayKeyHandler(null);
   releaseOverlayObjectUrls();
   overlayEl.classList.add("hidden");
   overlayEl.setAttribute("aria-hidden", "true");
@@ -3778,11 +3796,15 @@ async function renderStudyDue() {
     stage.innerHTML = "";
 
     const box = document.createElement("div");
-    box.className = "ad-break";
+    box.className = "ad-break card-face";
+
+    const title = document.createElement("h3");
+    title.textContent = "Quick break";
+    box.appendChild(title);
 
     const msg = document.createElement("div");
     msg.className = "muted";
-    msg.textContent = "Sponsored break";
+    msg.textContent = "Take 20 seconds, then continue your review.";
     box.appendChild(msg);
 
     const slot = document.createElement("div");
@@ -3793,7 +3815,9 @@ async function renderStudyDue() {
     cont.className = "ghost";
     cont.textContent = "Continue studying";
     cont.addEventListener("click", nextFn);
-    box.appendChild(buttonRow([cont]));
+    const row = buttonRow([cont]);
+    row.classList.add("flashcard-actions");
+    box.appendChild(row);
 
     stage.appendChild(box);
 
@@ -3819,8 +3843,16 @@ async function renderStudyDue() {
     head.className = "flashcard-float-head";
 
     const headLeft = document.createElement("div");
-    headLeft.className = "muted";
-    headLeft.textContent = `Card ${idx + 1} / ${cards.length}`;
+    headLeft.className = "flashcard-head-left";
+    const counter = document.createElement("strong");
+    counter.className = "flashcard-counter";
+    counter.textContent = `Card ${idx + 1} / ${cards.length}`;
+    const sub = document.createElement("span");
+    sub.className = "flashcard-subline";
+    const tags = Array.isArray(c?.tags) ? c.tags.filter(Boolean).slice(0, 3) : [];
+    sub.textContent = tags.length ? `Focus: ${tags.join(", ")}` : "Review and grade your recall.";
+    headLeft.appendChild(counter);
+    headLeft.appendChild(sub);
     head.appendChild(headLeft);
 
     const headBtns = document.createElement("div");
@@ -3867,31 +3899,52 @@ async function renderStudyDue() {
     const body = document.createElement("div");
     body.className = "flashcard-float-body";
 
+    const progressWrap = document.createElement("div");
+    progressWrap.className = "flashcard-progress";
+    const progressText = document.createElement("span");
+    progressText.className = "flashcard-progress-text";
+    progressText.textContent = `${Math.round((idx / Math.max(1, cards.length)) * 100)}% complete`;
+    const progressTrack = document.createElement("div");
+    progressTrack.className = "flashcard-progress-track";
+    const progressBar = document.createElement("div");
+    progressBar.className = "flashcard-progress-bar";
+    progressBar.style.width = `${Math.max(6, Math.round((idx / Math.max(1, cards.length)) * 100))}%`;
+    progressTrack.appendChild(progressBar);
+    progressWrap.appendChild(progressText);
+    progressWrap.appendChild(progressTrack);
+    body.appendChild(progressWrap);
+
     const front = document.createElement("div");
-    front.className = "card-face";
-    front.innerHTML = `<h3>Front</h3><div class="mono"></div>`;
-    front.querySelector(".mono").textContent = c.front;
+    front.className = "card-face flashcard-side flashcard-side-front";
+    front.innerHTML = `<div class="flashcard-side-label">Prompt</div><div class="mono flashcard-side-text"></div>`;
+    front.querySelector(".flashcard-side-text").textContent = c.front;
     body.appendChild(front);
 
     const back = document.createElement("div");
-    back.className = "card-face";
-    back.innerHTML = `<h3>Back</h3><div class="mono"></div>`;
-    back.querySelector(".mono").textContent = showBack ? c.back : "Click “Show answer”.";
+    back.className = "card-face flashcard-side flashcard-side-back";
+    back.innerHTML = `<div class="flashcard-side-label">Answer</div><div class="mono flashcard-side-text"></div>`;
+    back.querySelector(".flashcard-side-text").textContent = showBack ? c.back : "Press Show answer (Space).";
     body.appendChild(back);
 
     if (!showBack) {
       const showBtn = document.createElement("button");
-      showBtn.className = "ghost";
-      showBtn.textContent = "Show answer";
+      showBtn.className = "ghost flashcard-reveal-btn";
+      showBtn.textContent = "Show answer (Space)";
       showBtn.addEventListener("click", () => {
         showBack = true;
         render();
       });
-      body.appendChild(buttonRow([showBtn]));
+      const hint = document.createElement("div");
+      hint.className = "flashcard-key-hint";
+      hint.textContent = "Tip: Use Space to reveal, then press 1-4 to grade.";
+      body.appendChild(hint);
+      const row = buttonRow([showBtn]);
+      row.classList.add("flashcard-actions");
+      body.appendChild(row);
     } else {
       const mk = (label, grade, cls = "ghost") => {
         const b = document.createElement("button");
-        b.className = cls;
+        b.className = `${cls} flashcard-grade-btn`;
         b.textContent = label;
         b.addEventListener("click", async () => {
           await submitFlashcardReviewOrQueue(c.id, grade);
@@ -3913,7 +3966,15 @@ async function renderStudyDue() {
         return b;
       };
 
-      body.appendChild(buttonRow([mk("Again", 0), mk("Hard", 1), mk("Good", 2), mk("Easy", 3)]));
+      const againBtn = mk("1 Again", 0);
+      againBtn.classList.add("danger");
+      const hardBtn = mk("2 Hard", 1);
+      const goodBtn = mk("3 Good", 2);
+      const easyBtn = mk("4 Easy", 3);
+      easyBtn.classList.add("flashcard-grade-easy");
+      const row = buttonRow([againBtn, hardBtn, goodBtn, easyBtn]);
+      row.classList.add("flashcard-actions");
+      body.appendChild(row);
     }
 
     float.appendChild(body);
@@ -3924,6 +3985,26 @@ async function renderStudyDue() {
 
     attachDragResize(float, stage, head, resizer, () => fcScale, (v) => applyScale(v));
   }
+
+  setOverlayKeyHandler((e) => {
+    if (overlayEl.classList.contains("hidden")) return;
+    if (String(overlayTitleEl?.textContent || "").toLowerCase() !== "study due flashcards") return;
+    const hasCard = Boolean(stage.querySelector(".flashcard-float"));
+    if (!hasCard) return;
+    if (!showBack && (e.key === " " || e.key === "ArrowRight")) {
+      e.preventDefault();
+      showBack = true;
+      render();
+      return;
+    }
+    if (!showBack) return;
+    const gradeMap = { "1": 0, "2": 1, "3": 2, "4": 3 };
+    const mapped = gradeMap[String(e.key || "")];
+    if (mapped === undefined) return;
+    e.preventDefault();
+    const btn = stage.querySelectorAll(".flashcard-grade-btn")[mapped];
+    if (btn instanceof HTMLButtonElement) btn.click();
+  });
 
   render();
 }
@@ -3961,28 +4042,59 @@ async function renderTestPrep() {
     return;
   }
 
+  const shell = document.createElement("section");
+  shell.className = "testprep-shell";
+
+  const summary = document.createElement("div");
+  summary.className = "card-face testprep-summary";
+  summary.innerHTML = `
+    <div class="testprep-summary-head">
+      <span class="testprep-mode">${escapeHtml(examMode.replace(/\b\w/g, (m) => m.toUpperCase()))} mode</span>
+      <strong>${questions.length} question${questions.length === 1 ? "" : "s"}</strong>
+    </div>
+    <p class="muted">Answer each prompt, then grade to see your auto-scored MCQ results and review explanations.</p>
+  `;
+
+  const scoreRow = document.createElement("div");
+  scoreRow.className = "testprep-score";
+  scoreRow.textContent = "Answer what you can, then click Grade test.";
+
   const form = document.createElement("div");
+  form.className = "testprep-form";
+
+  let timerInterval = null;
   if (examMode === "timed") {
     const timer = document.createElement("div");
-    timer.className = "muted";
+    timer.className = "testprep-timer";
     let left = 10 * 60;
     timer.textContent = `Time left: 10:00`;
-    const iv = setInterval(() => {
+    timerInterval = setInterval(() => {
+      if (overlayEl.classList.contains("hidden") || String(overlayTitleEl?.textContent || "").toLowerCase() !== "practice test") {
+        clearInterval(timerInterval);
+        timerInterval = null;
+        return;
+      }
       left -= 1;
       const mm = String(Math.max(0, Math.floor(left / 60))).padStart(2, "0");
       const ss = String(Math.max(0, left % 60)).padStart(2, "0");
       timer.textContent = `Time left: ${mm}:${ss}`;
-      if (left <= 0) clearInterval(iv);
+      if (left <= 0 && timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
     }, 1000);
-    overlayBodyEl.appendChild(timer);
+    summary.appendChild(timer);
   }
+
+  shell.appendChild(summary);
+  shell.appendChild(scoreRow);
   questions.forEach((q, i) => {
     const block = document.createElement("div");
-    block.className = "card-face";
+    block.className = "card-face testprep-question";
     const title = document.createElement("h3");
-    title.textContent = `Q${i + 1} (${q.type})`;
+    title.textContent = `Q${i + 1} (${String(q.type || "short").toUpperCase()})`;
     const prompt = document.createElement("div");
-    prompt.className = "mono";
+    prompt.className = "mono testprep-prompt";
     prompt.textContent = q.question;
     block.appendChild(title);
     block.appendChild(prompt);
@@ -3990,17 +4102,14 @@ async function renderTestPrep() {
     if (q.type === "mcq" && Array.isArray(q.choices) && q.choices.length) {
       q.choices.forEach((choice, ci) => {
         const label = document.createElement("label");
-        label.style.display = "flex";
-        label.style.gap = "0.5rem";
-        label.style.alignItems = "center";
-        label.style.marginTop = "0.35rem";
+        label.className = "testprep-choice";
         const radio = document.createElement("input");
         radio.type = "radio";
         radio.name = `q_${i}`;
         radio.value = choice;
         const span = document.createElement("span");
-        span.className = "mono";
-        span.textContent = choice;
+        span.className = "mono testprep-choice-text";
+        span.textContent = `${String.fromCharCode(65 + ci)}. ${choice}`;
         label.appendChild(radio);
         label.appendChild(span);
         block.appendChild(label);
@@ -4008,23 +4117,14 @@ async function renderTestPrep() {
     } else {
       const input = document.createElement("textarea");
       input.rows = 3;
-      input.style.width = "100%";
-      input.style.marginTop = "0.6rem";
-      input.style.border = "1px solid var(--line)";
-      input.style.borderRadius = "10px";
-      input.style.padding = "0.55rem 0.65rem";
-      input.style.fontFamily = "\"IBM Plex Mono\", monospace";
+      input.className = "testprep-answer-input";
       input.dataset.qIndex = String(i);
       block.appendChild(input);
     }
 
     form.appendChild(block);
   });
-
-  const scoreRow = document.createElement("div");
-  scoreRow.className = "muted";
-  scoreRow.style.marginBottom = "0.6rem";
-  scoreRow.textContent = "Answer what you can, then grade.";
+  shell.appendChild(form);
 
   function norm(s) {
     return String(s || "")
@@ -4059,10 +4159,10 @@ async function renderTestPrep() {
 
   const gradeBtn = document.createElement("button");
   gradeBtn.textContent = "Grade test";
+  gradeBtn.className = "testprep-grade-btn";
   gradeBtn.addEventListener("click", () => {
-    const blocks = [...form.querySelectorAll(".card-face")];
+    const blocks = [...form.querySelectorAll(".testprep-question")];
     let correct = 0;
-    let total = questions.length;
 
     blocks.forEach((b, i) => {
       const q = questions[i] || {};
@@ -4082,9 +4182,7 @@ async function renderTestPrep() {
       if (type === "mcq" && ok) correct += 1;
 
       const marker = document.createElement("div");
-      marker.className = "muted";
-      marker.style.marginTop = "0.6rem";
-      marker.style.fontWeight = "800";
+      marker.className = "testprep-marker";
       marker.style.color = type === "mcq" ? (ok ? "#166534" : "#b91c1c") : "#0f172a";
       marker.textContent = type === "mcq" ? (ok ? "Correct" : "Incorrect") : "Free response (self-check)";
       b.appendChild(marker);
@@ -4103,12 +4201,11 @@ async function renderTestPrep() {
   showBtn.className = "ghost";
   showBtn.textContent = "Show answers";
   showBtn.addEventListener("click", () => {
-    const blocks = [...form.querySelectorAll(".card-face")];
+    const blocks = [...form.querySelectorAll(".testprep-question")];
     blocks.forEach((b, i) => {
       if (b.querySelector(".testprep-answer")) return;
       const ans = document.createElement("div");
       ans.className = "mono testprep-answer";
-      ans.style.marginTop = "0.8rem";
       ans.textContent = `Answer: ${questions[i].answer}\n\nExplanation: ${questions[i].explanation || ""}`.trim();
       b.appendChild(ans);
 
@@ -4122,11 +4219,13 @@ async function renderTestPrep() {
     showBtn.disabled = true;
   });
 
+  const actions = buttonRow([gradeBtn, showBtn]);
+  actions.classList.add("testprep-actions");
+
   overlayBodyEl.innerHTML = "";
-  overlayBodyEl.appendChild(scoreRow);
-  overlayBodyEl.appendChild(form);
+  overlayBodyEl.appendChild(shell);
   const globalCites = renderCitationsInline(out.citations || []);
-  overlayBodyEl.appendChild(buttonRow([gradeBtn, showBtn]));
+  overlayBodyEl.appendChild(actions);
   if (globalCites) overlayBodyEl.appendChild(globalCites);
 }
 

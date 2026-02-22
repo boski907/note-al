@@ -14,29 +14,42 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260220v01" />
+    <link rel="stylesheet" href="/styles.css?v=20260222v08" />
   </head>
-  <body class="login-page">
-    <main class="login-wrap">
-      <section class="login-card card-face">
-        <div class="auth-head">
-          <a href="/welcome.html" class="brand-home-link" aria-label="Go to welcome page">
-            <img src="/logo-notematica.svg" alt="Notematica logo" class="login-brand-logo" />
-          </a>
-          <span id="cloud-badge" class="badge">Loading...</span>
+  <body class="login-page modern-surface-page">
+    <div class="backdrop"></div>
+    <main class="login-wrap login-wrap-modern">
+      <section class="login-card card-face login-card-modern">
+        <div class="login-main">
+          <div class="auth-head">
+            <a href="/welcome.html" class="brand-home-link" aria-label="Go to welcome page">
+              <img src="/logo-notematica.svg" alt="Notematica logo" class="login-brand-logo" />
+            </a>
+            <span id="cloud-badge" class="badge">Loading...</span>
+          </div>
+          <h1>Sign in to Notematica</h1>
+          <p class="muted">Access your notes, study lab, flashcards, and synced sources.</p>
+          <div class="row">
+            <input id="auth-email" type="email" placeholder="you@example.com" />
+            <input id="auth-password" type="password" placeholder="Password (8+ chars)" />
+          </div>
+          <div class="row wrap">
+            <button id="login-btn">Login</button>
+            <button id="register-btn" class="ghost">Create account</button>
+            <a class="cta-btn ghost" href="/welcome.html">Back to Welcome</a>
+          </div>
+          <div id="auth-status" class="status"></div>
         </div>
-        <h1>Sign in to Notematica</h1>
-        <p class="muted">Sign in to access your notes, flashcards, and study tools.</p>
-        <div class="row">
-          <input id="auth-email" type="email" placeholder="you@example.com" />
-          <input id="auth-password" type="password" placeholder="Password (8+ chars)" />
-        </div>
-        <div class="row wrap">
-          <button id="login-btn">Login</button>
-          <button id="register-btn" class="ghost">Create account</button>
-          <a class="cta-btn ghost" href="/welcome.html">Back to Welcome</a>
-        </div>
-        <div id="auth-status" class="status"></div>
+        <aside class="login-aside">
+          <h3>Study flow, one workspace</h3>
+          <p class="muted">Capture notes, run AI, generate test prep, and track progress in one place.</p>
+          <img src="/welcome-real-study-group.jpg" alt="Students studying with laptops and notes" class="login-aside-image" />
+          <ul class="welcome-list login-benefits">
+            <li>Notebook for writing + AI feedback.</li>
+            <li>Study Lab for flashcards and tests.</li>
+            <li>Cloud sync with Supabase.</li>
+          </ul>
+        </aside>
       </section>
     </main>
 

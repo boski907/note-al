@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260222v07" />
+    <link rel="stylesheet" href="/styles.css?v=20260222v08" />
   </head>
   <body>
     <div class="backdrop"></div>
@@ -302,9 +302,23 @@
             </section>
           </section>
 
-          <section class="route-view hidden" data-route-view="sources" id="view-sources">
-            <div class="view-stack">
-              <div class="card-face">
+          <section class="route-view hidden sources-view" data-route-view="sources" id="view-sources">
+            <section class="view-hero sources-hero">
+              <div class="view-hero-copy">
+                <span class="view-hero-kicker">Source vault</span>
+                <h2>Bring every source into one trusted study vault.</h2>
+                <p>Import files, websites, YouTube, and screenshots so AI responses stay grounded and citeable.</p>
+              </div>
+              <div class="view-hero-pills">
+                <span class="view-pill">PDF</span>
+                <span class="view-pill">DOCX</span>
+                <span class="view-pill">Web</span>
+                <span class="view-pill">YouTube</span>
+                <span class="view-pill">Media</span>
+              </div>
+            </section>
+            <div class="view-stack sources-stack">
+              <div class="card-face source-card source-import-card">
                 <h3>Import sources</h3>
                 <p class="muted">Attach PDFs, DOCX, screenshots/images, websites, YouTube, and media transcripts to the current note for grounded answers and citations.</p>
                 <div class="row wrap">
@@ -327,7 +341,7 @@
                 <div id="source-status" class="status"></div>
               </div>
 
-              <div class="card-face">
+              <div class="card-face source-card source-list-card">
                 <div class="row wrap" style="justify-content: space-between; align-items: center">
                   <h3 style="margin: 0">Sources on this note</h3>
                   <div class="row wrap">
@@ -419,9 +433,22 @@
             </div>
           </section>
 
-          <section class="route-view hidden" data-route-view="account" id="view-account">
-            <div class="view-stack account-stack">
-              <div class="card-face">
+          <section class="route-view hidden account-view" data-route-view="account" id="view-account">
+            <section class="view-hero account-hero">
+              <div class="view-hero-copy">
+                <span class="view-hero-kicker">Profile center</span>
+                <h2>Manage your study account, billing, and progress controls.</h2>
+                <p>Subscription, usage, reminders, and diagnostics are centralized here.</p>
+              </div>
+              <div class="view-hero-pills">
+                <span class="view-pill">Billing</span>
+                <span class="view-pill">Usage</span>
+                <span class="view-pill">Progress</span>
+                <span class="view-pill">Settings</span>
+              </div>
+            </section>
+            <div class="view-stack account-stack account-stack-modern">
+              <div class="card-face account-card">
                 <div class="auth-head">
                   <h3 style="margin: 0">Account</h3>
                   <div class="row wrap">
@@ -440,7 +467,7 @@
                 <div id="billing-status" class="status"></div>
               </div>
 
-              <div class="card-face">
+              <div class="card-face account-card">
                 <h3>Usage snapshot</h3>
                 <div id="analytics-status" class="status"></div>
                 <div class="metrics-grid two-col">
@@ -463,7 +490,7 @@
                 </div>
               </div>
 
-              <div class="card-face">
+              <div class="card-face account-card">
                 <h3>Progress</h3>
                 <div class="metrics-grid two-col">
                   <article class="metric-card">
@@ -478,7 +505,7 @@
                 <div id="xp-status" class="status"></div>
               </div>
 
-              <details class="card-face account-advanced">
+              <details class="card-face account-advanced account-card">
                 <summary>Advanced</summary>
                 <div class="advanced-body">
                   <div class="row wrap">
@@ -610,6 +637,6 @@
       <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a>
     </footer>
 
-    <script src="/app.js?v=20260222v06"></script>
+    <script src="/app.js?v=20260222v08"></script>
   </body>
 </html>

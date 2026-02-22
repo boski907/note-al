@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=JetBrains+Mono:wght@400;600;700&family=Sora:wght@500;600;700;800&display=swap");
+
 :root {
   --bg: #eceef6;
   --panel: #f8f9ff;
@@ -2421,5 +2423,471 @@ body[data-theme="clean"] {
   #view-notes .left-header,
   #view-notes .editor-header {
     margin: 0;
+  }
+}
+
+/* =========================
+   Global typography + page polish
+   ========================= */
+body,
+button,
+input,
+select,
+textarea {
+  font-family: "DM Sans", "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+h1,
+h2,
+h3,
+.home-title,
+.view-hero-copy h2,
+.top-title {
+  font-family: "Sora", "Fraunces", "Space Grotesk", sans-serif;
+}
+
+.mono,
+.metric-value,
+.note-editor,
+.rail-kicker,
+.top-kicker,
+.view-hero-kicker,
+.view-pill,
+.learning-card-topic {
+  font-family: "JetBrains Mono", "IBM Plex Mono", monospace;
+}
+
+.modern-surface-page {
+  min-height: 100vh;
+}
+
+/* =========================
+   Sources + account makeover
+   ========================= */
+#view-sources.sources-view,
+#view-account.account-view {
+  display: grid;
+  gap: 14px;
+}
+
+.sources-hero {
+  background:
+    radial-gradient(circle at 84% 24%, rgba(28, 121, 232, 0.15), rgba(28, 121, 232, 0)),
+    linear-gradient(145deg, rgba(247, 251, 255, 0.96), rgba(232, 242, 255, 0.8));
+}
+
+.sources-stack {
+  max-width: none;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  display: grid;
+  grid-template-areas: "import list";
+  gap: 14px;
+}
+
+.source-import-card {
+  grid-area: import;
+}
+
+.source-list-card {
+  grid-area: list;
+}
+
+.source-card {
+  border-color: rgba(65, 97, 156, 0.28);
+  background: linear-gradient(145deg, rgba(248, 252, 255, 0.95), rgba(236, 244, 255, 0.84));
+}
+
+.source-card h3 {
+  color: #152e56;
+}
+
+.account-hero {
+  background:
+    radial-gradient(circle at 84% 24%, rgba(33, 84, 215, 0.15), rgba(33, 84, 215, 0)),
+    linear-gradient(145deg, rgba(247, 251, 255, 0.96), rgba(230, 239, 255, 0.8));
+}
+
+.account-stack-modern {
+  max-width: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.account-stack-modern > .account-card:first-child,
+.account-stack-modern > .account-card:last-child {
+  grid-column: 1 / -1;
+}
+
+.account-card {
+  border-color: rgba(67, 98, 157, 0.28);
+  background: linear-gradient(145deg, rgba(248, 252, 255, 0.95), rgba(236, 244, 255, 0.84));
+}
+
+/* =========================
+   Welcome + login makeover
+   ========================= */
+.welcome-brand-card {
+  background: linear-gradient(135deg, rgba(247, 251, 255, 0.96), rgba(234, 242, 255, 0.86));
+}
+
+.welcome-hero-card {
+  border-color: rgba(64, 95, 152, 0.28);
+  background:
+    radial-gradient(circle at 8% 10%, rgba(31, 103, 219, 0.12), rgba(31, 103, 219, 0)),
+    linear-gradient(145deg, rgba(248, 252, 255, 0.96), rgba(235, 243, 255, 0.84));
+}
+
+.welcome-feature-card {
+  border-color: rgba(64, 95, 152, 0.26);
+  background: linear-gradient(145deg, rgba(248, 252, 255, 0.96), rgba(235, 243, 255, 0.84));
+}
+
+.welcome-site-card {
+  border-color: rgba(64, 95, 152, 0.26);
+  background: linear-gradient(145deg, rgba(248, 252, 255, 0.96), rgba(235, 243, 255, 0.84));
+}
+
+.welcome-feature-card h3,
+.welcome-site-card h3 {
+  color: #142d56;
+}
+
+.login-wrap-modern {
+  width: min(1120px, 100%);
+  margin: min(8vh, 72px) auto 0;
+}
+
+.login-card-modern {
+  display: grid;
+  grid-template-columns: minmax(0, 1.02fr) minmax(300px, 0.98fr);
+  gap: 16px;
+  align-items: start;
+  border-color: rgba(64, 95, 152, 0.28);
+  background:
+    radial-gradient(circle at 8% 8%, rgba(29, 97, 208, 0.13), rgba(29, 97, 208, 0)),
+    linear-gradient(145deg, rgba(248, 252, 255, 0.96), rgba(235, 243, 255, 0.84));
+}
+
+.login-main {
+  display: grid;
+  gap: 10px;
+}
+
+.login-main h1 {
+  margin: 0;
+  color: #102644;
+}
+
+.login-aside {
+  border: 1px solid rgba(70, 102, 160, 0.3);
+  border-radius: 16px;
+  padding: 12px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(236, 244, 255, 0.8));
+  display: grid;
+  gap: 10px;
+}
+
+.login-aside h3 {
+  margin: 0;
+  color: #17345f;
+}
+
+.login-aside-image {
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid rgba(73, 104, 164, 0.28);
+}
+
+.login-benefits {
+  margin: 0;
+}
+
+/* =========================
+   Doc and share pages
+   ========================= */
+.doc-page {
+  padding: 14px;
+}
+
+.doc-shell {
+  position: relative;
+  z-index: 2;
+  width: min(1020px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 14px;
+}
+
+.doc-hero {
+  border-color: rgba(64, 95, 152, 0.28);
+  background: linear-gradient(145deg, rgba(248, 252, 255, 0.96), rgba(235, 243, 255, 0.84));
+}
+
+.doc-hero h1 {
+  margin: 4px 0 4px;
+  color: #132a4f;
+}
+
+.doc-card {
+  border-color: rgba(64, 95, 152, 0.28);
+  background: linear-gradient(145deg, rgba(248, 252, 255, 0.96), rgba(235, 243, 255, 0.84));
+  line-height: 1.55;
+}
+
+.share-content {
+  min-height: 32vh;
+}
+
+/* =========================
+   Flashcards + test prep upgrade
+   ========================= */
+.ad-break {
+  margin: 12px auto 0;
+  width: min(760px, 100%);
+  display: grid;
+  gap: 10px;
+}
+
+.ad-break h3 {
+  margin: 0;
+  color: #12294f;
+}
+
+.flashcard-head-left {
+  display: grid;
+  gap: 2px;
+}
+
+.flashcard-counter {
+  font-size: 0.9rem;
+  color: #1a3663;
+}
+
+.flashcard-subline {
+  font-size: 0.76rem;
+  color: #4b6187;
+}
+
+.flashcard-progress {
+  display: grid;
+  gap: 6px;
+}
+
+.flashcard-progress-text {
+  font-size: 0.76rem;
+  color: #496083;
+}
+
+.flashcard-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(77, 108, 166, 0.28);
+  background: rgba(232, 240, 255, 0.7);
+  overflow: hidden;
+}
+
+.flashcard-progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2b63d4, #2f9fe9);
+}
+
+.flashcard-side {
+  border-color: rgba(75, 106, 164, 0.3);
+  background: linear-gradient(145deg, rgba(252, 254, 255, 0.95), rgba(238, 246, 255, 0.86));
+  display: grid;
+  gap: 8px;
+}
+
+.flashcard-side-label {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  border: 1px solid rgba(66, 97, 157, 0.3);
+  background: rgba(228, 239, 255, 0.72);
+  color: #285189;
+  font: 700 0.68rem/1 "JetBrains Mono", "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+}
+
+.flashcard-side-text {
+  font-size: calc(0.9rem * var(--fc-scale));
+  line-height: 1.6;
+  color: #0f223f;
+}
+
+.flashcard-key-hint {
+  font-size: 0.78rem;
+  color: #486083;
+}
+
+.flashcard-actions {
+  margin-top: 6px;
+}
+
+.flashcard-reveal-btn {
+  border-color: rgba(68, 99, 160, 0.36) !important;
+}
+
+.flashcard-grade-btn.flashcard-grade-easy {
+  border-color: rgba(34, 116, 66, 0.35);
+  background: rgba(232, 250, 238, 0.9);
+  color: #19663a;
+}
+
+.testprep-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.testprep-summary {
+  border-color: rgba(67, 98, 157, 0.3);
+  background: linear-gradient(145deg, rgba(248, 252, 255, 0.95), rgba(236, 244, 255, 0.84));
+}
+
+.testprep-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.testprep-mode {
+  display: inline-flex;
+  border-radius: 999px;
+  border: 1px solid rgba(67, 98, 157, 0.35);
+  background: rgba(228, 238, 255, 0.76);
+  padding: 4px 10px;
+  font: 700 0.68rem/1 "JetBrains Mono", "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #265086;
+}
+
+.testprep-timer {
+  margin-top: 10px;
+  width: fit-content;
+  border-radius: 999px;
+  border: 1px solid rgba(67, 98, 157, 0.35);
+  background: rgba(255, 255, 255, 0.8);
+  color: #1f416f;
+  font: 700 0.78rem/1 "JetBrains Mono", "IBM Plex Mono", monospace;
+  padding: 6px 10px;
+}
+
+.testprep-score {
+  border: 1px solid rgba(67, 98, 157, 0.27);
+  border-radius: 12px;
+  background: rgba(246, 251, 255, 0.84);
+  padding: 10px 12px;
+  color: #234b7d;
+  font-weight: 700;
+}
+
+.testprep-form {
+  display: grid;
+  gap: 10px;
+}
+
+.testprep-question {
+  border-color: rgba(67, 98, 157, 0.27);
+  background: linear-gradient(145deg, rgba(252, 254, 255, 0.95), rgba(240, 246, 255, 0.86));
+}
+
+.testprep-question h3 {
+  margin-bottom: 8px;
+  color: #133058;
+}
+
+.testprep-prompt {
+  color: #17355f;
+}
+
+.testprep-choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 8px;
+  border: 1px solid rgba(67, 98, 157, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 8px 10px;
+}
+
+.testprep-choice input[type="radio"] {
+  margin-top: 2px;
+}
+
+.testprep-choice-text {
+  color: #17355f;
+}
+
+.testprep-answer-input {
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid rgba(67, 98, 157, 0.3);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 10px 11px;
+  font-family: "JetBrains Mono", "IBM Plex Mono", monospace;
+  font-size: 0.85rem;
+  color: #142f57;
+}
+
+.testprep-marker {
+  margin-top: 10px;
+  font-weight: 800;
+}
+
+.testprep-answer {
+  margin-top: 10px;
+  border: 1px dashed rgba(67, 98, 157, 0.3);
+  border-radius: 10px;
+  background: rgba(244, 250, 255, 0.8);
+  padding: 10px;
+  color: #15325c;
+}
+
+.testprep-actions {
+  justify-content: flex-end;
+}
+
+/* =========================
+   Responsive refinements
+   ========================= */
+@media (max-width: 1180px) {
+  .sources-stack {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "import"
+      "list";
+  }
+
+  .account-stack-modern {
+    grid-template-columns: 1fr;
+  }
+
+  .login-card-modern {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .doc-page {
+    padding: 10px;
+  }
+
+  .doc-shell {
+    gap: 10px;
+  }
+
+  .testprep-actions,
+  .flashcard-actions {
+    justify-content: flex-start;
   }
 }

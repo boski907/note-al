@@ -8,17 +8,20 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/logo-mark-notematica.svg.png?v=20260219v14" />
     <link rel="icon" type="image/png" sizes="16x16" href="/logo-mark-notematica.svg.png?v=20260219v14" />
     <link rel="apple-touch-icon" sizes="180x180" href="/logo-mark-notematica.svg.png?v=20260219v14" />
-    <link rel="stylesheet" href="/styles.css?v=20260220v01" />
+    <link rel="stylesheet" href="/styles.css?v=20260222v08" />
   </head>
-  <body>
-    <main class="app-shell">
-      <section class="panel right" style="padding: 1rem;">
+  <body class="doc-page modern-surface-page">
+    <div class="backdrop"></div>
+    <main class="doc-shell share-shell">
+      <section class="doc-hero card-face">
         <a href="/welcome.html" class="brand-home-link" aria-label="Go to welcome page">
           <img src="/logo-notematica.svg" alt="Notematica logo" class="legal-brand-logo" />
         </a>
         <h1 id="share-title">Shared note</h1>
         <div id="share-meta" class="muted"></div>
-        <div id="share-content" class="ai-output" style="min-height: 30vh;"></div>
+      </section>
+      <section class="doc-card card-face">
+        <div id="share-content" class="ai-output share-content"></div>
       </section>
     </main>
     <script src="/share.js?v=20260220v01"></script>
