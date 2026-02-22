@@ -1708,13 +1708,46 @@ async function handlePasteUpload(e) {
   await importFilesFromDevice(files, { setStatus: setChatAttachStatus, context: "chat" });
 }
 
+function extractImportHighlights(imported = [], maxItems = 18) {
+  const rows = [];
+  const seen = new Set();
+  const arr = Array.isArray(imported) ? imported : [];
+  for (const src of arr) {
+    const content = String(src?.content || "");
+    const lines = content.split(/\n+/);
+    for (const raw of lines) {
+      if (rows.length >= Math.max(6, Number(maxItems) || 18)) return rows;
+      let line = String(raw || "").trim();
+      if (!line) continue;
+      line = line.replace(/^[\s\-*•\d.)]+/, "").trim();
+      if (!line || line.length < 12) continue;
+      if (/^screenshot:\s*/i.test(line)) continue;
+      if (/^(key points|important details|feedback|action items|ignored as irrelevant)$/i.test(line)) continue;
+      const key = normalizeSourceLineForCompare(line).slice(0, 220);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      rows.push(line.slice(0, 240));
+    }
+  }
+  return rows;
+}
+
 function renderImportedSources(imported = []) {
   if (!Array.isArray(imported) || !imported.length) return;
-  const blocks = imported.map((src) => {
-    const title = `Source: ${src.name}`;
-    return `## ${title}\n${String(src.content || "").trim()}`;
-  });
-  appendToEditor(blocks.join("\n\n"));
+  const names = imported.map((s) => String(s?.name || "source").trim()).filter(Boolean);
+  const shortNames = names.slice(0, 4).join(", ");
+  const highlights = extractImportHighlights(imported, 16);
+  const lines = [];
+  lines.push(`## Imported sources (${imported.length})`);
+  lines.push(`Files: ${shortNames}${names.length > 4 ? ` +${names.length - 4} more` : ""}`);
+  if (highlights.length) {
+    lines.push("");
+    lines.push("Highlights");
+    for (const row of highlights) lines.push(`- ${row}`);
+  }
+  lines.push("");
+  lines.push("Use AI actions (Summarize / Feedback / Extract tasks) to work from attached sources.");
+  appendToEditor(lines.join("\n"));
 }
 
 function sourcesKeyForNote(noteId) {
@@ -1743,6 +1776,63 @@ function saveSourcesForCurrentNote(sources) {
   }
 }
 
+function normalizeSourceLineForCompare(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^screenshot:\s*/i, "")
+    .replace(/^[\s\-*•\d.)]+/, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function buildSourceLineSet(content, maxLines = 100) {
+  const out = new Set();
+  const lines = String(content || "").split(/\n+/);
+  for (const raw of lines) {
+    if (out.size >= Math.max(10, Number(maxLines) || 100)) break;
+    const line = normalizeSourceLineForCompare(raw);
+    if (!line || line.length < 8) continue;
+    if (line === "key points" || line === "important details" || line === "feedback" || line === "action items") continue;
+    out.add(line.slice(0, 260));
+  }
+  return out;
+}
+
+function sourceSimilarityScore(aContent, bContent) {
+  const a = buildSourceLineSet(aContent);
+  const b = buildSourceLineSet(bContent);
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  for (const line of small) {
+    if (large.has(line)) shared += 1;
+  }
+  return shared / Math.max(1, Math.min(a.size, b.size));
+}
+
+function dedupeSourceEntries(list = [], { maxKeep = 40, threshold = 0.92, imageThreshold = 0.86 } = {}) {
+  const arr = Array.isArray(list) ? list : [];
+  const out = [];
+  for (const row of arr) {
+    const content = String(row?.content || "").trim();
+    const name = String(row?.name || "").trim();
+    if (!content || !name) continue;
+    let duplicate = false;
+    for (const prev of out) {
+      const isImagePair =
+        String(prev?.kind || "").toLowerCase() === "image" || String(row?.kind || "").toLowerCase() === "image";
+      const limit = isImagePair ? imageThreshold : threshold;
+      if (sourceSimilarityScore(prev.content, content) >= limit) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (duplicate) continue;
+    out.push(row);
+  }
+  return out.slice(-Math.max(6, Number(maxKeep) || 40));
+}
+
 function mergeImportedSourcesIntoCurrent(imported = []) {
   if (!Array.isArray(imported) || imported.length === 0) return;
   const existing = loadSourcesForCurrentNote();
@@ -1761,22 +1851,15 @@ function mergeImportedSourcesIntoCurrent(imported = []) {
       addedAt: now
     });
   }
-  // De-dupe by (name+first 120 chars) to avoid repeated imports.
-  const seen = new Set();
-  const deduped = [];
-  for (const s of next.slice(-40)) {
-    const key = `${s.name}::${String(s.content || "").slice(0, 120)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(s);
-  }
+  const deduped = dedupeSourceEntries(next, { maxKeep: 40, threshold: 0.92, imageThreshold: 0.86 });
   saveSourcesForCurrentNote(deduped);
 }
 
 function getAiSourcesForRequest(maxSources = 6) {
   const all = loadSourcesForCurrentNote();
   const sorted = [...all].sort((a, b) => Number(b.addedAt || 0) - Number(a.addedAt || 0));
-  return sorted.slice(0, maxSources).map((s) => ({
+  const deduped = dedupeSourceEntries(sorted, { maxKeep: 60, threshold: 0.92, imageThreshold: 0.84 });
+  return deduped.slice(0, maxSources).map((s) => ({
     name: s.name,
     url: s.url || "",
     kind: s.kind || "",

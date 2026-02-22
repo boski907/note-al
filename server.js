@@ -2401,8 +2401,242 @@ function buildImageStudySourceText(rawText, fileName = "") {
   return combined.slice(0, 140000);
 }
 
+const IMAGE_SECTION_KEYS = [
+  { id: "key_points", label: "Key points" },
+  { id: "important_details", label: "Important details" },
+  { id: "feedback", label: "Feedback" },
+  { id: "action_items", label: "Action items" },
+  { id: "ignored_irrelevant", label: "Ignored as irrelevant" }
+];
+
+const IMAGE_SECTION_HEADER_TO_KEY = new Map(IMAGE_SECTION_KEYS.map((x) => [x.label.toLowerCase(), x.id]));
+
+function normalizeSourceLineForCompare(value) {
+  return cleanImportedText(String(value || ""))
+    .replace(/^screenshot:\s*/i, "")
+    .replace(/^[\s\-*•\d.)]+/, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .trim();
+}
+
+function buildSourceLineSet(content, { maxLines = 120 } = {}) {
+  const lines = String(content || "").split(/\n+/);
+  const set = new Set();
+  for (const rawLine of lines) {
+    if (set.size >= Math.max(10, Number(maxLines) || 120)) break;
+    const line = normalizeSourceLineForCompare(rawLine);
+    if (!line || line.length < 8) continue;
+    if (IMAGE_SECTION_HEADER_TO_KEY.has(line)) continue;
+    set.add(line.slice(0, 260));
+  }
+  return set;
+}
+
+function buildSourceTokenSet(content, { maxTokens = 280 } = {}) {
+  const text = normalizeSourceLineForCompare(content).replace(/[^a-z0-9\s]/g, " ");
+  const stop = new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "this",
+    "that",
+    "from",
+    "your",
+    "have",
+    "has",
+    "are",
+    "was",
+    "were",
+    "will",
+    "into",
+    "about",
+    "when",
+    "where",
+    "which",
+    "also",
+    "more",
+    "than",
+    "they",
+    "them",
+    "their",
+    "what",
+    "how",
+    "you",
+    "can",
+    "not",
+    "all",
+    "one",
+    "two"
+  ]);
+  const set = new Set();
+  for (const token of text.split(/\s+/)) {
+    if (set.size >= Math.max(20, Number(maxTokens) || 280)) break;
+    if (token.length < 4) continue;
+    if (stop.has(token)) continue;
+    set.add(token);
+  }
+  return set;
+}
+
+function intersectionSize(aSet, bSet) {
+  let count = 0;
+  const [small, large] = aSet.size <= bSet.size ? [aSet, bSet] : [bSet, aSet];
+  for (const v of small) {
+    if (large.has(v)) count += 1;
+  }
+  return count;
+}
+
+function sourceSimilarityScore(aContent, bContent) {
+  const aLines = buildSourceLineSet(aContent);
+  const bLines = buildSourceLineSet(bContent);
+  const aTokens = buildSourceTokenSet(aContent);
+  const bTokens = buildSourceTokenSet(bContent);
+
+  let lineScore = 0;
+  if (aLines.size && bLines.size) {
+    const sharedLines = intersectionSize(aLines, bLines);
+    lineScore = sharedLines / Math.max(1, Math.min(aLines.size, bLines.size));
+  }
+
+  let tokenScore = 0;
+  if (aTokens.size && bTokens.size) {
+    const sharedTokens = intersectionSize(aTokens, bTokens);
+    tokenScore = sharedTokens / Math.max(1, Math.min(aTokens.size, bTokens.size));
+  }
+
+  return Math.max(lineScore, tokenScore);
+}
+
+function parseImageSourceSections(content) {
+  const sections = Object.fromEntries(IMAGE_SECTION_KEYS.map((x) => [x.id, []]));
+  const rawLines = String(content || "").split("\n");
+  let current = "key_points";
+
+  for (const rawLine of rawLines) {
+    const line = cleanImportedText(String(rawLine || ""));
+    if (!line) continue;
+    if (/^screenshot:\s*/i.test(line)) continue;
+    const headerKey = IMAGE_SECTION_HEADER_TO_KEY.get(line.toLowerCase());
+    if (headerKey) {
+      current = headerKey;
+      continue;
+    }
+    const bullet = cleanImportedText(line.replace(/^[\s\-*•]+/, ""));
+    if (!bullet) continue;
+    sections[current].push(bullet.slice(0, 280));
+  }
+
+  return sections;
+}
+
+function mergeUniqueSectionLines(existing = [], incoming = [], max = 18) {
+  const out = [];
+  const seen = new Set();
+  for (const row of [...existing, ...incoming]) {
+    if (out.length >= Math.max(4, Number(max) || 18)) break;
+    const clean = cleanImportedText(String(row || "")).replace(/^[\s\-*•]+/, "");
+    if (!clean) continue;
+    const key = normalizeSourceLineForCompare(clean);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(clean.slice(0, 280));
+  }
+  return out;
+}
+
+function buildMergedImageSourceContent(names = [], sections = {}) {
+  const titleNames = Array.isArray(names) ? names.filter(Boolean) : [];
+  const head =
+    titleNames.length <= 1
+      ? titleNames[0]
+        ? `Screenshot: ${titleNames[0]}`
+        : "Screenshot source"
+      : `Screenshots merged (${titleNames.length}): ${titleNames.slice(0, 4).join(", ")}${
+          titleNames.length > 4 ? ` +${titleNames.length - 4} more` : ""
+        }`;
+
+  const parts = [];
+  for (const section of IMAGE_SECTION_KEYS) {
+    const rows = Array.isArray(sections?.[section.id]) ? sections[section.id] : [];
+    if (!rows.length) continue;
+    parts.push(`${section.label}\n${rows.map((x) => `- ${x}`).join("\n")}`);
+  }
+
+  if (!parts.length) return "";
+  return cleanImportedText(`${head}\n\n${parts.join("\n\n")}`).slice(0, 140000);
+}
+
+function mergeSimilarImageSources(rows = []) {
+  const images = Array.isArray(rows) ? rows : [];
+  if (!images.length) return [];
+
+  const groups = [];
+  for (const src of images) {
+    const name = cleanImportedText(String(src?.name || "")).slice(0, 120) || "screenshot";
+    const content = cleanImportedText(String(src?.content || "")).slice(0, 140000);
+    if (!content) continue;
+    const candidate = {
+      names: [name],
+      sections: parseImageSourceSections(content),
+      signature: content
+    };
+
+    let merged = false;
+    for (const group of groups) {
+      const sim = sourceSimilarityScore(group.signature, candidate.signature);
+      if (sim < 0.64) continue;
+      group.names = mergeUniqueSectionLines(group.names, candidate.names, 50);
+      for (const section of IMAGE_SECTION_KEYS) {
+        group.sections[section.id] = mergeUniqueSectionLines(group.sections[section.id], candidate.sections[section.id], 20);
+      }
+      group.signature = buildMergedImageSourceContent(group.names, group.sections);
+      merged = true;
+      break;
+    }
+    if (!merged) groups.push(candidate);
+  }
+
+  const out = [];
+  for (const group of groups) {
+    const content = cleanImportedText(group.signature || buildMergedImageSourceContent(group.names, group.sections));
+    if (!content) continue;
+    const name =
+      group.names.length <= 1 ? String(group.names[0] || "screenshot").slice(0, 120) : `Merged screenshots (${group.names.length})`;
+    out.push({ name, kind: "image", content: content.slice(0, 140000) });
+  }
+  return out;
+}
+
+function dedupeImportedSourceRows(rows = [], { threshold = 0.92 } = {}) {
+  const arr = Array.isArray(rows) ? rows : [];
+  const out = [];
+  for (const src of arr) {
+    const content = cleanImportedText(String(src?.content || ""));
+    if (!content) continue;
+    let isDup = false;
+    for (const existing of out) {
+      const crossImage = String(existing?.kind || "") === "image" || String(src?.kind || "") === "image";
+      const sim = sourceSimilarityScore(existing.content, content);
+      const limit = crossImage ? 0.86 : Math.max(0.82, Number(threshold) || 0.92);
+      if (sim >= limit) {
+        isDup = true;
+        break;
+      }
+    }
+    if (isDup) continue;
+    out.push({
+      ...src,
+      content: content.slice(0, 140000)
+    });
+  }
+  return out;
+}
+
 function normalizeImportedSources(rawSources, { maxSources = 6, maxCharsPerSource = 18000 } = {}) {
-  const arr = Array.isArray(rawSources) ? rawSources : [];
+  const arr = dedupeImportedSourceRows(Array.isArray(rawSources) ? rawSources : [], { threshold: 0.92 });
   const out = [];
   let idx = 0;
   for (const s of arr) {
@@ -3247,6 +3481,7 @@ async function importSources(body) {
   const fileSources = Array.isArray(body.sources) ? body.sources : [];
   const urls = Array.isArray(body.urls) ? body.urls : [];
   const out = [];
+  const imageSources = [];
 
   for (const src of fileSources.slice(0, 20)) {
     const name = String(src?.name || "source.txt").slice(0, 120);
@@ -3281,7 +3516,7 @@ async function importSources(body) {
         if (!content || /^no readable text found\.?$/i.test(content)) {
           continue;
         }
-        out.push({ name, kind: "image", content });
+        imageSources.push({ name, kind: "image", content });
       } catch (e) {
         console.warn("Image import skipped:", name, e instanceof Error ? e.message : e);
       }
@@ -3321,7 +3556,10 @@ async function importSources(body) {
     });
   }
 
-  return out;
+  if (imageSources.length) {
+    out.push(...mergeSimilarImageSources(imageSources));
+  }
+  return dedupeImportedSourceRows(out, { threshold: 0.92 });
 }
 
 async function generateFlashcardsFromText(noteText, count = 10, sources = []) {
