@@ -9,6 +9,15 @@ AI note-taking app with:
 - Voice note transcription
 - AI note actions (summarize, improve, tasks)
 
+## GitHub AI Agent Setup
+
+This repository includes:
+
+- `AGENTS.md` for Codex-compatible agent instructions
+- `CLAUDE.md` for Claude-compatible agent instructions
+
+When using AI coding agents on GitHub, keep both files in sync so behavior is consistent across tools.
+
 ## Setup
 
 1. Install Node.js 18+.
