@@ -379,6 +379,22 @@ function thumbStyleFromSeed(seed) {
   return `linear-gradient(135deg, ${a}, ${b})`;
 }
 
+function sanitizePreviewImage(value, maxChars = 160000) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const compact = raw.replace(/\s+/g, "");
+  if (compact.length > Math.max(32000, Number(maxChars) || 160000)) return "";
+  if (!compact.startsWith("data:image/")) return "";
+  const marker = ";base64,";
+  const markerAt = compact.indexOf(marker);
+  if (markerAt <= "data:image/".length) return "";
+  const mime = compact.slice("data:image/".length, markerAt).toLowerCase();
+  if (!["png", "jpeg", "jpg", "webp"].includes(mime)) return "";
+  const payload = compact.slice(markerAt + marker.length);
+  if (!payload || !/^[a-z0-9+/=]+$/i.test(payload)) return "";
+  return compact;
+}
+
 function collectSourceMetadata(limit = 120) {
   const all = [];
   const suffix = `_${me?.id || "anon"}`;
@@ -393,10 +409,12 @@ function collectSourceMetadata(limit = 120) {
         const name = String(s?.name || s?.url || "Source").trim().slice(0, 180);
         const kind = String(s?.kind || (s?.url ? "url" : "source")).trim().slice(0, 32);
         const url = String(s?.url || "").trim();
+        const previewImage = sanitizePreviewImage(s?.previewImage, 180000);
         all.push({
           name,
           kind,
           url,
+          previewImage,
           addedAt: Number(s?.addedAt || 0)
         });
       });
@@ -409,7 +427,7 @@ function collectSourceMetadata(limit = 120) {
 }
 
 /**
- * @typedef {{ id: string, title: string, topic: string, updatedAt: string|number, thumbStyle: string, sourceRef: string }} FeedCard
+ * @typedef {{ id: string, title: string, topic: string, updatedAt: string|number, thumbStyle: string, sourceRef: string, previewImage?: string }} FeedCard
  */
 
 function buildLearningFeed(noteRows = [], sourceRows = [], analytics = null) {
@@ -465,7 +483,8 @@ function buildLearningFeed(noteRows = [], sourceRows = [], analytics = null) {
       topic,
       updatedAt: s?.addedAt || Date.now(),
       thumbStyle: thumbStyleFromSeed(`${topic}-${title}`),
-      sourceRef: `source:${s?.url || s?.name || i}`
+      sourceRef: `source:${s?.url || s?.name || i}`,
+      previewImage: sanitizePreviewImage(s?.previewImage, 180000)
     });
   }
 
@@ -519,7 +538,19 @@ function renderLearningFeed() {
       </div>
     `;
     const thumb = item.querySelector(".learning-card-thumb");
-    if (thumb) thumb.style.background = card.thumbStyle;
+    if (thumb) {
+      thumb.style.background = card.thumbStyle;
+      const preview = sanitizePreviewImage(card.previewImage, 180000);
+      if (preview) {
+        const imageEl = document.createElement("img");
+        imageEl.className = "learning-card-thumb-image";
+        imageEl.loading = "lazy";
+        imageEl.decoding = "async";
+        imageEl.alt = `${String(card.topic || "Study")} source preview`;
+        imageEl.src = preview;
+        thumb.appendChild(imageEl);
+      }
+    }
     item.addEventListener("click", () => {
       const ref = String(card.sourceRef || "");
       if (ref.startsWith("note:")) {
@@ -1881,10 +1912,12 @@ async function readFilesAsSources(files = []) {
     if (isImageExt(ext) || /^image\//i.test(mime)) {
       const base64 = await blobToBase64(f);
       const mimeType = f.type || (ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg");
+      const previewImage = await buildImagePreviewDataUrl(f, { maxWidth: 460, maxHeight: 280, quality: 0.72 });
       sources.push({
         name: f.name,
         kind: "image",
         mimeType,
+        previewImage,
         base64
       });
       continue;
@@ -2080,18 +2113,28 @@ function dedupeSourceEntries(list = [], { maxKeep = 40, threshold = 0.92, imageT
     const content = String(row?.content || "").trim();
     const name = String(row?.name || "").trim();
     if (!content || !name) continue;
-    let duplicate = false;
-    for (const prev of out) {
+    const previewImage = sanitizePreviewImage(row?.previewImage, 180000);
+    let duplicateAt = -1;
+    for (let j = 0; j < out.length; j += 1) {
+      const prev = out[j];
       const isImagePair =
         String(prev?.kind || "").toLowerCase() === "image" || String(row?.kind || "").toLowerCase() === "image";
       const limit = isImagePair ? imageThreshold : threshold;
       if (sourceSimilarityScore(prev.content, content) >= limit) {
-        duplicate = true;
+        duplicateAt = j;
         break;
       }
     }
-    if (duplicate) continue;
-    out.push(row);
+    if (duplicateAt >= 0) {
+      if (previewImage && !sanitizePreviewImage(out[duplicateAt]?.previewImage, 180000)) {
+        out[duplicateAt].previewImage = previewImage;
+      }
+      continue;
+    }
+    const nextRow = { ...row };
+    if (previewImage) nextRow.previewImage = previewImage;
+    else delete nextRow.previewImage;
+    out.push(nextRow);
   }
   return out.slice(-Math.max(6, Number(maxKeep) || 40));
 }
@@ -2106,13 +2149,16 @@ function mergeImportedSourcesIntoCurrent(imported = []) {
     const content = String(s?.content || "").trim();
     if (!name || !content) continue;
     const url = /^https?:\/\//i.test(name) ? name : "";
-    next.push({
+    const previewImage = sanitizePreviewImage(s?.previewImage, 180000);
+    const row = {
       name,
       url,
       kind: String(s?.kind || "").trim().slice(0, 40),
       content: content.slice(0, 140000),
       addedAt: now
-    });
+    };
+    if (previewImage) row.previewImage = previewImage;
+    next.push(row);
   }
   const deduped = dedupeSourceEntries(next, { maxKeep: 40, threshold: 0.92, imageThreshold: 0.86 });
   saveSourcesForCurrentNote(deduped);
@@ -2282,7 +2328,8 @@ function setOutputWithCitations(el, text, citations = []) {
 function estimateSourceUploadSizeChars(src) {
   const b64 = String(src?.base64 || "");
   const text = String(src?.content || "");
-  return b64.length + text.length + 600;
+  const preview = String(src?.previewImage || "");
+  return b64.length + text.length + preview.length + 600;
 }
 
 function buildSourceImportBatches(sources, { maxItems = 4, maxChars = 7_000_000 } = {}) {
@@ -3480,6 +3527,37 @@ function blobToBase64(blob) {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+async function buildImagePreviewDataUrl(file, { maxWidth = 460, maxHeight = 280, quality = 0.72 } = {}) {
+  if (!file) return "";
+  let objectUrl = "";
+  try {
+    objectUrl = URL.createObjectURL(file);
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("Image preview load failed"));
+      el.src = objectUrl;
+    });
+    const sourceWidth = Math.max(1, Number(img.naturalWidth || img.width || 0));
+    const sourceHeight = Math.max(1, Number(img.naturalHeight || img.height || 0));
+    const scale = Math.min(1, maxWidth / sourceWidth, maxHeight / sourceHeight);
+    const width = Math.max(96, Math.round(sourceWidth * scale));
+    const height = Math.max(72, Math.round(sourceHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+    ctx.drawImage(img, 0, 0, width, height);
+    const out = canvas.toDataURL("image/jpeg", Math.max(0.45, Math.min(0.9, Number(quality) || 0.72)));
+    return sanitizePreviewImage(out, 180000);
+  } catch {
+    return "";
+  } finally {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
 }
 
 async function stopRecording() {

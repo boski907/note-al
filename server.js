@@ -2569,6 +2569,22 @@ function buildMergedImageSourceContent(names = [], sections = {}) {
   return cleanImportedText(`${head}\n\n${parts.join("\n\n")}`).slice(0, 140000);
 }
 
+function sanitizePreviewImageDataUrl(value, { maxChars = 180000 } = {}) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const compact = raw.replace(/\s+/g, "");
+  if (compact.length > Math.max(32000, Number(maxChars) || 180000)) return "";
+  if (!compact.startsWith("data:image/")) return "";
+  const marker = ";base64,";
+  const markerAt = compact.indexOf(marker);
+  if (markerAt <= "data:image/".length) return "";
+  const mime = compact.slice("data:image/".length, markerAt).toLowerCase();
+  if (!["png", "jpeg", "jpg", "webp"].includes(mime)) return "";
+  const payload = compact.slice(markerAt + marker.length);
+  if (!payload || !/^[a-z0-9+/=]+$/i.test(payload)) return "";
+  return compact;
+}
+
 function mergeSimilarImageSources(rows = []) {
   const images = Array.isArray(rows) ? rows : [];
   if (!images.length) return [];
@@ -2577,11 +2593,13 @@ function mergeSimilarImageSources(rows = []) {
   for (const src of images) {
     const name = cleanImportedText(String(src?.name || "")).slice(0, 120) || "screenshot";
     const content = cleanImportedText(String(src?.content || "")).slice(0, 140000);
+    const previewImage = sanitizePreviewImageDataUrl(src?.previewImage);
     if (!content) continue;
     const candidate = {
       names: [name],
       sections: parseImageSourceSections(content),
-      signature: content
+      signature: content,
+      previewImage
     };
 
     let merged = false;
@@ -2592,6 +2610,7 @@ function mergeSimilarImageSources(rows = []) {
       for (const section of IMAGE_SECTION_KEYS) {
         group.sections[section.id] = mergeUniqueSectionLines(group.sections[section.id], candidate.sections[section.id], 20);
       }
+      if (!group.previewImage && candidate.previewImage) group.previewImage = candidate.previewImage;
       group.signature = buildMergedImageSourceContent(group.names, group.sections);
       merged = true;
       break;
@@ -2605,7 +2624,9 @@ function mergeSimilarImageSources(rows = []) {
     if (!content) continue;
     const name =
       group.names.length <= 1 ? String(group.names[0] || "screenshot").slice(0, 120) : `Merged screenshots (${group.names.length})`;
-    out.push({ name, kind: "image", content: content.slice(0, 140000) });
+    const merged = { name, kind: "image", content: content.slice(0, 140000) };
+    if (group.previewImage) merged.previewImage = group.previewImage;
+    out.push(merged);
   }
   return out;
 }
@@ -2622,6 +2643,10 @@ function dedupeImportedSourceRows(rows = [], { threshold = 0.92 } = {}) {
       const sim = sourceSimilarityScore(existing.content, content);
       const limit = crossImage ? 0.86 : Math.max(0.82, Number(threshold) || 0.92);
       if (sim >= limit) {
+        if (!existing.previewImage) {
+          const previewImage = sanitizePreviewImageDataUrl(src?.previewImage);
+          if (previewImage) existing.previewImage = previewImage;
+        }
         isDup = true;
         break;
       }
@@ -3511,12 +3536,15 @@ async function importSources(body) {
       try {
         const base64 = String(src?.base64 || "");
         const mimeType = String(src?.mimeType || "");
+        const previewImage = sanitizePreviewImageDataUrl(src?.previewImage);
         const extracted = await extractTextFromImage(base64, mimeType, name);
         const content = cleanImportedText(extracted).slice(0, 140000);
         if (!content || /^no readable text found\.?$/i.test(content)) {
           continue;
         }
-        imageSources.push({ name, kind: "image", content });
+        const imageRow = { name, kind: "image", content };
+        if (previewImage) imageRow.previewImage = previewImage;
+        imageSources.push(imageRow);
       } catch (e) {
         console.warn("Image import skipped:", name, e instanceof Error ? e.message : e);
       }
