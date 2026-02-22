@@ -13,6 +13,7 @@ const metricTopEventEl = document.getElementById("metric-top-event");
 const metricFlashcardsEl = document.getElementById("metric-flashcards");
 const metricAiEl = document.getElementById("metric-ai");
 const refreshLearningBtn = document.getElementById("refresh-learning-btn");
+const clearLearningBtn = document.getElementById("clear-learning-btn");
 const learningStatusEl = document.getElementById("learning-status");
 const learningMasteryEl = document.getElementById("learning-mastery");
 const learningDueEl = document.getElementById("learning-due");
@@ -143,6 +144,7 @@ const homeChipHomeworkEl = document.getElementById("home-chip-homework");
 const homeChipYoutubeEl = document.getElementById("home-chip-youtube");
 const homeChipMoreEl = document.getElementById("home-chip-more");
 const homeFeedViewAllEl = document.getElementById("home-feed-view-all");
+const homeFeedClearEl = document.getElementById("home-feed-clear");
 const homeLearningGridEl = document.getElementById("home-learning-grid");
 const homeWelcomeMessageEl = document.getElementById("home-welcome-message");
 const homeActionNewNoteEl = document.getElementById("home-action-new-note");
@@ -430,31 +432,72 @@ function collectSourceMetadata(limit = 120) {
  * @typedef {{ id: string, title: string, topic: string, updatedAt: string|number, thumbStyle: string, sourceRef: string, previewImage?: string }} FeedCard
  */
 
-function buildLearningFeed(noteRows = [], sourceRows = [], analytics = null) {
+function buildLearningFeed(noteRows = [], sourceRows = [], analytics = null, { resetAt = 0, showStarterFallback = true } = {}) {
+  const toTime = (value) => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    const ms = new Date(value || 0).getTime();
+    return Number.isFinite(ms) ? ms : 0;
+  };
+
+  const filteredNotes = [...(Array.isArray(noteRows) ? noteRows : [])]
+    .filter((n) => toTime(n?.updatedAt) > Number(resetAt || 0))
+    .sort((a, b) => toTime(b?.updatedAt) - toTime(a?.updatedAt));
+
+  const filteredSources = [...(Array.isArray(sourceRows) ? sourceRows : [])]
+    .map((s) => ({ ...s, _added: Number(s?.addedAt || toTime(s?.updatedAt || 0)) }))
+    .filter((s) => Number(s._added || 0) > Number(resetAt || 0))
+    .sort((a, b) => Number(b._added || 0) - Number(a._added || 0));
+
   /** @type {FeedCard[]} */
   const cards = [];
   const topicCounts = new Map();
+  const seenTitles = new Set();
+
   const addTopic = (raw) => {
     const key = String(raw || "").trim().toLowerCase();
     if (!key) return;
     topicCounts.set(key, Number(topicCounts.get(key) || 0) + 1);
   };
 
-  noteRows.forEach((n) => {
+  filteredNotes.forEach((n) => {
     const tags = Array.isArray(n?.tags) ? n.tags : [];
     tags.forEach(addTopic);
   });
-  sourceRows.forEach((s) => addTopic(s?.kind));
+  filteredSources.forEach((s) => addTopic(s?.kind));
   if (analytics?.topEvent) addTopic(String(analytics.topEvent || "").replaceAll(".", " "));
 
   const mostCommonTopic =
     [...topicCounts.entries()].sort((a, b) => Number(b[1]) - Number(a[1]))[0]?.[0]?.replace(/\b\w/g, (m) => m.toUpperCase()) ||
     "Study";
 
-  const seenTitles = new Set();
-  const noteSorted = [...noteRows].sort((a, b) => String(b?.updatedAt || "").localeCompare(String(a?.updatedAt || "")));
-  for (let i = 0; i < noteSorted.length && cards.length < 9; i += 1) {
-    const n = noteSorted[i];
+  const pushSourceCard = (s, index, prefix = "source") => {
+    if (cards.length >= 9) return;
+    const title = String(s?.name || s?.url || "").trim();
+    if (!title || seenTitles.has(title.toLowerCase())) return;
+    seenTitles.add(title.toLowerCase());
+    const topic = String(s?.kind || mostCommonTopic || "Source").replace(/\b\w/g, (m) => m.toUpperCase());
+    cards.push({
+      id: `${prefix}-${index}`,
+      title: title.slice(0, 72),
+      topic,
+      updatedAt: Number(s?._added || Date.now()),
+      thumbStyle: thumbStyleFromSeed(`${topic}-${title}`),
+      sourceRef: `source:${s?.url || s?.name || index}`,
+      previewImage: sanitizePreviewImage(s?.previewImage, 180000)
+    });
+  };
+
+  // Prioritize recent screenshot/image sources first so uploaded visuals show up immediately.
+  const imageFirst = filteredSources.filter((s) => {
+    const kind = String(s?.kind || "").toLowerCase();
+    return Boolean(s?.previewImage) || kind.includes("image") || kind.includes("screenshot");
+  });
+  for (let i = 0; i < imageFirst.length && cards.length < 4; i += 1) {
+    pushSourceCard(imageFirst[i], i, "source-image");
+  }
+
+  for (let i = 0; i < filteredNotes.length && cards.length < 9; i += 1) {
+    const n = filteredNotes[i];
     const title = String(n?.title || "").trim() || String(n?.contentText || "Untitled note").trim().slice(0, 64);
     if (!title || seenTitles.has(title.toLowerCase())) continue;
     seenTitles.add(title.toLowerCase());
@@ -470,22 +513,9 @@ function buildLearningFeed(noteRows = [], sourceRows = [], analytics = null) {
     });
   }
 
-  const sourceSorted = [...sourceRows].sort((a, b) => Number(b?.addedAt || 0) - Number(a?.addedAt || 0));
-  for (let i = 0; i < sourceSorted.length && cards.length < 9; i += 1) {
-    const s = sourceSorted[i];
-    const title = String(s?.name || s?.url || "").trim();
-    if (!title || seenTitles.has(title.toLowerCase())) continue;
-    seenTitles.add(title.toLowerCase());
-    const topic = String(s?.kind || mostCommonTopic || "Source").replace(/\b\w/g, (m) => m.toUpperCase());
-    cards.push({
-      id: `source-${i}`,
-      title: title.slice(0, 72),
-      topic,
-      updatedAt: s?.addedAt || Date.now(),
-      thumbStyle: thumbStyleFromSeed(`${topic}-${title}`),
-      sourceRef: `source:${s?.url || s?.name || i}`,
-      previewImage: sanitizePreviewImage(s?.previewImage, 180000)
-    });
+  const remainingSources = filteredSources.filter((s) => !imageFirst.includes(s));
+  for (let i = 0; i < remainingSources.length && cards.length < 9; i += 1) {
+    pushSourceCard(remainingSources[i], i, "source");
   }
 
   if (analytics?.topEvent && cards.length < 9) {
@@ -500,6 +530,7 @@ function buildLearningFeed(noteRows = [], sourceRows = [], analytics = null) {
   }
 
   if (cards.length) return cards;
+  if (!showStarterFallback) return [];
 
   const starters = [
     { id: "starter-1", title: "Start with one focused note for today", topic: "Focus" },
@@ -522,8 +553,31 @@ function buildLearningFeed(noteRows = [], sourceRows = [], analytics = null) {
 function renderLearningFeed() {
   if (!homeLearningGridEl) return;
   const sources = collectSourceMetadata(100);
-  const cards = buildLearningFeed(notes, sources, analyticsSummary);
+  const resetAt = readHomeFeedResetAt();
+  const cards = buildLearningFeed(notes, sources, analyticsSummary, {
+    resetAt,
+    showStarterFallback: !resetAt
+  });
   homeLearningGridEl.innerHTML = "";
+  if (!cards.length) {
+    const empty = document.createElement("article");
+    empty.className = "learning-empty";
+    empty.innerHTML = `
+      <h4>Momentum feed cleared</h4>
+      <p>Import a new screenshot/source or update a note to repopulate your feed.</p>
+      <button type="button" class="ghost learning-empty-reset-btn">Show all activity</button>
+    `;
+    const resetBtn = empty.querySelector(".learning-empty-reset-btn");
+    if (resetBtn) {
+      resetBtn.addEventListener("click", () => {
+        writeHomeFeedResetAt(0);
+        renderLearningFeed();
+        setHomeQuickStatus("Momentum feed restored.");
+      });
+    }
+    homeLearningGridEl.appendChild(empty);
+    return;
+  }
   cards.forEach((card, index) => {
     const item = document.createElement("article");
     item.className = "learning-card";
@@ -591,6 +645,62 @@ function authScopedKey(prefix) {
   return `${prefix}_${me?.id || "anon"}`;
 }
 
+function homeFeedResetKey() {
+  return authScopedKey("home_feed_reset_at_v1");
+}
+
+function readHomeFeedResetAt() {
+  try {
+    const raw = localStorage.getItem(homeFeedResetKey()) || "0";
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeHomeFeedResetAt(ts = 0) {
+  try {
+    const n = Number(ts);
+    if (!Number.isFinite(n) || n <= 0) {
+      localStorage.removeItem(homeFeedResetKey());
+      return;
+    }
+    localStorage.setItem(homeFeedResetKey(), String(Math.floor(n)));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function learningPlanSuppressedKey() {
+  return authScopedKey("learning_plan_suppressed_v1");
+}
+
+function isLearningPlanSuppressed() {
+  try {
+    return localStorage.getItem(learningPlanSuppressedKey()) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setLearningPlanSuppressed(suppressed) {
+  try {
+    if (suppressed) localStorage.setItem(learningPlanSuppressedKey(), "1");
+    else localStorage.removeItem(learningPlanSuppressedKey());
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function resetLearningPlanUi(message = "Personalized learning plan cleared. Click Refresh to rebuild.", { persist = true } = {}) {
+  if (persist) setLearningPlanSuppressed(true);
+  learningSummary = { masteryScore: 0, dueNow: 0, weakTags: [], nextActions: [] };
+  clearLearningUi();
+  setLearningStatus(message);
+  updateHomeOutcomeMetrics();
+}
+
 function getThemeKey() {
   return authScopedKey("theme_v1");
 }
@@ -623,6 +733,18 @@ function setHomeQuickStatus(msg, isError = false) {
   if (!homeQuickStatusEl) return;
   homeQuickStatusEl.textContent = msg;
   homeQuickStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function clearMomentumFeed() {
+  writeHomeFeedResetAt(Date.now());
+  renderLearningFeed();
+  setHomeQuickStatus("Momentum feed cleared. New uploads/notes will appear here.");
+  fireAndForgetTrack("home.feed_cleared", {});
+}
+
+function clearPersonalizedLearningPlan() {
+  resetLearningPlanUi("Personalized learning plan cleared. Click Refresh to rebuild.", { persist: true });
+  fireAndForgetTrack("learning.plan_cleared", {});
 }
 
 function formatEventName(name) {
@@ -1597,10 +1719,15 @@ async function loadAnalyticsSummary() {
   }
 }
 
-async function loadLearningPlan() {
+async function loadLearningPlan({ force = false } = {}) {
   if (!token) return;
+  if (!force && isLearningPlanSuppressed()) {
+    resetLearningPlanUi("Personalized learning plan is cleared. Click Refresh to rebuild.", { persist: true });
+    return;
+  }
   try {
     const plan = await api("/api/learning/plan", { method: "GET" });
+    setLearningPlanSuppressed(false);
     learningSummary = {
       masteryScore: Number(plan.masteryScore || 0),
       dueNow: Number(plan.dueNow || 0),
@@ -2361,6 +2488,32 @@ async function requestSourceImport({ sources = [], urls = [] } = {}) {
   });
 }
 
+function hydrateImportedPreviewImages(imported = [], preparedSources = []) {
+  const rows = Array.isArray(imported) ? imported : [];
+  const prepared = Array.isArray(preparedSources) ? preparedSources : [];
+  if (!rows.length || !prepared.length) return rows;
+  const byName = new Map();
+  let singlePreview = "";
+  prepared.forEach((src) => {
+    const preview = sanitizePreviewImage(src?.previewImage, 180000);
+    if (!preview) return;
+    const key = String(src?.name || "").trim().toLowerCase();
+    if (key) byName.set(key, preview);
+    if (!singlePreview) singlePreview = preview;
+  });
+  if (!singlePreview) return rows;
+  return rows.map((row) => {
+    const out = { ...row };
+    const existing = sanitizePreviewImage(out?.previewImage, 180000);
+    if (existing) return out;
+    if (String(out?.kind || "").toLowerCase() !== "image") return out;
+    const key = String(out?.name || "").trim().toLowerCase();
+    const match = (key && byName.get(key)) || singlePreview;
+    if (match) out.previewImage = match;
+    return out;
+  });
+}
+
 function applyImportedSources(imported = []) {
   renderImportedSources(imported);
   mergeImportedSourcesIntoCurrent(imported);
@@ -2380,7 +2533,8 @@ async function importSources({ sources = [], urls = [], setStatus = setSourceSta
   setStatus("Importing sources...");
   try {
     const out = await requestSourceImport({ sources, urls });
-    const imported = Array.isArray(out?.imported) ? out.imported : [];
+    const importedRaw = Array.isArray(out?.imported) ? out.imported : [];
+    const imported = hydrateImportedPreviewImages(importedRaw, sources);
     applyImportedSources(imported);
     setStatus(`Imported ${imported.length} source(s) into this note.`);
     fireAndForgetTrack("sources.import_client", { count: imported.length });
@@ -2427,7 +2581,8 @@ async function importPreparedSources(sources, rejected = 0, { setStatus = setSou
     setStatus(`Importing sources... (${i + 1}/${batches.length})`);
     try {
       const out = await requestSourceImport({ sources: batch, urls: [] });
-      const imported = Array.isArray(out?.imported) ? out.imported : [];
+      const importedRaw = Array.isArray(out?.imported) ? out.imported : [];
+      const imported = hydrateImportedPreviewImages(importedRaw, batch);
       totalImported += imported.length;
       applyImportedSources(imported);
     } catch (e) {
@@ -3869,6 +4024,12 @@ if (homeChipYoutubeEl) {
 }
 if (homeChipMoreEl) homeChipMoreEl.addEventListener("click", () => setView("study_tools"));
 if (homeFeedViewAllEl) homeFeedViewAllEl.addEventListener("click", () => setView("study_tools"));
+if (homeFeedClearEl) {
+  homeFeedClearEl.addEventListener("click", () => {
+    if (!confirm("Clear Momentum feed history on this device?")) return;
+    clearMomentumFeed();
+  });
+}
 if (homeActionNewNoteEl) {
   homeActionNewNoteEl.addEventListener("click", () => {
     setView("notes");
@@ -3895,7 +4056,7 @@ if (homeRefreshMetricsBtnEl) {
   homeRefreshMetricsBtnEl.addEventListener("click", async () => {
     setHomeQuickStatus("Refreshing study outcomes...");
     try {
-      await Promise.all([loadBillingStatus(), loadAnalyticsSummary(), loadLearningPlan()]);
+      await Promise.all([loadBillingStatus(), loadAnalyticsSummary(), loadLearningPlan({ force: true })]);
       updateHomeOutcomeMetrics();
       setHomeQuickStatus("Study outcomes updated.");
     } catch (e) {
@@ -3959,7 +4120,18 @@ onboardingStudyEl.addEventListener("click", () => {
   setView("study_tools");
 });
 onboardingEmailSaveEl.addEventListener("click", () => saveOnboardingEmail());
-refreshLearningBtn.addEventListener("click", () => loadLearningPlan());
+if (refreshLearningBtn) {
+  refreshLearningBtn.addEventListener("click", () => {
+    setLearningPlanSuppressed(false);
+    loadLearningPlan({ force: true });
+  });
+}
+if (clearLearningBtn) {
+  clearLearningBtn.addEventListener("click", () => {
+    if (!confirm("Clear Personalized Learning plan on this device?")) return;
+    clearPersonalizedLearningPlan();
+  });
+}
 upgradeLearningBtn.addEventListener("click", () => startCheckout());
 upgradeSourcesBtn.addEventListener("click", () => startCheckout());
 upgradeAiBtn.addEventListener("click", () => startCheckout());

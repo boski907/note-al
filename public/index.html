@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260222v04" />
+    <link rel="stylesheet" href="/styles.css?v=20260222v05" />
   </head>
   <body>
     <div class="backdrop"></div>
@@ -84,13 +84,17 @@
                     <h2 class="home-title">What are we studying in this focus block?</h2>
                   </div>
                   <p id="home-welcome-message" class="muted">Your study dashboard is ready.</p>
+                  <div class="autofill-decoy" aria-hidden="true">
+                    <input type="text" name="nm_decoy_username" autocomplete="username" tabindex="-1" />
+                    <input type="password" name="nm_decoy_password" autocomplete="current-password" tabindex="-1" />
+                  </div>
                   <div class="home-composer">
                     <input
                       id="home-composer-input"
                       class="home-composer-input"
-                      type="search"
+                      type="text"
                       name="study_prompt"
-                      autocomplete="off"
+                      autocomplete="one-time-code"
                       autocorrect="off"
                       autocapitalize="none"
                       spellcheck="false"
@@ -184,7 +188,10 @@
               <section class="home-feed card-face">
                 <div class="home-feed-head">
                   <h3>Momentum feed</h3>
-                  <button id="home-feed-view-all" class="ghost" type="button">View all</button>
+                  <div class="row wrap home-feed-actions">
+                    <button id="home-feed-clear" class="ghost" type="button">Clear feed</button>
+                    <button id="home-feed-view-all" class="ghost" type="button">View all</button>
+                  </div>
                 </div>
                 <div id="home-learning-grid" class="learning-grid"></div>
               </section>
@@ -365,6 +372,7 @@
                   <h3 style="margin: 0">Personalized Learning</h3>
                   <div class="row wrap">
                     <button id="upgrade-learning-btn" class="ghost hidden">Upgrade to Premium</button>
+                    <button id="clear-learning-btn" class="ghost" type="button">Clear plan</button>
                     <button id="refresh-learning-btn" class="ghost">Refresh</button>
                   </div>
                 </div>
@@ -576,6 +584,6 @@
       <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a>
     </footer>
 
-    <script src="/app.js?v=20260222v04"></script>
+    <script src="/app.js?v=20260222v05"></script>
   </body>
 </html>

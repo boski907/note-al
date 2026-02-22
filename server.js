@@ -3538,9 +3538,10 @@ async function importSources(body) {
         const mimeType = String(src?.mimeType || "");
         const previewImage = sanitizePreviewImageDataUrl(src?.previewImage);
         const extracted = await extractTextFromImage(base64, mimeType, name);
-        const content = cleanImportedText(extracted).slice(0, 140000);
+        let content = cleanImportedText(extracted).slice(0, 140000);
         if (!content || /^no readable text found\.?$/i.test(content)) {
-          continue;
+          // Keep screenshot imports even when OCR is weak so feed thumbnails still show.
+          content = `Screenshot image uploaded: ${name}.`;
         }
         const imageRow = { name, kind: "image", content };
         if (previewImage) imageRow.previewImage = previewImage;
