@@ -15,8 +15,10 @@ This repository includes:
 
 - `AGENTS.md` for Codex-compatible agent instructions
 - `CLAUDE.md` for Claude-compatible agent instructions
+- `GEMINI.md` for Gemini-compatible agent instructions
+- `.github/copilot-instructions.md` for GitHub Copilot instructions
 
-When using AI coding agents on GitHub, keep both files in sync so behavior is consistent across tools.
+When using AI coding agents on GitHub, keep these instruction files aligned so behavior is consistent across tools.
 
 ## Setup
 
