@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=JetBrains+Mono:wght@400;600;700&family=Sora:wght@500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Sora:wght@500;600;700;800&display=swap");
 
 :root {
   --bg: #eceef6;
@@ -2895,4 +2895,731 @@ h3,
   .flashcard-actions {
     justify-content: flex-start;
   }
+}
+
+/* =================================================================
+   SCHOLAR THEME  ·  Notematica Visual Upgrade
+   Warm-indigo study aesthetic: crisp white cards, soft lavender
+   background, Plus Jakarta Sans display font, focused study vibe.
+   ================================================================= */
+
+/* ── Design tokens ── */
+:root {
+  --sch-ink:           #1C1A3A;
+  --sch-ink-soft:      #4E4B6A;
+  --sch-bg:            #ECEAF5;
+  --sch-surface:       #F7F6FC;
+  --sch-card:          #FFFFFF;
+  --sch-primary:       #4338CA;
+  --sch-primary-l:     #EEF2FF;
+  --sch-primary-mid:   #C7D2FE;
+  --sch-amber:         #D97706;
+  --sch-amber-l:       #FFFBEB;
+  --sch-emerald:       #059669;
+  --sch-emerald-l:     #ECFDF5;
+  --sch-line:          #E2DFEE;
+  --sch-line-strong:   #D1CDED;
+  --sch-shadow:        0 4px 16px rgba(67, 56, 202, 0.07);
+  --sch-shadow-lg:     0 12px 40px rgba(67, 56, 202, 0.12);
+}
+
+/* ── Body — soft lavender-fog with dot grid ── */
+body {
+  background-color: var(--sch-bg);
+  background-image:
+    radial-gradient(circle, rgba(99, 102, 241, 0.085) 1px, transparent 1px),
+    radial-gradient(ellipse 900px 600px at 8% 0%, rgba(99, 102, 241, 0.20) 0%, transparent 65%),
+    radial-gradient(ellipse 700px 500px at 96% 4%, rgba(168, 162, 255, 0.16) 0%, transparent 60%),
+    radial-gradient(ellipse 600px 400px at 65% 98%, rgba(245, 158, 11, 0.11) 0%, transparent 60%),
+    var(--sch-bg);
+  background-size: 28px 28px, auto, auto, auto, auto;
+  color: var(--sch-ink);
+  font-family: "Plus Jakarta Sans", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body[data-theme="clean"] {
+  background-color: #F4F3FA;
+  background-image:
+    radial-gradient(circle, rgba(99, 102, 241, 0.06) 1px, transparent 1px),
+    radial-gradient(ellipse 900px 600px at 8% 0%, rgba(99, 102, 241, 0.13) 0%, transparent 65%),
+    radial-gradient(ellipse 700px 500px at 96% 4%, rgba(168, 162, 255, 0.10) 0%, transparent 60%),
+    #F4F3FA;
+  background-size: 28px 28px, auto, auto, auto;
+}
+
+/* ── Backdrop: transparent (dot grid is on body) ── */
+.backdrop {
+  background-image: none;
+  mask-image: none;
+  opacity: 0;
+}
+
+/* ── App shell ── */
+.app-shell {
+  border-radius: 26px;
+  border: 1px solid var(--sch-line);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.85), rgba(248, 247, 253, 0.75));
+  backdrop-filter: blur(20px);
+  box-shadow: var(--sch-shadow-lg), inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
+/* ── Left rail ── */
+.left-rail {
+  background: linear-gradient(180deg, #FAFAFF 0%, #F6F5FE 100%);
+  border-right: 1px solid var(--sch-line);
+  position: relative;
+}
+
+.left-rail::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--sch-primary) 0%, #818CF8 55%, var(--sch-amber) 100%);
+  z-index: 1;
+}
+
+/* ── Nav items ── */
+.rail-nav-item {
+  color: var(--sch-ink-soft);
+  border-radius: 12px;
+}
+
+.rail-nav-item:hover,
+.rail-nav-item.active {
+  background: linear-gradient(135deg, #EEF2FF, #E0E7FF);
+  border-color: rgba(99, 102, 241, 0.30);
+  color: var(--sch-primary);
+  box-shadow: none;
+  transform: none;
+}
+
+.rail-nav-glyph {
+  background: white;
+  border-color: var(--sch-line-strong);
+  color: var(--sch-ink-soft);
+}
+
+.rail-nav-item:hover .rail-nav-glyph,
+.rail-nav-item.active .rail-nav-glyph {
+  background: linear-gradient(135deg, #EEF2FF, #C7D2FE);
+  border-color: rgba(99, 102, 241, 0.38);
+  color: var(--sch-primary);
+}
+
+.rail-kicker { color: var(--sch-primary); opacity: 0.72; }
+
+/* ── Top bar ── */
+.top-bar {
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid var(--sch-line);
+}
+.top-kicker { color: var(--sch-primary); opacity: 0.62; }
+.top-title   { color: var(--sch-ink); }
+.main-pane   { background: rgba(247, 246, 252, 0.55); }
+
+/* ── Cards & panels ── */
+.card-face,
+.panel {
+  background: white;
+  border: 1px solid var(--sch-line);
+  border-radius: 18px;
+  box-shadow: var(--sch-shadow);
+}
+
+/* ── Buttons ── */
+button {
+  background: var(--sch-primary);
+  border-color: var(--sch-primary);
+  color: #fff;
+  font-family: "Plus Jakarta Sans", "DM Sans", sans-serif;
+  font-weight: 700;
+  border-radius: 10px;
+}
+
+button:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+button.ghost {
+  background: white;
+  border-color: var(--sch-line-strong);
+  color: var(--sch-ink-soft);
+}
+
+button.ghost:hover {
+  border-color: rgba(99, 102, 241, 0.38);
+  color: var(--sch-primary);
+  background: var(--sch-primary-l);
+  filter: none;
+}
+
+button.danger {
+  background: rgba(254, 226, 226, 0.9);
+  border-color: rgba(220, 38, 38, 0.30);
+  color: #991B1B;
+}
+
+a.cta-btn {
+  background: var(--sch-primary);
+  border-color: var(--sch-primary);
+  font-family: "Plus Jakarta Sans", "DM Sans", sans-serif;
+  font-weight: 700;
+  border-radius: 10px;
+}
+
+a.cta-btn.ghost {
+  background: white;
+  border-color: var(--sch-line-strong);
+  color: var(--sch-ink-soft);
+}
+
+a.cta-btn.ghost:hover {
+  border-color: rgba(99, 102, 241, 0.38);
+  color: var(--sch-primary);
+  background: var(--sch-primary-l);
+}
+
+/* ── Badges ── */
+.badge {
+  background: var(--sch-primary-l);
+  border: 1px solid rgba(99, 102, 241, 0.30);
+  color: var(--sch-primary);
+}
+
+/* ── Input fields ── */
+#search-input,
+#note-title,
+#note-tags,
+#source-urls,
+#tutor-question,
+#referral-code-input,
+#plan-days,
+#plan-minutes,
+#reminder-time,
+#exam-mode,
+#theme-select,
+#auth-email,
+#auth-password,
+#onboarding-email,
+#feedback-text {
+  background: white;
+  border-color: var(--sch-line-strong);
+  font-family: "Plus Jakarta Sans", "DM Sans", sans-serif;
+}
+
+#search-input:focus,
+#note-title:focus,
+#note-tags:focus,
+#source-urls:focus,
+#tutor-question:focus,
+#referral-code-input:focus,
+#plan-days:focus,
+#plan-minutes:focus,
+#reminder-time:focus,
+#exam-mode:focus,
+#theme-select:focus,
+#auth-email:focus,
+#auth-password:focus,
+#feedback-text:focus,
+#onboarding-email:focus {
+  outline: 2px solid rgba(99, 102, 241, 0.55);
+  border-color: rgba(99, 102, 241, 0.40);
+}
+
+/* ── Headings ── */
+h1, h2, h3,
+.home-title,
+.view-hero-copy h2,
+.top-title {
+  font-family: "Plus Jakarta Sans", "Sora", sans-serif;
+  color: var(--sch-ink);
+}
+
+/* ── Metric cards ── */
+.metric-card {
+  background: white;
+  border: 1px solid var(--sch-line);
+  position: relative;
+  overflow: hidden;
+}
+
+.metric-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--sch-primary), #818CF8);
+}
+
+.metric-label { color: var(--sch-ink-soft); }
+.metric-value { color: var(--sch-primary); font-family: "JetBrains Mono", monospace; }
+
+/* ── Note editor — indigo ruled-paper ── */
+.note-editor {
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgba(99, 102, 241, 0.055) 0px,
+      rgba(99, 102, 241, 0.055) 1px,
+      transparent 1px,
+      transparent 30px
+    ),
+    white;
+  border-color: var(--sch-line);
+}
+
+/* ── AI output ── */
+.ai-output {
+  background: #FAFAFF;
+  border-color: rgba(99, 102, 241, 0.18);
+}
+
+/* ── Tab bar ── */
+.tab-bar .tab {
+  border-color: var(--sch-line-strong);
+  background: white;
+  color: var(--sch-ink-soft);
+}
+
+.tab-bar .tab.active {
+  background: var(--sch-primary-l);
+  border-color: rgba(99, 102, 241, 0.38);
+  color: var(--sch-primary);
+}
+
+/* ── Upload drop zone ── */
+.upload-drop-zone {
+  border-color: rgba(99, 102, 241, 0.28);
+  background: var(--sch-primary-l);
+  color: var(--sch-primary);
+}
+
+.upload-drop-zone.drag-active {
+  border-color: var(--sch-primary);
+  background: #E0E7FF;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+/* ── Home composer ── */
+.home-composer {
+  background: linear-gradient(145deg, white, #F5F3FF);
+  border-color: rgba(99, 102, 241, 0.20);
+}
+
+.home-composer-input { color: var(--sch-ink); }
+
+/* ── Home chips ── */
+.home-chip {
+  background: white !important;
+  border-color: rgba(99, 102, 241, 0.28) !important;
+  color: var(--sch-primary) !important;
+}
+
+.home-chip:hover {
+  background: var(--sch-primary-l) !important;
+}
+
+/* ── Home label ── */
+.home-label {
+  background: var(--sch-primary-l);
+  border-color: rgba(99, 102, 241, 0.30);
+  color: var(--sch-primary);
+}
+
+/* ── Hero sections — indigo gradient top accent ── */
+.view-hero {
+  background: linear-gradient(145deg, white, #F3F1FE);
+  border-color: rgba(99, 102, 241, 0.18);
+  position: relative;
+  overflow: hidden;
+}
+
+.view-hero::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--sch-primary) 0%, #818CF8 60%, var(--sch-amber) 100%);
+}
+
+/* ── Kicker labels & pills ── */
+.view-hero-kicker,
+.home-label,
+.rail-kicker {
+  background: var(--sch-primary-l);
+  border-color: rgba(99, 102, 241, 0.30);
+  color: var(--sch-primary);
+}
+
+.view-pill {
+  background: white;
+  border-color: rgba(99, 102, 241, 0.28);
+  color: var(--sch-primary);
+}
+
+/* ── Note items ── */
+#view-notes .note-item {
+  background: white;
+  border-color: var(--sch-line);
+  box-shadow: var(--sch-shadow);
+}
+
+#view-notes .note-item:hover {
+  border-color: rgba(99, 102, 241, 0.40);
+  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.10);
+}
+
+#view-notes .note-item.active {
+  background: var(--sch-primary-l);
+  border-color: rgba(99, 102, 241, 0.45);
+}
+
+/* ── Notebook/notes panel colours ── */
+#view-notes .notebook-left-panel,
+#view-notes .notebook-main-panel {
+  border-color: var(--sch-line);
+  background: white;
+}
+
+#view-notes .left-header,
+#view-notes .editor-header {
+  border-bottom-color: var(--sch-line);
+  background: #FAFAFF;
+}
+
+#view-notes .tab-bar {
+  background: #FAFAFF;
+  border-bottom-color: var(--sch-line);
+}
+
+#view-notes .output-dock {
+  border-color: var(--sch-line);
+  background: white;
+}
+
+#view-notes .dock-head {
+  border-bottom-color: var(--sch-line);
+  background: linear-gradient(90deg, var(--sch-primary-l), #EEF2FF, #FFFBEB);
+}
+
+/* ── Study cards ── */
+#view-study-tools .study-card {
+  background: white;
+  border-color: var(--sch-line);
+}
+
+#view-study-tools .study-card::before {
+  background: linear-gradient(90deg, var(--sch-primary) 0%, #818CF8 60%, var(--sch-amber) 100%);
+}
+
+#view-study-tools .study-card h3 { color: var(--sch-ink); }
+
+#view-study-tools #tutor-output {
+  background: white;
+  border-color: var(--sch-line);
+}
+
+/* ── Learning cards ── */
+.learning-card {
+  background: white;
+  border-color: var(--sch-line);
+}
+
+.learning-card:hover {
+  border-color: rgba(99, 102, 241, 0.42);
+  box-shadow: var(--sch-shadow-lg);
+}
+
+.learning-card-topic {
+  background: var(--sch-primary-l);
+  border-color: rgba(99, 102, 241, 0.28);
+  color: var(--sch-primary);
+  font-family: "JetBrains Mono", monospace;
+}
+
+.learning-card-title { color: var(--sch-ink); }
+.learning-card-meta  { color: var(--sch-ink-soft); }
+
+/* ── Flashcard styles ── */
+.flashcard-progress-bar {
+  background: linear-gradient(90deg, var(--sch-primary), #818CF8);
+}
+
+.flashcard-progress-track {
+  background: var(--sch-primary-l);
+  border-color: rgba(99, 102, 241, 0.18);
+}
+
+.flashcard-side {
+  background: white;
+  border-color: var(--sch-line);
+}
+
+.flashcard-side-label {
+  background: var(--sch-primary-l);
+  border-color: rgba(99, 102, 241, 0.28);
+  color: var(--sch-primary);
+  font-family: "JetBrains Mono", monospace;
+}
+
+.flashcard-grade-btn.flashcard-grade-easy {
+  background: rgba(209, 250, 229, 0.9);
+  border-color: rgba(5, 150, 105, 0.30);
+  color: #065F46;
+}
+
+/* ── Test prep ── */
+.testprep-summary { background: white; border-color: var(--sch-line); }
+.testprep-question { background: white; border-color: var(--sch-line); }
+.testprep-question h3 { color: var(--sch-ink); }
+
+.testprep-mode {
+  background: var(--sch-primary-l);
+  border-color: rgba(99, 102, 241, 0.30);
+  color: var(--sch-primary);
+  font-family: "JetBrains Mono", monospace;
+}
+
+.testprep-timer {
+  background: white;
+  border-color: var(--sch-line);
+  color: var(--sch-primary);
+  font-family: "JetBrains Mono", monospace;
+}
+
+.testprep-score {
+  background: var(--sch-primary-l);
+  border-color: rgba(99, 102, 241, 0.22);
+  color: var(--sch-primary);
+}
+
+.testprep-choice {
+  background: white;
+  border-color: var(--sch-line);
+}
+
+.testprep-choice-text { color: var(--sch-ink-soft); }
+.testprep-prompt { color: var(--sch-ink); }
+
+/* ── Source & account cards ── */
+.source-card { background: white; border-color: var(--sch-line); }
+.source-card h3 { color: var(--sch-ink); }
+.source-item { background: var(--sch-surface); border-color: var(--sch-line); }
+.account-card { background: white; border-color: var(--sch-line); }
+
+/* ── Overlays ── */
+.overlay-card { background: white; border-color: var(--sch-line); }
+.overlay-head { border-bottom-color: var(--sch-line); }
+
+/* ── Welcome page ── */
+.welcome-brand-card {
+  background: white;
+  border-color: var(--sch-line);
+}
+
+.welcome-hero-card {
+  background: linear-gradient(145deg, white, #F3F1FE);
+  border-color: rgba(99, 102, 241, 0.18);
+  position: relative;
+  overflow: hidden;
+}
+
+.welcome-hero-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--sch-primary) 0%, #818CF8 60%, var(--sch-amber) 100%);
+}
+
+.welcome-copy h1 {
+  font-family: "Plus Jakarta Sans", "Sora", sans-serif;
+  color: var(--sch-ink);
+}
+
+/* Feature cards — unique top accent per card */
+.welcome-feature-card {
+  background: white;
+  border-color: var(--sch-line);
+  position: relative;
+  overflow: hidden;
+}
+
+.welcome-feature-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--sch-primary), #818CF8);
+}
+
+.welcome-feature-card:nth-child(2)::before {
+  background: linear-gradient(90deg, #0EA5E9, #38BDF8);
+}
+
+.welcome-feature-card:nth-child(3)::before {
+  background: linear-gradient(90deg, var(--sch-emerald), #34D399);
+}
+
+.welcome-feature-card h3 { color: var(--sch-ink); }
+
+/* Feature card icon container */
+.feature-icon-wrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--sch-primary-l);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+  display: grid;
+  place-items: center;
+  margin-bottom: 6px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.feature-icon-wrap svg {
+  width: 24px;
+  height: 24px;
+  color: var(--sch-primary);
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.welcome-info-card:nth-child(2) .feature-icon-wrap {
+  background: #E0F2FE;
+  border-color: rgba(14, 165, 233, 0.25);
+}
+
+.welcome-info-card:nth-child(2) .feature-icon-wrap svg { color: #0284C7; }
+
+.welcome-info-card:nth-child(3) .feature-icon-wrap {
+  background: var(--sch-emerald-l);
+  border-color: rgba(5, 150, 105, 0.25);
+}
+
+.welcome-info-card:nth-child(3) .feature-icon-wrap svg { color: var(--sch-emerald); }
+
+/* Hero decoration SVG (abstract background element) */
+.welcome-hero-deco {
+  position: absolute;
+  top: 0; right: 0;
+  width: 42%;
+  max-width: 420px;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.welcome-hero-deco svg { width: 100%; height: 100%; }
+
+.welcome-copy,
+.welcome-hero-media { position: relative; z-index: 1; }
+
+.welcome-site-card { background: white; border-color: var(--sch-line); }
+.welcome-site-card h3 { color: var(--sch-ink); }
+
+/* Welcome badges */
+.welcome-badge-row .badge {
+  background: var(--sch-primary-l);
+  border-color: rgba(99, 102, 241, 0.30);
+  color: var(--sch-primary);
+}
+
+/* ── Login page ── */
+.login-card-modern {
+  background: linear-gradient(145deg, white, #F3F1FE);
+  border-color: rgba(99, 102, 241, 0.18);
+  position: relative;
+  overflow: hidden;
+}
+
+.login-card-modern::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--sch-primary) 0%, #818CF8 60%, var(--sch-amber) 100%);
+}
+
+.login-main h1 {
+  font-family: "Plus Jakarta Sans", "Sora", sans-serif;
+  color: var(--sch-ink);
+}
+
+.login-aside {
+  background: linear-gradient(145deg, var(--sch-primary-l), #E0E7FF);
+  border-color: rgba(99, 102, 241, 0.22);
+}
+
+.login-aside h3 { color: var(--sch-ink); }
+.login-aside-image { border-color: rgba(99, 102, 241, 0.20); }
+
+/* ── Doc pages (share, privacy, terms) ── */
+.doc-hero {
+  background: linear-gradient(145deg, white, #F3F1FE);
+  border-color: rgba(99, 102, 241, 0.18);
+  position: relative;
+  overflow: hidden;
+}
+
+.doc-hero::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--sch-primary) 0%, #818CF8 60%, var(--sch-amber) 100%);
+}
+
+.doc-hero h1 {
+  font-family: "Plus Jakarta Sans", "Sora", sans-serif;
+  color: var(--sch-ink);
+}
+
+.doc-card { background: white; border-color: var(--sch-line); }
+
+/* ── Home upgrade promo strip ── */
+.home-upgrade {
+  background: linear-gradient(135deg, var(--sch-amber-l), #FDE68A);
+  border-color: rgba(217, 119, 6, 0.25);
+}
+
+.home-upgrade-message { color: #92400E; }
+
+/* ── Divider ── */
+.divider { background: var(--sch-line); }
+
+/* ── Legal links footer ── */
+.legal-links {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: var(--sch-line);
+  backdrop-filter: blur(10px);
+}
+
+.legal-links a { color: var(--sch-primary); }
+
+/* ── Custom scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.22); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(99, 102, 241, 0.42); }
+
+/* ── Focus ring ── */
+*:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.65) !important;
+  outline-offset: 2px !important;
+}
+
+/* ── Responsive: keep grid columns consistent at large screens ── */
+@media (max-width: 1020px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    border-radius: 20px;
+  }
+  .left-rail::before { border-radius: 0; }
 }

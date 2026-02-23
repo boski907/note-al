@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/styles.css?v=20260222v08" />
@@ -26,6 +26,26 @@
       </header>
 
       <section class="welcome-hero card-face welcome-hero-card">
+        <!-- Abstract study-themed background decoration -->
+        <div class="welcome-hero-deco" aria-hidden="true">
+          <svg viewBox="0 0 480 360" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMaxYMid slice">
+            <circle cx="380" cy="70" r="100" fill="rgba(99,102,241,0.07)"/>
+            <circle cx="430" cy="120" r="65" fill="rgba(129,140,248,0.07)"/>
+            <circle cx="440" cy="290" r="55" fill="rgba(217,119,6,0.06)"/>
+            <!-- Ruled lines evoking a study notebook -->
+            <line x1="260" y1="160" x2="470" y2="160" stroke="rgba(99,102,241,0.13)" stroke-width="2" stroke-linecap="round"/>
+            <line x1="240" y1="180" x2="470" y2="180" stroke="rgba(99,102,241,0.09)" stroke-width="2" stroke-linecap="round"/>
+            <line x1="255" y1="200" x2="470" y2="200" stroke="rgba(99,102,241,0.07)" stroke-width="2" stroke-linecap="round"/>
+            <line x1="270" y1="220" x2="470" y2="220" stroke="rgba(99,102,241,0.05)" stroke-width="2" stroke-linecap="round"/>
+            <!-- Subtle grid dots -->
+            <circle cx="300" cy="80" r="2.5" fill="rgba(99,102,241,0.12)"/>
+            <circle cx="340" cy="80" r="2.5" fill="rgba(99,102,241,0.10)"/>
+            <circle cx="380" cy="80" r="2.5" fill="rgba(99,102,241,0.10)"/>
+            <circle cx="420" cy="80" r="2.5" fill="rgba(99,102,241,0.08)"/>
+            <circle cx="300" cy="120" r="2.5" fill="rgba(99,102,241,0.10)"/>
+            <circle cx="340" cy="120" r="2.5" fill="rgba(99,102,241,0.08)"/>
+          </svg>
+        </div>
         <div class="welcome-copy">
           <div class="welcome-badge-row">
             <span class="badge">Welcome</span>
@@ -92,6 +112,14 @@
             src="/welcome-real-learning-hall.jpg"
             alt="Classroom hall with students of different races learning"
           />
+          <div class="feature-icon-wrap" aria-hidden="true">
+            <!-- Cloud upload icon -->
+            <svg viewBox="0 0 24 24">
+              <polyline points="16 16 12 12 8 16"/>
+              <line x1="12" y1="12" x2="12" y2="21"/>
+              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+            </svg>
+          </div>
           <h3>Import Everything</h3>
           <p class="muted">Add PDFs, DOCX, websites, YouTube links, and media transcripts as study sources.</p>
         </article>
@@ -100,6 +128,12 @@
             src="/welcome-real-classroom.jpg"
             alt="Teacher and students learning in an inclusive classroom"
           />
+          <div class="feature-icon-wrap" aria-hidden="true">
+            <!-- Sparkle / AI icon -->
+            <svg viewBox="0 0 24 24">
+              <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+            </svg>
+          </div>
           <h3>Study with AI</h3>
           <p class="muted">Generate summaries, writing feedback, tutor answers, and tasks from your notes.</p>
         </article>
@@ -108,6 +142,14 @@
             src="/welcome-real-exam-prep.jpg"
             alt="Multiracial study group preparing for exams"
           />
+          <div class="feature-icon-wrap" aria-hidden="true">
+            <!-- Clipboard check icon -->
+            <svg viewBox="0 0 24 24">
+              <rect x="8" y="2" width="8" height="4" rx="1"/>
+              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+              <path d="m9 14 2 2 4-4"/>
+            </svg>
+          </div>
           <h3>Prep for Tests</h3>
           <p class="muted">Create flashcards, practice exams, and a daily study plan with progress tracking.</p>
         </article>
