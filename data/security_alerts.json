@@ -1,0 +1,71 @@
+[
+  {
+    "id": "9870a0c5-5f3c-4c90-8452-80cc44c5c715",
+    "key": "auth-unauthorized-ip-spike:12ca17b49af2289436f3",
+    "ruleId": "auth-unauthorized-ip-spike",
+    "eventType": "auth.unauthorized",
+    "severity": "medium",
+    "title": "Unauthorized request burst",
+    "message": "20 unauthorized API requests from one IP fingerprint within 5 minutes.",
+    "group": "12ca17b49af2289436f3",
+    "count": 20,
+    "threshold": 20,
+    "windowMs": 300000,
+    "firstSeenAt": "2026-02-20T09:14:43.233Z",
+    "lastSeenAt": "2026-02-20T09:14:55.499Z",
+    "sampleEventIds": [
+      "015c917b-3b68-4e9a-acf6-9f2a08c90d54",
+      "46d07754-be23-4f3b-a6b5-5ec758310757",
+      "798d0aa3-fb85-4e4e-9f03-34346453a089",
+      "9bd00899-8dfe-44ed-8c92-2def819fa338",
+      "d0427ad1-5c41-4d8e-86c2-c0078eda8719"
+    ],
+    "createdAt": "2026-02-20T09:14:55.499Z"
+  },
+  {
+    "id": "5d1f98db-551b-4fd1-8ed7-1b084958d74c",
+    "key": "auth-login-failed-email-spike:d6db6cb780681bbeffa0",
+    "ruleId": "auth-login-failed-email-spike",
+    "eventType": "auth.login_failed",
+    "severity": "medium",
+    "title": "Repeated login failures for one account fingerprint",
+    "message": "6 failed login attempts targeting one account fingerprint within 10 minutes.",
+    "group": "d6db6cb780681bbeffa0",
+    "count": 6,
+    "threshold": 6,
+    "windowMs": 600000,
+    "firstSeenAt": "2026-02-20T20:44:00.942Z",
+    "lastSeenAt": "2026-02-20T20:44:01.661Z",
+    "sampleEventIds": [
+      "9744be8d-8aae-4269-8ef8-48f0e60e9d45",
+      "d930d3a2-b198-489d-83f3-075bb50221b7",
+      "6e08eacc-683a-48a9-9122-6b7979caa8cb",
+      "e2ce8bf3-d698-44ce-bf0d-fbc23b3c1cec",
+      "7f5c2a39-633f-47b5-b9a0-4131fecafc69"
+    ],
+    "createdAt": "2026-02-20T20:44:01.661Z"
+  },
+  {
+    "id": "131b4635-9299-4aa4-ab1f-f587fedb86ca",
+    "key": "auth-login-failed-ip-spike:12ca17b49af2289436f3",
+    "ruleId": "auth-login-failed-ip-spike",
+    "eventType": "auth.login_failed",
+    "severity": "high",
+    "title": "Potential brute-force login activity",
+    "message": "8 failed login attempts from one IP fingerprint within 10 minutes.",
+    "group": "12ca17b49af2289436f3",
+    "count": 8,
+    "threshold": 8,
+    "windowMs": 600000,
+    "firstSeenAt": "2026-02-20T20:44:00.942Z",
+    "lastSeenAt": "2026-02-20T20:44:01.942Z",
+    "sampleEventIds": [
+      "6e08eacc-683a-48a9-9122-6b7979caa8cb",
+      "e2ce8bf3-d698-44ce-bf0d-fbc23b3c1cec",
+      "7f5c2a39-633f-47b5-b9a0-4131fecafc69",
+      "9e7d8aaf-cf7f-41ad-bf07-17c1ec06c102",
+      "d95d25db-2d55-4d5a-8f65-c7e0f84ea472"
+    ],
+    "createdAt": "2026-02-20T20:44:01.942Z"
+  }
+]

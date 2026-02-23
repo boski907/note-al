@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" role="img" aria-label="Diverse students learning in a modern classroom hall">
+  <defs>
+    <linearGradient id="bgHall" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f0f9ff" />
+      <stop offset="100%" stop-color="#fef3e8" />
+    </linearGradient>
+  </defs>
+  <rect width="1400" height="900" fill="url(#bgHall)" />
+  <rect x="90" y="90" width="1220" height="710" rx="28" fill="#ffffff" stroke="#d8e3f0" stroke-width="6" />
+
+  <rect x="150" y="150" width="300" height="260" rx="20" fill="#e0e7ff" />
+  <rect x="490" y="150" width="300" height="260" rx="20" fill="#d1fae5" />
+  <rect x="830" y="150" width="420" height="260" rx="20" fill="#fee2e2" />
+
+  <g transform="translate(170,470)">
+    <ellipse cx="80" cy="80" rx="44" ry="48" fill="#5d3a2b" />
+    <rect x="34" y="128" width="92" height="122" rx="24" fill="#0f766e" />
+    <ellipse cx="250" cy="80" rx="44" ry="48" fill="#f2c5a2" />
+    <rect x="204" y="128" width="92" height="122" rx="24" fill="#2563eb" />
+    <ellipse cx="420" cy="80" rx="44" ry="48" fill="#c88d67" />
+    <rect x="374" y="128" width="92" height="122" rx="24" fill="#7c3aed" />
+    <rect x="0" y="270" width="520" height="80" rx="14" fill="#dbe7fa" />
+  </g>
+
+  <g transform="translate(760,470)">
+    <ellipse cx="80" cy="80" rx="44" ry="48" fill="#f3d3bb" />
+    <rect x="34" y="128" width="92" height="122" rx="24" fill="#ea580c" />
+    <ellipse cx="250" cy="80" rx="44" ry="48" fill="#6f4b38" />
+    <rect x="204" y="128" width="92" height="122" rx="24" fill="#1d4ed8" />
+    <ellipse cx="420" cy="80" rx="44" ry="48" fill="#f0c09d" />
+    <rect x="374" y="128" width="92" height="122" rx="24" fill="#0f766e" />
+    <rect x="0" y="270" width="520" height="80" rx="14" fill="#dbe7fa" />
+  </g>
+
+  <text x="115" y="835" font-family="Space Grotesk, Arial, sans-serif" font-size="30" fill="#334155">
+    Modern learning hall featuring students from multiple racial backgrounds in active study sessions.
+  </text>
+</svg>
