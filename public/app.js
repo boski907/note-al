@@ -7,7 +7,23 @@ const cloudBadgeEl = document.getElementById("cloud-badge");
 const themeSelectEl = document.getElementById("theme-select");
 const subscribeBtn = document.getElementById("subscribe-btn");
 const manageBtn = document.getElementById("manage-btn");
+const cancelMembershipBtn = document.getElementById("cancel-membership-btn");
 const billingStatusEl = document.getElementById("billing-status");
+const profileDisplayNameEl = document.getElementById("profile-display-name");
+const profileBioEl = document.getElementById("profile-bio");
+const profileAvatarPreviewEl = document.getElementById("profile-avatar-preview");
+const profileAvatarInputEl = document.getElementById("profile-avatar-input");
+const profileAvatarRemoveBtn = document.getElementById("profile-avatar-remove-btn");
+const profileSaveBtn = document.getElementById("profile-save-btn");
+const profileStatusEl = document.getElementById("profile-status");
+const passwordCurrentEl = document.getElementById("password-current");
+const passwordNewEl = document.getElementById("password-new");
+const passwordChangeBtn = document.getElementById("password-change-btn");
+const passwordStatusEl = document.getElementById("password-status");
+const deleteAccountConfirmEl = document.getElementById("delete-account-confirm");
+const deleteAccountPasswordEl = document.getElementById("delete-account-password");
+const deleteAccountBtn = document.getElementById("delete-account-btn");
+const deleteAccountStatusEl = document.getElementById("delete-account-status");
 const metricTotalEl = document.getElementById("metric-total");
 const metricTopEventEl = document.getElementById("metric-top-event");
 const metricFlashcardsEl = document.getElementById("metric-flashcards");
@@ -217,6 +233,7 @@ let lastTypingAt = 0;
 let tutorialStepIndex = 0;
 let lastTranscriptSnapshot = "";
 let lastTranscriptEntryId = 0;
+let pendingAvatarDataUrl = "";
 const SOURCE_UPLOAD_HINT = "No files selected yet. Tap Add files, drag/drop, or paste screenshots/files.";
 const CHAT_UPLOAD_HINT = "Attach screenshots/files from your device with Add files, drag/drop, or paste.";
 const SOURCE_ASSET_DB_NAME = "notematica_source_assets_v1";
@@ -348,12 +365,110 @@ function updateProfileButtons() {
 
 function updateHomeWelcomeMessage() {
   if (!homeWelcomeMessageEl) return;
+  const displayName = String(me?.displayName || "").trim();
+  if (displayName) {
+    homeWelcomeMessageEl.textContent = `Welcome back, ${displayName}. Pick one focused action to keep momentum.`;
+    return;
+  }
   if (me?.email) {
     const user = String(me.email).split("@")[0] || "there";
     homeWelcomeMessageEl.textContent = `Welcome back, ${user}. Pick one focused action to keep momentum.`;
     return;
   }
   homeWelcomeMessageEl.textContent = "Welcome. Pick one focused action to start studying.";
+}
+
+function setProfileStatus(msg, isError = false) {
+  if (!profileStatusEl) return;
+  profileStatusEl.textContent = String(msg || "");
+  profileStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function setPasswordStatus(msg, isError = false) {
+  if (!passwordStatusEl) return;
+  passwordStatusEl.textContent = String(msg || "");
+  passwordStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function setDeleteAccountStatus(msg, isError = false) {
+  if (!deleteAccountStatusEl) return;
+  deleteAccountStatusEl.textContent = String(msg || "");
+  deleteAccountStatusEl.style.color = isError ? "#b91c1c" : "#0f172a";
+}
+
+function setProfileAvatarPreview(url = "") {
+  if (!profileAvatarPreviewEl) return;
+  const src = String(url || "").trim() || "/logo-mark-notematica.svg";
+  profileAvatarPreviewEl.src = src;
+}
+
+function populateAccountProfileForm() {
+  if (profileDisplayNameEl) profileDisplayNameEl.value = String(me?.displayName || "");
+  if (profileBioEl) profileBioEl.value = String(me?.bio || "");
+  pendingAvatarDataUrl = String(me?.avatarDataUrl || "");
+  setProfileAvatarPreview(pendingAvatarDataUrl);
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    try {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error || new Error("Could not read file"));
+      reader.readAsDataURL(file);
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+async function dataUrlToImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Could not decode image"));
+    img.src = dataUrl;
+  });
+}
+
+function byteLengthFromDataUrl(dataUrl) {
+  const raw = String(dataUrl || "");
+  const marker = ";base64,";
+  const at = raw.indexOf(marker);
+  if (at < 0) return raw.length;
+  const b64 = raw.slice(at + marker.length);
+  const padding = b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0;
+  return Math.floor((b64.length * 3) / 4) - padding;
+}
+
+async function normalizeAvatarFile(file) {
+  if (!(file instanceof File)) throw new Error("No image selected.");
+  if (!/^image\//i.test(String(file.type || ""))) throw new Error("Profile photo must be an image file.");
+  const original = await readFileAsDataUrl(file);
+  const img = await dataUrlToImage(original);
+  const maxSide = 360;
+  const srcW = Math.max(1, Number(img.naturalWidth || img.width || 1));
+  const srcH = Math.max(1, Number(img.naturalHeight || img.height || 1));
+  const scale = Math.min(1, maxSide / srcW, maxSide / srcH);
+  const width = Math.max(1, Math.round(srcW * scale));
+  const height = Math.max(1, Math.round(srcH * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Image canvas is unavailable.");
+  ctx.drawImage(img, 0, 0, width, height);
+  const qualities = [0.84, 0.76, 0.68, 0.58];
+  let out = "";
+  for (const q of qualities) {
+    out = canvas.toDataURL("image/jpeg", q);
+    if (byteLengthFromDataUrl(out) <= 140000) return out;
+  }
+  if (!out) out = canvas.toDataURL("image/jpeg", 0.58);
+  if (byteLengthFromDataUrl(out) > 200000) {
+    throw new Error("Profile photo is too large. Use a smaller image.");
+  }
+  return out;
 }
 
 function formatRelativeDate(value) {
@@ -2124,6 +2239,127 @@ async function openPortal() {
   }
 }
 
+async function loadAccountProfile() {
+  if (!token) return;
+  try {
+    const data = await api("/api/account/profile", { method: "GET" });
+    const profile = data?.profile || {};
+    me = {
+      ...(me || {}),
+      displayName: String(profile.displayName || ""),
+      bio: String(profile.bio || ""),
+      avatarDataUrl: String(profile.avatarDataUrl || "")
+    };
+    populateAccountProfileForm();
+    updateHomeWelcomeMessage();
+    if (me?.email) setAuthStatus(`Signed in as ${me.email}${me.displayName ? ` (${me.displayName})` : ""}`);
+    setProfileStatus("");
+  } catch (e) {
+    setProfileStatus(`Profile load error: ${e.message}`, true);
+  }
+}
+
+async function saveAccountProfile() {
+  if (!token) return setProfileStatus("Sign in first.", true);
+  const displayName = String(profileDisplayNameEl?.value || "");
+  const bio = String(profileBioEl?.value || "");
+  setProfileStatus("Saving profile...");
+  try {
+    const out = await api("/api/account/profile", {
+      method: "POST",
+      body: JSON.stringify({
+        displayName,
+        bio,
+        avatarDataUrl: pendingAvatarDataUrl || ""
+      })
+    });
+    const profile = out?.profile || {};
+    me = {
+      ...(me || {}),
+      displayName: String(profile.displayName || ""),
+      bio: String(profile.bio || ""),
+      avatarDataUrl: String(profile.avatarDataUrl || "")
+    };
+    populateAccountProfileForm();
+    updateHomeWelcomeMessage();
+    setAuthStatus(`Signed in as ${me.email}${me.displayName ? ` (${me.displayName})` : ""}`);
+    setProfileStatus("Profile saved.");
+  } catch (e) {
+    setProfileStatus(`Profile save error: ${e.message}`, true);
+  }
+}
+
+async function changeAccountPassword() {
+  if (!token) return setPasswordStatus("Sign in first.", true);
+  const currentPassword = String(passwordCurrentEl?.value || "");
+  const newPassword = String(passwordNewEl?.value || "");
+  if (!currentPassword || !newPassword) {
+    setPasswordStatus("Enter your current and new password.", true);
+    return;
+  }
+  if (newPassword.length < 8) {
+    setPasswordStatus("New password must be at least 8 characters.", true);
+    return;
+  }
+  setPasswordStatus("Updating password...");
+  try {
+    await api("/api/account/password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
+    if (passwordCurrentEl) passwordCurrentEl.value = "";
+    if (passwordNewEl) passwordNewEl.value = "";
+    setPasswordStatus("Password updated.");
+  } catch (e) {
+    setPasswordStatus(`Password update error: ${e.message}`, true);
+  }
+}
+
+async function cancelMembership() {
+  if (!token) return setBillingStatus("Log in first to manage subscription.", true);
+  if (!confirm("Cancel your Premium membership now?")) return;
+  setBillingStatus("Cancelling membership...");
+  try {
+    const out = await api("/api/billing/cancel", { method: "POST" });
+    setBillingStatus(String(out?.message || "Membership canceled."));
+    adFree = false;
+    billingLoaded = false;
+    await loadBillingStatus();
+    await loadAnalyticsSummary();
+    await loadLearningPlan({ force: true });
+  } catch (e) {
+    setBillingStatus(`Cancel membership error: ${e.message}`, true);
+  }
+}
+
+async function deleteAccount() {
+  if (!token) return setDeleteAccountStatus("Sign in first.", true);
+  const confirmText = String(deleteAccountConfirmEl?.value || "").trim();
+  const password = String(deleteAccountPasswordEl?.value || "");
+  if (confirmText.toUpperCase() !== "DELETE") {
+    setDeleteAccountStatus("Type DELETE to confirm account deletion.", true);
+    return;
+  }
+  if (!password) {
+    setDeleteAccountStatus("Enter your current password.", true);
+    return;
+  }
+  if (!confirm("This permanently deletes your account and all stored data. Continue?")) return;
+  setDeleteAccountStatus("Deleting account...");
+  try {
+    await api("/api/account/delete", {
+      method: "POST",
+      body: JSON.stringify({ confirmText, password })
+    });
+    token = "";
+    me = null;
+    localStorage.removeItem("ai_notes_token");
+    window.location.href = "/welcome.html?account_deleted=1";
+  } catch (e) {
+    setDeleteAccountStatus(`Delete account error: ${e.message}`, true);
+  }
+}
+
 async function logout() {
   const upgradedKey = authScopedKey("upgraded_at_v1");
   try {
@@ -2143,6 +2379,9 @@ async function logout() {
   adFree = false;
   billingLoaded = false;
   setBillingStatus("");
+  setProfileStatus("");
+  setPasswordStatus("");
+  setDeleteAccountStatus("");
   setAnalyticsStatus("");
   setMetric(metricTotalEl, "-");
   setMetric(metricTopEventEl, "-");
@@ -2167,6 +2406,14 @@ async function logout() {
   setHomeQuickStatus("");
   setSourceFileSelection(SOURCE_UPLOAD_HINT);
   setChatAttachSelection(CHAT_UPLOAD_HINT);
+  pendingAvatarDataUrl = "";
+  if (profileDisplayNameEl) profileDisplayNameEl.value = "";
+  if (profileBioEl) profileBioEl.value = "";
+  if (passwordCurrentEl) passwordCurrentEl.value = "";
+  if (passwordNewEl) passwordNewEl.value = "";
+  if (deleteAccountConfirmEl) deleteAccountConfirmEl.value = "";
+  if (deleteAccountPasswordEl) deleteAccountPasswordEl.value = "";
+  setProfileAvatarPreview("");
   hideHomeUpgradePrompt();
   if (sourceUrlsEl) sourceUrlsEl.value = "";
   if (sourceFilesEl) sourceFilesEl.value = "";
@@ -2176,10 +2423,17 @@ async function logout() {
 async function loadMe() {
   try {
     const data = await api("/api/auth/me", { method: "GET" });
-    me = data.user;
+    const user = data?.user || {};
+    me = {
+      ...user,
+      displayName: String(user.displayName || ""),
+      bio: String(user.bio || ""),
+      avatarDataUrl: String(user.avatarDataUrl || "")
+    };
     token = "__cookie__";
     localStorage.removeItem("ai_notes_token");
-    setAuthStatus(`Signed in as ${me.email}`);
+    setAuthStatus(`Signed in as ${me.email}${me.displayName ? ` (${me.displayName})` : ""}`);
+    populateAccountProfileForm();
     updateProfileButtons();
     updateHomeWelcomeMessage();
     setActiveTab(loadActiveTab());
@@ -2187,6 +2441,7 @@ async function loadMe() {
     token = "";
     me = null;
     localStorage.removeItem("ai_notes_token");
+    populateAccountProfileForm();
     updateProfileButtons();
     updateHomeWelcomeMessage();
   }
@@ -4396,6 +4651,33 @@ async function startRecording() {
 }
 
 logoutBtn.addEventListener("click", logout);
+if (profileSaveBtn) profileSaveBtn.addEventListener("click", () => saveAccountProfile());
+if (passwordChangeBtn) passwordChangeBtn.addEventListener("click", () => changeAccountPassword());
+if (cancelMembershipBtn) cancelMembershipBtn.addEventListener("click", () => cancelMembership());
+if (deleteAccountBtn) deleteAccountBtn.addEventListener("click", () => deleteAccount());
+if (profileAvatarInputEl) {
+  profileAvatarInputEl.addEventListener("change", async () => {
+    const file = profileAvatarInputEl.files?.[0];
+    if (!file) return;
+    try {
+      const out = await normalizeAvatarFile(file);
+      pendingAvatarDataUrl = out;
+      setProfileAvatarPreview(out);
+      setProfileStatus("Photo selected. Click Save profile.");
+    } catch (e) {
+      setProfileStatus(`Photo error: ${e.message}`, true);
+    } finally {
+      profileAvatarInputEl.value = "";
+    }
+  });
+}
+if (profileAvatarRemoveBtn) {
+  profileAvatarRemoveBtn.addEventListener("click", () => {
+    pendingAvatarDataUrl = "";
+    setProfileAvatarPreview("");
+    setProfileStatus("Profile photo removed. Click Save profile.");
+  });
+}
 newBtn.addEventListener("click", clearEditor);
 saveBtn.addEventListener("click", () => saveNote().catch((e) => (aiOutputEl.textContent = e.message)));
 deleteBtn.addEventListener("click", () => deleteNote().catch((e) => (aiOutputEl.textContent = e.message)));
@@ -4785,6 +5067,7 @@ window.addEventListener("popstate", () => {
     window.location.href = "/welcome.html";
     return;
   }
+  await loadAccountProfile();
   try {
     const focusOn = localStorage.getItem(authScopedKey("focus_mode_v1")) === "1";
     if (focusOn) document.body.classList.add("focus-mode");
@@ -4826,6 +5109,7 @@ window.addEventListener("popstate", () => {
     // Store wrappers: avoid showing any purchase/upgrade CTAs or external billing portals.
     setHidden(subscribeBtn, true);
     setHidden(manageBtn, true);
+    setHidden(cancelMembershipBtn, true);
     setHidden(upgradeLearningBtn, true);
     setHidden(upgradeSourcesBtn, true);
     setHidden(upgradeAiBtn, true);

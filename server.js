@@ -113,6 +113,9 @@ const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_PRICE_ID_PREMIUM_10 =
   process.env.STRIPE_PRICE_ID_PREMIUM_10 || process.env.STRIPE_PRICE_ID_ADFREE_599 || "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
+const PROFILE_NAME_MAX_CHARS = Math.max(20, Number(process.env.PROFILE_NAME_MAX_CHARS || 80));
+const PROFILE_BIO_MAX_CHARS = Math.max(80, Number(process.env.PROFILE_BIO_MAX_CHARS || 280));
+const PROFILE_AVATAR_MAX_CHARS = Math.max(60000, Number(process.env.PROFILE_AVATAR_MAX_CHARS || 200000));
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const DATA_DIR = path.join(__dirname, "data");
@@ -125,6 +128,7 @@ const REFERRALS_FILE = path.join(DATA_DIR, "referrals.json");
 const FEEDBACK_FILE = path.join(DATA_DIR, "feedback.json");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
+const ACCOUNT_PROFILES_FILE = path.join(DATA_DIR, "account_profiles.json");
 const USAGE_COUNTERS_FILE = path.join(DATA_DIR, "usage_counters.json");
 const SECURITY_EVENTS_FILE = path.join(DATA_DIR, "security_events.json");
 const SECURITY_ALERTS_FILE = path.join(DATA_DIR, "security_alerts.json");
@@ -1193,6 +1197,35 @@ function sanitizeEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
 
+function sanitizeDisplayName(value, maxChars = PROFILE_NAME_MAX_CHARS) {
+  return String(value || "")
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, Math.max(20, Number(maxChars) || PROFILE_NAME_MAX_CHARS));
+}
+
+function sanitizeProfileBio(value, maxChars = PROFILE_BIO_MAX_CHARS) {
+  return String(value || "")
+    .replace(/\r/g, "")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .trim()
+    .slice(0, Math.max(80, Number(maxChars) || PROFILE_BIO_MAX_CHARS));
+}
+
+function sanitizeAvatarDataUrl(value, { maxChars = PROFILE_AVATAR_MAX_CHARS, throwOnInvalid = false } = {}) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const compact = raw.replace(/\s+/g, "");
+  if (compact.length > Math.max(60000, Number(maxChars) || PROFILE_AVATAR_MAX_CHARS)) {
+    if (throwOnInvalid) throw new Error("Profile image is too large");
+    return "";
+  }
+  const out = sanitizePreviewImageDataUrl(compact, { maxChars });
+  if (!out && throwOnInvalid) throw new Error("Profile image must be PNG, JPG, JPEG, or WEBP");
+  return out;
+}
+
 function isOwnerUser(user) {
   const email = sanitizeEmail(user?.email || "");
   if (!email) return false;
@@ -1311,6 +1344,31 @@ async function supabaseAdminRestRequest(endpoint, method = "GET", body = null, p
   return payload;
 }
 
+async function supabaseAdminAuthRequest(endpoint, method = "GET", body = null) {
+  if (!SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY for admin auth operation");
+  }
+  const headers = {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+  };
+  if (body !== null) headers["Content-Type"] = "application/json";
+
+  const response = await fetch(`${SUPABASE_URL}${endpoint}`, {
+    method,
+    headers,
+    body: body !== null ? JSON.stringify(body) : undefined
+  });
+
+  const txt = await response.text();
+  const payload = safeJsonParse(txt);
+  if (!response.ok) {
+    const detail = payload?.message || payload?.error_description || payload?.error || payload?._raw || `Supabase admin auth error ${response.status}`;
+    throw new Error(String(detail).slice(0, 800));
+  }
+  return payload;
+}
+
 async function requireUser(req, res) {
   const token = getAuthToken(req);
   const authHeader = String(req.headers.authorization || "");
@@ -1380,7 +1438,7 @@ async function requireUser(req, res) {
       }
       if (!enforceCsrfOr403(user.id, user.email)) return null;
       if (hasBearer && !hasAuthCookie) setAuthCookie(res, token);
-      return { id: user.id, email: user.email, token };
+      return { id: user.id, email: user.email, token, metadata: user?.user_metadata || {} };
     } catch {
       logSecurityEvent("auth.unauthorized", {
         severity: "medium",
@@ -1451,7 +1509,16 @@ async function requireUser(req, res) {
   saveJson(SESSIONS_FILE, sessions);
   if (!enforceCsrfOr403(user.id, user.email)) return null;
   if (hasBearer && !hasAuthCookie) setAuthCookie(res, token);
-  return { id: user.id, email: user.email, token };
+  return {
+    id: user.id,
+    email: user.email,
+    token,
+    metadata: {
+      display_name: sanitizeDisplayName(user.displayName || ""),
+      bio: sanitizeProfileBio(user.bio || ""),
+      avatar_data_url: sanitizeAvatarDataUrl(user.avatarDataUrl || "")
+    }
+  };
 }
 
 async function requireOwnerUser(req, res) {
@@ -2000,6 +2067,276 @@ async function saveOnboardingEmail(user, email, source = "onboarding_modal") {
     });
   }
   saveJson(ONBOARDING_FILE, items);
+}
+
+function accountProfileFromMetadata(metadata = {}) {
+  const src = metadata && typeof metadata === "object" ? metadata : {};
+  return {
+    displayName: sanitizeDisplayName(src.display_name || src.full_name || src.name || ""),
+    bio: sanitizeProfileBio(src.bio || ""),
+    avatarDataUrl: sanitizeAvatarDataUrl(src.avatar_data_url || "")
+  };
+}
+
+function loadAccountProfiles() {
+  const rows = loadJson(ACCOUNT_PROFILES_FILE, []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+function saveAccountProfiles(rows) {
+  saveJson(ACCOUNT_PROFILES_FILE, Array.isArray(rows) ? rows : []);
+}
+
+function getStoredAvatarDataUrl(userId) {
+  const uid = String(userId || "").trim();
+  if (!uid) return "";
+  const rows = loadAccountProfiles();
+  const row = rows.find((x) => String(x.userId || "") === uid);
+  return sanitizeAvatarDataUrl(row?.avatarDataUrl || "");
+}
+
+function upsertStoredAvatarDataUrl(userId, avatarDataUrl) {
+  const uid = String(userId || "").trim();
+  if (!uid) return;
+  const safeAvatar = sanitizeAvatarDataUrl(avatarDataUrl || "");
+  const rows = loadAccountProfiles();
+  const idx = rows.findIndex((x) => String(x.userId || "") === uid);
+  const now = new Date().toISOString();
+  if (idx >= 0) {
+    rows[idx].avatarDataUrl = safeAvatar;
+    rows[idx].updatedAt = now;
+  } else {
+    rows.push({
+      id: crypto.randomUUID(),
+      userId: uid,
+      avatarDataUrl: safeAvatar,
+      createdAt: now,
+      updatedAt: now
+    });
+  }
+  saveAccountProfiles(rows);
+}
+
+async function getAccountProfile(user) {
+  if (USE_SUPABASE) {
+    const base = accountProfileFromMetadata(user?.metadata || {});
+    const storedAvatar = getStoredAvatarDataUrl(user?.id || "");
+    return {
+      ...base,
+      avatarDataUrl: storedAvatar || base.avatarDataUrl || "",
+      updatedAt: null
+    };
+  }
+
+  const users = loadJson(USERS_FILE, []);
+  const row = users.find((u) => String(u.id || "") === String(user?.id || ""));
+  return {
+    displayName: sanitizeDisplayName(row?.displayName || row?.fullName || ""),
+    bio: sanitizeProfileBio(row?.bio || ""),
+    avatarDataUrl: sanitizeAvatarDataUrl(row?.avatarDataUrl || ""),
+    updatedAt: row?.profileUpdatedAt || null
+  };
+}
+
+async function upsertAccountProfile(user, payload = {}) {
+  const displayName = sanitizeDisplayName(payload.displayName || "");
+  const bio = sanitizeProfileBio(payload.bio || "");
+  const rawAvatar = String(payload.avatarDataUrl || "").trim();
+  const avatarDataUrl = sanitizeAvatarDataUrl(rawAvatar, { throwOnInvalid: Boolean(rawAvatar) });
+
+  if (USE_SUPABASE) {
+    const existingMeta = user?.metadata && typeof user.metadata === "object" ? user.metadata : {};
+    upsertStoredAvatarDataUrl(user?.id || "", avatarDataUrl);
+    await supabaseAuthRequest(
+      "/auth/v1/user",
+      "PUT",
+      {
+        data: {
+          ...existingMeta,
+          display_name: displayName || null,
+          bio: bio || null,
+          avatar_data_url: null
+        }
+      },
+      user.token
+    );
+    return {
+      displayName,
+      bio,
+      avatarDataUrl,
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  const users = loadJson(USERS_FILE, []);
+  const idx = users.findIndex((u) => String(u.id || "") === String(user?.id || ""));
+  if (idx < 0) throw new Error("User not found");
+  users[idx].displayName = displayName;
+  users[idx].bio = bio;
+  users[idx].avatarDataUrl = avatarDataUrl;
+  users[idx].profileUpdatedAt = new Date().toISOString();
+  saveJson(USERS_FILE, users);
+  return {
+    displayName,
+    bio,
+    avatarDataUrl,
+    updatedAt: users[idx].profileUpdatedAt
+  };
+}
+
+function isSupabaseMissingRelationError(err) {
+  const msg = String(err instanceof Error ? err.message : err || "").toLowerCase();
+  return msg.includes("relation") && msg.includes("does not exist");
+}
+
+async function deleteSupabaseRowsByUser(tableName, userId) {
+  const table = String(tableName || "").trim();
+  if (!table) return;
+  try {
+    await supabaseAdminRestRequest(`/rest/v1/${table}?user_id=eq.${encodeURIComponent(userId)}`, "DELETE");
+  } catch (err) {
+    if (isSupabaseMissingRelationError(err)) return;
+    throw err;
+  }
+}
+
+async function deleteSupabaseUserData(userId) {
+  const uid = String(userId || "").trim();
+  if (!uid) return;
+  const tables = ["notes", "flashcards", "analytics_events", "usage_counters", "billing_profiles"];
+  for (const tableName of tables) {
+    await deleteSupabaseRowsByUser(tableName, uid);
+  }
+  const profiles = loadAccountProfiles();
+  saveAccountProfiles(profiles.filter((row) => String(row.userId || "") !== uid));
+}
+
+function deleteLocalUserData(userId) {
+  const uid = String(userId || "").trim();
+  if (!uid) return;
+
+  const users = loadJson(USERS_FILE, []);
+  saveJson(
+    USERS_FILE,
+    users.filter((u) => String(u.id || "") !== uid)
+  );
+
+  const sessions = loadJson(SESSIONS_FILE, []);
+  saveJson(
+    SESSIONS_FILE,
+    sessions.filter((s) => String(s.userId || "") !== uid)
+  );
+
+  const notes = loadJson(NOTES_FILE, []);
+  saveJson(
+    NOTES_FILE,
+    notes.filter((n) => String(n.userId || "") !== uid)
+  );
+
+  const cards = loadJson(FLASHCARDS_FILE, []);
+  saveJson(
+    FLASHCARDS_FILE,
+    cards.filter((c) => String(c.userId || "") !== uid)
+  );
+
+  const events = loadJson(ANALYTICS_FILE, []);
+  saveJson(
+    ANALYTICS_FILE,
+    events.filter((e) => String(e.userId || "") !== uid)
+  );
+
+  const shares = loadJson(SHARES_FILE, []);
+  saveJson(
+    SHARES_FILE,
+    shares.filter((s) => String(s.userId || "") !== uid)
+  );
+
+  const feedback = loadJson(FEEDBACK_FILE, []);
+  saveJson(
+    FEEDBACK_FILE,
+    feedback.filter((x) => String(x.userId || "") !== uid)
+  );
+
+  const onboarding = loadJson(ONBOARDING_FILE, []);
+  saveJson(
+    ONBOARDING_FILE,
+    onboarding.filter((x) => String(x.userId || "") !== uid)
+  );
+
+  const referrals = loadJson(REFERRALS_FILE, []);
+  saveJson(
+    REFERRALS_FILE,
+    referrals
+      .filter((row) => String(row.userId || "") !== uid)
+      .map((row) => (String(row.referredBy || "") === uid ? { ...row, referredBy: null } : row))
+  );
+
+  const counters = loadUsageCountersLocal();
+  if (counters && typeof counters === "object") {
+    for (const key of Object.keys(counters)) {
+      if (key.startsWith(`${uid}:`)) delete counters[key];
+    }
+    saveUsageCountersLocal(counters);
+  }
+
+  const profiles = loadAccountProfiles();
+  saveAccountProfiles(profiles.filter((row) => String(row.userId || "") !== uid));
+}
+
+async function cancelMembershipImmediatelyForUser(user) {
+  if (!USE_SUPABASE) {
+    return { hadSubscription: false, canceledNow: false, status: "none", currentPeriodEnd: null };
+  }
+  const existing = await getBillingProfile(user);
+  const subscriptionId = String(existing?.stripe_subscription_id || "").trim();
+  if (!subscriptionId) {
+    return {
+      hadSubscription: false,
+      canceledNow: false,
+      status: String(existing?.subscription_status || "none"),
+      currentPeriodEnd: existing?.current_period_end || null
+    };
+  }
+  if (!STRIPE_SECRET_KEY) throw new Error("Stripe is not configured");
+
+  let status = String(existing?.subscription_status || "unknown");
+  let currentPeriodEnd = existing?.current_period_end || null;
+  let canceledNow = false;
+
+  try {
+    const sub = await stripeRequest(`/subscriptions/${subscriptionId}`, "GET");
+    status = String(sub?.status || status);
+    currentPeriodEnd = sub?.current_period_end ? new Date(Number(sub.current_period_end) * 1000).toISOString() : null;
+    if (!["canceled", "incomplete_expired"].includes(status)) {
+      const canceled = await stripeRequest(`/subscriptions/${subscriptionId}`, "DELETE");
+      status = String(canceled?.status || "canceled");
+      currentPeriodEnd = canceled?.current_period_end ? new Date(Number(canceled.current_period_end) * 1000).toISOString() : null;
+      canceledNow = true;
+    }
+  } catch (err) {
+    const msg = String(err instanceof Error ? err.message : err || "");
+    if (/no such subscription/i.test(msg)) {
+      status = "canceled";
+      currentPeriodEnd = null;
+      canceledNow = true;
+    } else {
+      throw err;
+    }
+  }
+
+  await upsertBillingProfile(user, {
+    stripe_customer_id: existing?.stripe_customer_id || null,
+    stripe_subscription_id: subscriptionId,
+    subscription_status: status,
+    current_period_end: currentPeriodEnd
+  });
+  entitlementCache.delete(String(user.id || ""));
+  return {
+    hadSubscription: true,
+    canceledNow,
+    status,
+    currentPeriodEnd
+  };
 }
 
 async function upsertNote(user, payload) {
@@ -4080,6 +4417,39 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { url: portal.url });
       }
 
+      if (pathname === "/api/billing/cancel" && req.method === "POST") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        if (isOwnerUser(user)) {
+          return json(res, 200, {
+            ok: true,
+            status: "owner",
+            currentPeriodEnd: null,
+            message: "Owner account does not have a billable membership."
+          });
+        }
+        if (!USE_SUPABASE) return json(res, 400, { error: "Billing requires Supabase mode" });
+        if (!STRIPE_SECRET_KEY) return json(res, 400, { error: "Stripe is not configured" });
+
+        const out = await cancelMembershipImmediatelyForUser(user);
+        const message = !out.hadSubscription
+          ? "No active membership found."
+          : out.canceledNow
+            ? "Membership canceled."
+            : `Membership is already ${out.status || "inactive"}.`;
+        try {
+          await trackEvent(user, "billing.cancel", { status: out.status || "none", hadSubscription: Boolean(out.hadSubscription) });
+        } catch {
+          // non-blocking analytics
+        }
+        return json(res, 200, {
+          ok: true,
+          status: out.status || "none",
+          currentPeriodEnd: out.currentPeriodEnd || null,
+          message
+        });
+      }
+
       if (pathname === "/api/analytics/event" && req.method === "POST") {
         const user = await requireUser(req, res);
         if (!user) return;
@@ -4232,6 +4602,9 @@ const server = http.createServer(async (req, res) => {
           id: `u_${crypto.randomBytes(8).toString("hex")}`,
           email,
           passwordHash: hashPassword(password),
+          displayName: "",
+          bio: "",
+          avatarDataUrl: "",
           createdAt: new Date().toISOString()
         };
         users.push(user);
@@ -4349,7 +4722,141 @@ const server = http.createServer(async (req, res) => {
       if (pathname === "/api/auth/me" && req.method === "GET") {
         const user = await requireUser(req, res);
         if (!user) return;
-        return json(res, 200, { user: { id: user.id, email: user.email, isOwner: isOwnerUser(user) } });
+        const profile = await getAccountProfile(user);
+        return json(res, 200, {
+          user: {
+            id: user.id,
+            email: user.email,
+            isOwner: isOwnerUser(user),
+            displayName: profile.displayName || "",
+            bio: profile.bio || "",
+            avatarDataUrl: profile.avatarDataUrl || ""
+          }
+        });
+      }
+
+      if (pathname === "/api/account/profile" && req.method === "GET") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const profile = await getAccountProfile(user);
+        return json(res, 200, { profile });
+      }
+
+      if (pathname === "/api/account/profile" && req.method === "POST") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const body = parseJsonBody(await readBody(req));
+        const profile = await upsertAccountProfile(user, {
+          displayName: body.displayName,
+          bio: body.bio,
+          avatarDataUrl: body.avatarDataUrl
+        });
+        try {
+          await trackEvent(user, "account.profile_update", {});
+        } catch {
+          // non-blocking analytics
+        }
+        return json(res, 200, { profile });
+      }
+
+      if (pathname === "/api/account/password" && req.method === "POST") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const body = parseJsonBody(await readBody(req));
+        const currentPassword = String(body.currentPassword || "");
+        const newPassword = String(body.newPassword || "");
+        if (!currentPassword || !newPassword || newPassword.length < 8) {
+          return json(res, 400, { error: "Current password and new password (min 8 chars) are required." });
+        }
+        if (currentPassword === newPassword) {
+          return json(res, 400, { error: "New password must be different from your current password." });
+        }
+
+        if (USE_SUPABASE) {
+          await supabaseAuthRequest("/auth/v1/token?grant_type=password", "POST", {
+            email: user.email,
+            password: currentPassword
+          });
+          await supabaseAuthRequest("/auth/v1/user", "PUT", { password: newPassword }, user.token);
+        } else {
+          const users = loadJson(USERS_FILE, []);
+          const idx = users.findIndex((u) => String(u.id || "") === String(user.id || ""));
+          if (idx < 0) return json(res, 404, { error: "User not found" });
+          const row = users[idx];
+          if (!verifyPassword(currentPassword, row.passwordHash)) {
+            return json(res, 401, { error: "Current password is incorrect." });
+          }
+          users[idx].passwordHash = hashPassword(newPassword);
+          users[idx].updatedAt = new Date().toISOString();
+          saveJson(USERS_FILE, users);
+        }
+
+        try {
+          await trackEvent(user, "account.password_change", {});
+        } catch {
+          // non-blocking analytics
+        }
+        return json(res, 200, { ok: true });
+      }
+
+      if (pathname === "/api/account/delete" && req.method === "POST") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const body = parseJsonBody(await readBody(req));
+        const confirmText = String(body.confirmText || "").trim().toUpperCase();
+        const password = String(body.password || "");
+        if (confirmText !== "DELETE") return json(res, 400, { error: "Type DELETE to confirm account deletion." });
+        if (!password) return json(res, 400, { error: "Current password is required." });
+
+        if (USE_SUPABASE) {
+          if (!SUPABASE_SERVICE_ROLE_KEY) {
+            return json(res, 500, { error: "Account deletion is not configured (missing SUPABASE_SERVICE_ROLE_KEY)." });
+          }
+
+          await supabaseAuthRequest("/auth/v1/token?grant_type=password", "POST", {
+            email: user.email,
+            password
+          });
+
+          try {
+            await cancelMembershipImmediatelyForUser(user);
+          } catch (err) {
+            const msg = String(err instanceof Error ? err.message : err || "");
+            if (msg) {
+              return json(res, 400, {
+                error: `Could not cancel membership automatically: ${msg}. Cancel membership first, then delete the account.`
+              });
+            }
+            return json(res, 400, {
+              error: "Could not cancel membership automatically. Cancel membership first, then delete the account."
+            });
+          }
+
+          try {
+            await trackEvent(user, "account.delete", { mode: "supabase" });
+          } catch {
+            // non-blocking analytics
+          }
+          await deleteSupabaseUserData(user.id);
+          await supabaseAdminAuthRequest(`/auth/v1/admin/users/${encodeURIComponent(String(user.id))}`, "DELETE");
+        } else {
+          const users = loadJson(USERS_FILE, []);
+          const row = users.find((u) => String(u.id || "") === String(user.id || ""));
+          if (!row) return json(res, 404, { error: "User not found" });
+          if (!verifyPassword(password, row.passwordHash)) {
+            return json(res, 401, { error: "Current password is incorrect." });
+          }
+          try {
+            await trackEvent(user, "account.delete", { mode: "local" });
+          } catch {
+            // non-blocking analytics
+          }
+          deleteLocalUserData(user.id);
+        }
+
+        entitlementCache.delete(String(user.id || ""));
+        clearAuthCookie(res);
+        return json(res, 200, { ok: true });
       }
 
       if (pathname === "/api/referral/code" && req.method === "GET") {
@@ -4902,6 +5409,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   ensureJsonFile(USERS_FILE, []);
   ensureJsonFile(SESSIONS_FILE, []);
+  ensureJsonFile(ACCOUNT_PROFILES_FILE, []);
   ensureJsonFile(NOTES_FILE, []);
   ensureJsonFile(FLASHCARDS_FILE, []);
   ensureJsonFile(ANALYTICS_FILE, []);
