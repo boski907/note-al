@@ -534,6 +534,13 @@ function setAuthCookie(res, token, { maxAgeSec = AUTH_COOKIE_MAX_AGE_SEC } = {})
   res.setHeader("Set-Cookie", parts.join("; "));
 }
 
+function canSetAuthCookieForToken(token) {
+  const safeToken = String(token || "").trim();
+  if (!safeToken) return false;
+  // Keep margin under typical per-header limits (4KB-ish across some proxies/clients).
+  return safeToken.length <= 3000;
+}
+
 function clearAuthCookie(res) {
   const parts = [
     `${AUTH_COOKIE_NAME}=`,
@@ -1437,7 +1444,7 @@ async function requireUser(req, res) {
         return null;
       }
       if (!enforceCsrfOr403(user.id, user.email)) return null;
-      if (hasBearer && !hasAuthCookie) setAuthCookie(res, token);
+      if (hasBearer && !hasAuthCookie && canSetAuthCookieForToken(token)) setAuthCookie(res, token);
       return { id: user.id, email: user.email, token, metadata: user?.user_metadata || {} };
     } catch {
       logSecurityEvent("auth.unauthorized", {
@@ -1508,7 +1515,7 @@ async function requireUser(req, res) {
   session.lastSeenAt = new Date().toISOString();
   saveJson(SESSIONS_FILE, sessions);
   if (!enforceCsrfOr403(user.id, user.email)) return null;
-  if (hasBearer && !hasAuthCookie) setAuthCookie(res, token);
+  if (hasBearer && !hasAuthCookie && canSetAuthCookieForToken(token)) setAuthCookie(res, token);
   return {
     id: user.id,
     email: user.email,
@@ -4582,7 +4589,8 @@ const server = http.createServer(async (req, res) => {
           const result = await supabaseAuthRequest("/auth/v1/signup", "POST", { email, password });
           const token = result?.session?.access_token || "";
           const expiresIn = Number(result?.session?.expires_in || result?.expires_in || 0);
-          if (token) setAuthCookie(res, token, { maxAgeSec: expiresIn > 0 ? expiresIn : AUTH_COOKIE_MAX_AGE_SEC });
+          const tokenFitsCookie = canSetAuthCookieForToken(token);
+          if (token && tokenFitsCookie) setAuthCookie(res, token, { maxAgeSec: expiresIn > 0 ? expiresIn : AUTH_COOKIE_MAX_AGE_SEC });
           const user = result?.user || result;
           if (OWNER_ONLY_MODE && !isOwnerEmail(user?.email || email)) {
             clearAuthCookie(res);
@@ -4590,7 +4598,8 @@ const server = http.createServer(async (req, res) => {
           }
           return json(res, 200, {
             user: { id: user?.id || "", email: user?.email || email },
-            auth: { mode: "cookie", hasSession: Boolean(token) },
+            token: token || "",
+            auth: { mode: tokenFitsCookie ? "cookie" : "bearer", hasSession: Boolean(token) },
             message: token ? "Registered" : "Registered. Confirm email if your project requires it."
           });
         }
@@ -4655,10 +4664,12 @@ const server = http.createServer(async (req, res) => {
               clearAuthCookie(res);
               return json(res, 403, { error: "This app is currently private." });
             }
-            if (token) setAuthCookie(res, token, { maxAgeSec: expiresIn > 0 ? expiresIn : AUTH_COOKIE_MAX_AGE_SEC });
+            const tokenFitsCookie = canSetAuthCookieForToken(token);
+            if (token && tokenFitsCookie) setAuthCookie(res, token, { maxAgeSec: expiresIn > 0 ? expiresIn : AUTH_COOKIE_MAX_AGE_SEC });
             return json(res, 200, {
               user: { id: result.user?.id || "", email: result.user?.email || email },
-              auth: { mode: "cookie", hasSession: Boolean(token) }
+              token: token || "",
+              auth: { mode: tokenFitsCookie ? "cookie" : "bearer", hasSession: Boolean(token) }
             });
           } catch {
             logSecurityEvent("auth.login_failed", {

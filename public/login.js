@@ -65,8 +65,14 @@ async function login() {
       setStatus("Sign-in completed but no session cookie was set.", true);
       return;
     }
-    token = "__cookie__";
-    localStorage.removeItem("ai_notes_token");
+    const accessToken = String(data?.token || "").trim();
+    if (accessToken) {
+      token = accessToken;
+      localStorage.setItem("ai_notes_token", accessToken);
+    } else {
+      token = "__cookie__";
+      localStorage.removeItem("ai_notes_token");
+    }
     window.location.href = "/";
   } catch (e) {
     setStatus(e.message, true);
@@ -84,8 +90,14 @@ async function register() {
     });
     const hasSession = Boolean(data?.auth?.hasSession || data?.token);
     if (hasSession) {
-      token = "__cookie__";
-      localStorage.removeItem("ai_notes_token");
+      const accessToken = String(data?.token || "").trim();
+      if (accessToken) {
+        token = accessToken;
+        localStorage.setItem("ai_notes_token", accessToken);
+      } else {
+        token = "__cookie__";
+        localStorage.removeItem("ai_notes_token");
+      }
       window.location.href = "/";
       return;
     }
