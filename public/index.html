@@ -12,15 +12,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700;9..144,800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260222v10" />
+    <link rel="stylesheet" href="/styles.css?v=20260224v01" />
   </head>
   <body>
     <div class="backdrop"></div>
 
     <main class="app-shell">
+      <!-- ── Zone 1: Study Navigator Rail ──────────────────────── -->
       <aside class="left-rail" id="auth-card">
         <div class="rail-brand">
           <a href="/welcome.html" class="rail-brand-link" aria-label="Go to welcome page">
@@ -53,6 +54,7 @@
         </div>
       </aside>
 
+      <!-- ── Zone 2: Main Work Pane ────────────────────────────── -->
       <section class="main-pane">
         <header class="top-bar">
           <div class="top-head">
@@ -74,10 +76,14 @@
           </div>
         </header>
 
+        <!-- ── Zone 3: Route Canvas ─────────────────────────────── -->
         <section id="workspace" class="route-canvas">
+
+          <!-- ── Home / Launchpad ────────────────────────────────── -->
           <section class="route-view" data-route-view="home" id="view-home">
             <section class="home-stage">
               <div class="home-orbit-grid">
+                <!-- Command card -->
                 <article class="card-face home-command">
                   <div class="home-command-head">
                     <span class="home-label">Mission control</span>
@@ -101,15 +107,15 @@
                       enterkeyhint="search"
                       aria-autocomplete="none"
                       data-lpignore="true"
-                      placeholder="Type a topic, assignment, or exam objective. Notematica will build your study path."
+                      placeholder="Type a topic, assignment, or exam objective — Notematica will build your study path."
                     />
                     <div class="home-composer-actions">
                       <button id="home-compose-btn" type="button">Build plan</button>
                       <button id="home-attach-btn" class="ghost" type="button">Add files</button>
                     </div>
                   </div>
-                  <div id="home-drop-zone" class="upload-drop-zone compact" role="button" tabindex="0">Drop or paste screenshots/files here</div>
-                  <div id="home-attach-selection" class="upload-selection muted">Attach screenshots/files from your device with Add files, drag/drop, or paste.</div>
+                  <div id="home-drop-zone" class="upload-drop-zone compact" role="button" tabindex="0">Drop or paste screenshots / files here</div>
+                  <div id="home-attach-selection" class="upload-selection muted">Attach files from your device with Add files, drag/drop, or paste.</div>
                   <input
                     id="chat-attach-files"
                     class="hidden"
@@ -127,6 +133,7 @@
                   <div id="home-compose-status" class="status"></div>
                 </article>
 
+                <!-- Quick-launch card -->
                 <aside class="card-face home-sprint">
                   <h3>Quick launch</h3>
                   <p class="muted">Jump into the exact tool you need right now.</p>
@@ -143,6 +150,7 @@
                 </aside>
               </div>
 
+              <!-- Performance board -->
               <section class="home-outcomes card-face">
                 <div class="home-outcomes-head">
                   <h3>Performance board</h3>
@@ -185,6 +193,7 @@
                 </div>
               </section>
 
+              <!-- Momentum feed -->
               <section class="home-feed card-face">
                 <div class="home-feed-head">
                   <h3>Momentum feed</h3>
@@ -198,12 +207,13 @@
             </section>
           </section>
 
+          <!-- ── Notebook View ───────────────────────────────────── -->
           <section class="route-view hidden notebook-view" data-route-view="notes" id="view-notes">
             <section class="view-hero notebook-hero">
               <div class="view-hero-copy">
                 <span class="view-hero-kicker">Notebook flow</span>
                 <h2>Capture fast. Refine with AI. Export polished notes.</h2>
-                <p>Use one focused workspace for writing, source-backed edits, and final outputs.</p>
+                <p>One focused workspace for writing, source-backed edits, and final outputs.</p>
               </div>
               <div class="view-hero-pills">
                 <span class="view-pill">Write</span>
@@ -303,6 +313,7 @@
             </section>
           </section>
 
+          <!-- ── Source Vault View ──────────────────────────────── -->
           <section class="route-view hidden sources-view" data-route-view="sources" id="view-sources">
             <section class="view-hero sources-hero">
               <div class="view-hero-copy">
@@ -333,7 +344,7 @@
                   <button id="import-files-btn" class="ghost">Import files</button>
                 </div>
                 <div id="source-file-selection" class="upload-selection muted">No files selected yet. Tap Add files, drag/drop, or paste screenshots/files.</div>
-                <div id="source-drop-zone" class="upload-drop-zone" role="button" tabindex="0">Drop or paste screenshots/files here</div>
+                <div id="source-drop-zone" class="upload-drop-zone" role="button" tabindex="0">Drop or paste screenshots / files here</div>
                 <div class="row wrap">
                   <input id="source-urls" placeholder="Paste one or more URLs, separated by commas or new lines" />
                   <button id="import-urls-btn" class="ghost">Import URLs</button>
@@ -356,6 +367,7 @@
             </div>
           </section>
 
+          <!-- ── Study Lab View ─────────────────────────────────── -->
           <section class="route-view hidden study-lab-view" data-route-view="study_tools" id="view-study-tools">
             <section class="view-hero study-lab-hero">
               <div class="view-hero-copy">
@@ -393,7 +405,7 @@
                   <button id="ask-tutor-btn" class="ghost">Ask tutor</button>
                   <button id="tutor-attach-btn" class="ghost" type="button">Add files</button>
                 </div>
-                <div id="tutor-drop-zone" class="upload-drop-zone" role="button" tabindex="0">Drop or paste screenshots/files here</div>
+                <div id="tutor-drop-zone" class="upload-drop-zone" role="button" tabindex="0">Drop or paste screenshots / files here</div>
                 <div id="tutor-attach-selection" class="upload-selection muted">Use Add files to attach screenshots/files from your device.</div>
                 <div id="tutor-output" class="ai-output"></div>
               </div>
@@ -434,6 +446,7 @@
             </div>
           </section>
 
+          <!-- ── Account / Profile View ─────────────────────────── -->
           <section class="route-view hidden account-view" data-route-view="account" id="view-account">
             <section class="view-hero account-hero">
               <div class="view-hero-copy">
@@ -457,15 +470,61 @@
                     <button id="logout-btn" class="ghost">Logout</button>
                   </div>
                 </div>
-                <div id="auth-status" class="status"></div>
-                <div class="status" style="color: #166534">
-                  Security hardening active: note/share HTML sanitization, URL import SSRF guardrails, and CSP are enabled.
+                <div class="account-profile-wrap">
+                  <div class="account-avatar-wrap">
+                    <img
+                      id="profile-avatar-preview"
+                      class="account-avatar-preview"
+                      src="/logo-mark-notematica.svg"
+                      alt="Profile avatar"
+                    />
+                    <input id="profile-avatar-input" type="file" accept="image/*" />
+                    <button id="profile-avatar-remove-btn" class="ghost" type="button">Remove photo</button>
+                  </div>
+                  <div class="account-profile-fields">
+                    <label class="field-label" for="profile-display-name">Display name</label>
+                    <input id="profile-display-name" maxlength="80" placeholder="How your name appears in the app" />
+                    <label class="field-label" for="profile-bio">Short bio</label>
+                    <textarea id="profile-bio" rows="3" maxlength="280" placeholder="Optional: what you are studying"></textarea>
+                    <div class="row wrap">
+                      <button id="profile-save-btn" type="button">Save profile</button>
+                    </div>
+                    <div id="profile-status" class="status"></div>
+                  </div>
                 </div>
+                <div id="auth-status" class="status"></div>
                 <div class="row wrap">
                   <button id="subscribe-btn">Go Premium ($10/mo)</button>
                   <button id="manage-btn" class="ghost">Manage subscription</button>
+                  <button id="cancel-membership-btn" class="ghost danger" type="button">Cancel membership</button>
                 </div>
                 <div id="billing-status" class="status"></div>
+              </div>
+
+              <div class="card-face account-card">
+                <h3>Security</h3>
+                <p class="muted">Change your password anytime.</p>
+                <div class="grid-two">
+                  <input id="password-current" type="password" autocomplete="current-password" placeholder="Current password" />
+                  <input id="password-new" type="password" autocomplete="new-password" placeholder="New password (min 8 chars)" />
+                </div>
+                <div class="row wrap">
+                  <button id="password-change-btn" class="ghost" type="button">Change password</button>
+                </div>
+                <div id="password-status" class="status"></div>
+              </div>
+
+              <div class="card-face account-card danger-zone-card">
+                <h3>Danger zone</h3>
+                <p class="muted">Delete your account and all saved data permanently.</p>
+                <div class="grid-two">
+                  <input id="delete-account-confirm" placeholder="Type DELETE to confirm" />
+                  <input id="delete-account-password" type="password" autocomplete="current-password" placeholder="Current password" />
+                </div>
+                <div class="row wrap">
+                  <button id="delete-account-btn" class="danger" type="button">Delete account</button>
+                </div>
+                <div id="delete-account-status" class="status"></div>
               </div>
 
               <div class="card-face account-card">
@@ -540,10 +599,12 @@
               </details>
             </div>
           </section>
-        </section>
-      </section>
+
+        </section><!-- /workspace -->
+      </section><!-- /main-pane -->
     </main>
 
+    <!-- ── Study / Flashcard Overlay ───────────────────────────── -->
     <div id="study-overlay" class="overlay hidden" aria-hidden="true">
       <div class="overlay-card">
         <header class="overlay-head">
@@ -554,6 +615,7 @@
       </div>
     </div>
 
+    <!-- ── Sponsored Break Overlay ─────────────────────────────── -->
     <div id="output-ads-overlay" class="overlay hidden" aria-hidden="true">
       <div class="overlay-card">
         <header class="overlay-head">
@@ -576,6 +638,7 @@
       </div>
     </div>
 
+    <!-- ── Bottom Ad Bar ────────────────────────────────────────── -->
     <div id="ad-bottom-bar" class="ad-bottom hidden" aria-hidden="true">
       <div class="ad-inner">
         <div class="ad-label">Sponsored</div>
@@ -583,6 +646,7 @@
       </div>
     </div>
 
+    <!-- ── Onboarding Overlay ──────────────────────────────────── -->
     <div id="onboarding-overlay" class="overlay hidden" aria-hidden="true">
       <div class="overlay-card">
         <header class="overlay-head">
@@ -616,6 +680,7 @@
       </div>
     </div>
 
+    <!-- ── Tutorial Overlay ────────────────────────────────────── -->
     <div id="tutorial-overlay" class="overlay hidden" aria-hidden="true">
       <div class="overlay-card">
         <header class="overlay-head">
