@@ -5,11 +5,40 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const OWNER_ONLY_MODE = String(process.env.OWNER_ONLY_MODE || '0') === '1';
+const OWNER_USERNAME = String(process.env.OWNER_USERNAME || '');
+const OWNER_PASSWORD = String(process.env.OWNER_PASSWORD || '');
 
 // ── Middleware ──────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+function unauthorized(res) {
+  res.set('WWW-Authenticate', 'Basic realm="Notematica Owner Access", charset="UTF-8"');
+  return res.status(401).json({ error: 'Owner credentials required' });
+}
+
+function ownerOnly(req, res, next) {
+  if (!OWNER_ONLY_MODE) return next();
+  if (req.path === '/api/health') return next();
+  if (!OWNER_USERNAME || !OWNER_PASSWORD) {
+    return res.status(503).json({ error: 'OWNER_ONLY_MODE is enabled but owner credentials are not configured' });
+  }
+
+  const auth = String(req.headers.authorization || '');
+  if (!auth.startsWith('Basic ')) return unauthorized(res);
+  const decoded = Buffer.from(auth.slice(6), 'base64').toString('utf8');
+  const split = decoded.indexOf(':');
+  if (split < 0) return unauthorized(res);
+
+  const username = decoded.slice(0, split);
+  const password = decoded.slice(split + 1);
+  if (username !== OWNER_USERNAME || password !== OWNER_PASSWORD) return unauthorized(res);
+  return next();
+}
+
+app.use(ownerOnly);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Routes ──────────────────────────────────────────────────────────────────

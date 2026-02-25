@@ -21,7 +21,12 @@ Open `.env` and paste your OpenAI API key:
 ```
 OPENAI_API_KEY=sk-...your-key-here...
 PORT=3000
+OWNER_ONLY_MODE=1
+OWNER_USERNAME=your-username
+OWNER_PASSWORD=your-strong-password
 ```
+
+`OWNER_ONLY_MODE=1` locks the entire app and API to HTTP Basic Auth using `OWNER_USERNAME` and `OWNER_PASSWORD`.
 
 ### 3. Run the app
 ```bash
@@ -114,3 +119,10 @@ Same as Railway — connect repo, set env var, deploy.
 | POST | `/api/transcribe/file` | Transcribe audio/video |
 | POST | `/api/transcribe/youtube` | Extract YouTube captions |
 | GET | `/api/health` | Server health check |
+
+## Owner-only lock
+
+- To lock the app so only you can access it:
+  - Set `OWNER_ONLY_MODE=1`
+  - Set `OWNER_USERNAME` and `OWNER_PASSWORD`
+- Keep `/api/health` public for deployment health checks.
