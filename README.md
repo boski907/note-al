@@ -51,6 +51,8 @@ Open **http://localhost:3000** in your browser.
 | 💬 AI Chat | GPT-4o-mini, grounded in your sources |
 | 💾 Persistence | SQLite database — notebooks survive restarts |
 | 📝 Notes | Saved per notebook in the database |
+| 👤 User profiles | Create, edit, delete profiles and change passwords |
+| 🔐 Session auth | Sign in/out with profile credentials (bearer token sessions) |
 
 ---
 
@@ -118,6 +120,16 @@ Same as Railway — connect repo, set env var, deploy.
 | POST | `/api/chat` | Chat with sources |
 | POST | `/api/transcribe/file` | Transcribe audio/video |
 | POST | `/api/transcribe/youtube` | Extract YouTube captions |
+| GET | `/api/profiles` | List profiles (without passwords) |
+| POST | `/api/profiles` | Create profile with username/password |
+| PATCH | `/api/profiles/:id` | Update profile username |
+| PATCH | `/api/profiles/:id/password` | Change profile password |
+| DELETE | `/api/profiles/:id` | Delete profile (password confirmation) |
+| GET | `/api/auth/status` | Check whether any profiles exist |
+| POST | `/api/auth/bootstrap` | Create first account + sign in |
+| POST | `/api/auth/login` | Sign in with username/password |
+| GET | `/api/auth/me` | Get current signed-in profile |
+| POST | `/api/auth/logout` | Sign out and revoke current session |
 | GET | `/api/health` | Server health check |
 
 ## Owner-only lock
@@ -126,3 +138,9 @@ Same as Railway — connect repo, set env var, deploy.
   - Set `OWNER_ONLY_MODE=1`
   - Set `OWNER_USERNAME` and `OWNER_PASSWORD`
 - Keep `/api/health` public for deployment health checks.
+
+## App sign-in flow
+
+- On first run (no profiles), the app asks you to create the first account.
+- After that, all API routes (except health + auth bootstrap/login/status) require sign-in.
+- Sessions use bearer tokens and can be revoked with `POST /api/auth/logout`.

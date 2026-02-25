@@ -44,6 +44,7 @@
   #main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);}
   #topbar{height:52px;min-height:52px;padding:0 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);background:var(--bg2);}
   #topbar h2{font-size:15px;font-weight:600;flex:1;}
+  #current-user{font-size:12px;color:var(--text3);padding:0 4px;display:none;}
   .topbar-btn{padding:6px 12px;border-radius:var(--radius-sm);background:var(--surface);border:1px solid var(--border);color:var(--text2);cursor:pointer;font-size:12.5px;display:flex;align-items:center;gap:5px;transition:all .15s;}
   .topbar-btn:hover{background:var(--surface2);color:var(--text);}
   .topbar-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
@@ -203,6 +204,8 @@
     <h2 id="nb-title">Loading…</h2>
     <button class="topbar-btn" onclick="openUploadModal()">📎 Add source</button>
     <button class="topbar-btn primary" onclick="useSuggestion('Summarize all sources in one paragraph')">✨ Auto-summarize</button>
+    <span id="current-user"></span>
+    <button class="topbar-btn" id="logout-btn" onclick="logout()" style="display:none;">Logout</button>
   </div>
   <div id="status-banner"></div>
   <div id="source-badge-row">
@@ -226,6 +229,7 @@
     <div class="studio-tab active" onclick="switchStudioTab('studio',this)">Studio</div>
     <div class="studio-tab" onclick="switchStudioTab('notes',this)">Notes</div>
     <div class="studio-tab" onclick="switchStudioTab('mind',this)">Mind Map</div>
+    <div class="studio-tab" onclick="switchStudioTab('profiles',this)">Profiles</div>
   </div>
   <div class="studio-content" id="studio-content"></div>
 </div>
@@ -373,6 +377,18 @@
   </div>
 </div>
 
+<!-- Auth Modal -->
+<div id="auth-modal" class="modal-overlay open">
+  <div class="modal-box" style="width:380px;">
+    <h3 id="auth-title">Sign in</h3>
+    <div id="auth-subtitle" style="font-size:12px;color:var(--text3);margin-bottom:12px;">Enter your credentials to continue.</div>
+    <input type="text" class="modal-input" id="auth-username" placeholder="Username">
+    <input type="password" class="modal-input" id="auth-password" placeholder="Password">
+    <button class="modal-btn confirm" style="width:100%;" id="auth-submit-btn" onclick="submitAuth()">Sign in</button>
+    <div id="auth-error" style="min-height:16px;margin-top:10px;font-size:12px;color:var(--danger);"></div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -382,6 +398,7 @@ let notebooks = [];
 let sources = [];
 let messages = [];
 let notesList = [];
+let profiles = [];
 let uploadTab = 'file';
 let studioTab = 'studio';
 let isRecording = false;
@@ -389,6 +406,9 @@ let recognition = null;
 let liveTranscriptText = '';
 let pendingAudioFile = null;
 let pendingVideoFile = null;
+let authToken = localStorage.getItem('notematica_auth_token') || '';
+let currentProfile = null;
+let authMode = 'login';
 
 const API = ''; // same-origin
 
@@ -401,17 +421,24 @@ const SUGGESTIONS = [
 ];
 
 // ─── API helpers ──────────────────────────────────────────────────────────
-async function api(method, path, body) {
-  const opts = { method, headers: {} };
+async function api(method, path, body, opts = {}) {
+  const fetchOpts = { method, headers: {} };
+  if (authToken) fetchOpts.headers.Authorization = `Bearer ${authToken}`;
   if (body && !(body instanceof FormData)) {
-    opts.headers['Content-Type'] = 'application/json';
-    opts.body = JSON.stringify(body);
+    fetchOpts.headers['Content-Type'] = 'application/json';
+    fetchOpts.body = JSON.stringify(body);
   } else if (body) {
-    opts.body = body;
+    fetchOpts.body = body;
   }
-  const r = await fetch(API + path, opts);
+  const r = await fetch(API + path, fetchOpts);
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  if (!r.ok) {
+    if (r.status === 401 && !opts.skipAuthRedirect) {
+      clearAuth();
+      openAuthModal('login', 'Session expired. Sign in again.');
+    }
+    throw new Error(data.error || `HTTP ${r.status}`);
+  }
   return data;
 }
 
@@ -424,7 +451,128 @@ async function init() {
     }
   } catch { /* server might not be up yet */ }
 
-  await loadNotebooks();
+  const authed = await ensureAuth();
+  if (authed) await Promise.all([loadNotebooks(), loadProfiles()]);
+}
+
+function setAuthToken(token) {
+  authToken = token || '';
+  if (authToken) localStorage.setItem('notematica_auth_token', authToken);
+  else localStorage.removeItem('notematica_auth_token');
+}
+
+function clearAuth() {
+  setAuthToken('');
+  currentProfile = null;
+  updateAuthUi();
+}
+
+function updateAuthUi() {
+  const user = document.getElementById('current-user');
+  const logoutBtn = document.getElementById('logout-btn');
+  if (currentProfile) {
+    user.textContent = `Signed in: ${currentProfile.username}`;
+    user.style.display = '';
+    logoutBtn.style.display = '';
+  } else {
+    user.style.display = 'none';
+    logoutBtn.style.display = 'none';
+  }
+}
+
+function openAuthModal(mode, message = '') {
+  authMode = mode;
+  const title = document.getElementById('auth-title');
+  const subtitle = document.getElementById('auth-subtitle');
+  const submit = document.getElementById('auth-submit-btn');
+  const err = document.getElementById('auth-error');
+  const modal = document.getElementById('auth-modal');
+
+  if (mode === 'bootstrap') {
+    title.textContent = 'Create first account';
+    subtitle.textContent = 'No user profiles exist yet. Create the first account to start using the app.';
+    submit.textContent = 'Create account';
+  } else {
+    title.textContent = 'Sign in';
+    subtitle.textContent = 'Enter your credentials to continue.';
+    submit.textContent = 'Sign in';
+  }
+  err.textContent = message || '';
+  document.getElementById('auth-password').value = '';
+  modal.classList.add('open');
+  setTimeout(() => document.getElementById('auth-username').focus(), 30);
+}
+
+function closeAuthModal() {
+  document.getElementById('auth-modal').classList.remove('open');
+  document.getElementById('auth-error').textContent = '';
+}
+
+async function ensureAuth() {
+  const status = await api('GET', '/api/auth/status', null, { skipAuthRedirect: true });
+  if (!status.hasProfiles) {
+    openAuthModal('bootstrap');
+    return false;
+  }
+
+  if (!authToken) {
+    openAuthModal('login');
+    return false;
+  }
+
+  try {
+    const me = await api('GET', '/api/auth/me', null, { skipAuthRedirect: true });
+    currentProfile = me.profile || null;
+    if (!currentProfile) throw new Error('Invalid session');
+    updateAuthUi();
+    closeAuthModal();
+    return true;
+  } catch {
+    clearAuth();
+    openAuthModal('login');
+    return false;
+  }
+}
+
+async function submitAuth() {
+  const username = document.getElementById('auth-username').value.trim();
+  const password = document.getElementById('auth-password').value;
+  const err = document.getElementById('auth-error');
+  if (!username || !password) {
+    err.textContent = 'Username and password are required.';
+    return;
+  }
+
+  const path = authMode === 'bootstrap' ? '/api/auth/bootstrap' : '/api/auth/login';
+  try {
+    const out = await api('POST', path, { username, password }, { skipAuthRedirect: true });
+    setAuthToken(out.token);
+    currentProfile = out.profile || null;
+    updateAuthUi();
+    closeAuthModal();
+    await Promise.all([loadNotebooks(), loadProfiles()]);
+    showToast(authMode === 'bootstrap' ? '✅ Account created and signed in' : '✅ Signed in');
+  } catch (e) {
+    err.textContent = e.message;
+  }
+}
+
+async function logout() {
+  try {
+    await api('POST', '/api/auth/logout', {}, { skipAuthRedirect: true });
+  } catch (_) {}
+  clearAuth();
+  notebooks = [];
+  sources = [];
+  messages = [];
+  notesList = [];
+  profiles = [];
+  renderNotebooks();
+  renderSources();
+  renderMessages();
+  renderStudio();
+  openAuthModal('login');
+  showToast('Signed out');
 }
 
 // ─── Notebooks ────────────────────────────────────────────────────────────
@@ -435,6 +583,7 @@ async function loadNotebooks() {
     renderNotebooks();
     if (activeNbId) await loadNotebook(activeNbId);
   } catch (err) {
+    if (/auth|session|required|credentials/i.test(String(err.message || ''))) return;
     showBanner('error', '⚠️ Could not connect to server. Make sure the server is running: npm start');
   }
 }
@@ -468,6 +617,15 @@ async function loadNotes(nbId) {
     notesList = await api('GET', `/api/notebooks/${nbId}/notes`);
     if (studioTab === 'notes') renderStudio();
   } catch(e) { console.error(e); }
+}
+
+async function loadProfiles() {
+  try {
+    profiles = await api('GET', '/api/profiles');
+    if (studioTab === 'profiles') renderStudio();
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 // ─── Renders ──────────────────────────────────────────────────────────────
@@ -563,6 +721,27 @@ function renderStudio() {
         <button class="topbar-btn primary" style="margin:14px auto 0;display:inline-flex;" onclick="renderMindMap()">Generate</button>
       </div>
       <div id="mind-map-area"></div>`;
+  } else if (studioTab === 'profiles') {
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="font-size:12px;color:var(--text3);">Manage app user profiles</div>
+        <button class="topbar-btn primary" onclick="createProfile()">＋ New</button>
+      </div>
+      ${profiles.length ? profiles.map(p => `
+        <div class="note-item">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+            <div>
+              <div class="note-title" style="margin:0;">${esc(p.username)}</div>
+              <div class="note-meta">Created ${formatTs(p.created_at)}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="topbar-btn" onclick="editProfile(${p.id})">Edit username</button>
+            <button class="topbar-btn" onclick="changeProfilePassword(${p.id})">Change password</button>
+            <button class="topbar-btn" onclick="deleteProfile(${p.id})">Delete profile</button>
+          </div>
+        </div>`).join('') : '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No profiles yet. Create one to add login credentials.</div>'}
+    `;
   }
 }
 
@@ -631,6 +810,52 @@ async function deleteNote(id) {
   await api('DELETE', `/api/notebooks/${activeNbId}/notes/${id}`);
   await loadNotes(activeNbId);
   renderStudio();
+}
+
+async function createProfile() {
+  const username = prompt('Username (minimum 3 characters):');
+  if (username === null) return;
+  const password = prompt('Password (minimum 8 characters):');
+  if (password === null) return;
+
+  await api('POST', '/api/profiles', { username: username.trim(), password });
+  await loadProfiles();
+  showToast('✅ Profile created');
+}
+
+async function editProfile(id) {
+  const profile = profiles.find(p => p.id === id);
+  if (!profile) return;
+  const username = prompt('New username:', profile.username);
+  if (username === null) return;
+
+  await api('PATCH', `/api/profiles/${id}`, { username: username.trim() });
+  await loadProfiles();
+  showToast('✅ Username updated');
+}
+
+async function changeProfilePassword(id) {
+  const currentPassword = prompt('Current password:');
+  if (currentPassword === null) return;
+  const newPassword = prompt('New password (minimum 8 characters):');
+  if (newPassword === null) return;
+
+  await api('PATCH', `/api/profiles/${id}/password`, { currentPassword, newPassword });
+  await loadProfiles();
+  showToast('✅ Password updated');
+}
+
+async function deleteProfile(id) {
+  const profile = profiles.find(p => p.id === id);
+  if (!profile) return;
+  if (!confirm(`Delete profile "${profile.username}"?`)) return;
+
+  const password = prompt('Enter current password to confirm delete:');
+  if (password === null) return;
+
+  await api('DELETE', `/api/profiles/${id}`, { password });
+  await loadProfiles();
+  showToast('✅ Profile deleted');
 }
 
 function renderMindMap() {
@@ -982,6 +1207,12 @@ document.getElementById('chat-input').addEventListener('input', autoResize);
 document.getElementById('nb-name-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') confirmNewNb();
   if (e.key === 'Escape') closeNbModal();
+});
+document.getElementById('auth-password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitAuth();
+});
+document.getElementById('auth-username').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitAuth();
 });
 ['upload-modal','nb-modal'].forEach(id => {
   document.getElementById(id).addEventListener('click', e => {

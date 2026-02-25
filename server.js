@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const db = require('./db/schema');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -41,16 +42,48 @@ function ownerOnly(req, res, next) {
 app.use(ownerOnly);
 app.use(express.static(path.join(__dirname, 'public')));
 
+function getBearerToken(req) {
+  const auth = String(req.headers.authorization || '');
+  if (!auth.startsWith('Bearer ')) return '';
+  return auth.slice(7).trim();
+}
+
+function sessionAuth(req, res, next) {
+  if (!req.path.startsWith('/api')) return next();
+  if (req.path === '/api/health') return next();
+  if (req.path === '/api/auth/status') return next();
+  if (req.path === '/api/auth/bootstrap' && req.method === 'POST') return next();
+  if (req.path === '/api/auth/login' && req.method === 'POST') return next();
+
+  const token = getBearerToken(req);
+  const profile = token ? db.getProfileByToken(token) : null;
+  if (!profile) {
+    if (db.getProfileCount() === 0) {
+      return res.status(403).json({ error: 'no profiles exist yet; create one via /api/auth/bootstrap' });
+    }
+    return res.status(401).json({ error: 'authentication required' });
+  }
+  req.profile = profile;
+  req.authToken = token;
+  return next();
+}
+
+app.use(sessionAuth);
+
 // ── Routes ──────────────────────────────────────────────────────────────────
+const authRouter = require('./routes/auth');
 const notebooksRouter = require('./routes/notebooks');
 const sourcesRouter   = require('./routes/sources');
 const chatRouter      = require('./routes/chat');
 const transcribeRouter = require('./routes/transcribe');
+const profilesRouter = require('./routes/profiles');
 
+app.use('/api/auth', authRouter);
 app.use('/api/notebooks', notebooksRouter);
 app.use('/api', sourcesRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/transcribe', transcribeRouter);
+app.use('/api/profiles', profilesRouter);
 
 // ── Health check ────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
