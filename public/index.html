@@ -1,773 +1,996 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="google-adsense-account" content="__ADSENSE_CLIENT__" />
-    <title>Notematica</title>
-    <link rel="icon" type="image/svg+xml" href="/logo-mark-notematica.svg?v=20260219v14" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/logo-mark-notematica.svg.png?v=20260219v14" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/logo-mark-notematica.svg.png?v=20260219v14" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/logo-mark-notematica.svg.png?v=20260219v14" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700;9..144,800&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="/styles.css?v=20260224v01" />
-  </head>
-  <body>
-    <div class="backdrop"></div>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Notematica AI</title>
+<style>
+  :root {
+    --bg:#1a1a2e;--bg2:#16213e;--surface:#1e1e3a;--surface2:#252545;--surface3:#2d2d55;
+    --accent:#7c6af7;--accent2:#9c8fff;--accent-glow:rgba(124,106,247,0.18);
+    --text:#e8e8f0;--text2:#a0a0c0;--text3:#6060a0;
+    --border:#2d2d55;--border2:#3d3d70;--success:#4caf89;--danger:#e05a6b;
+    --radius:12px;--radius-sm:8px;--shadow:0 4px 24px rgba(0,0,0,0.4);
+    --font:'Segoe UI',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh;display:flex;overflow:hidden;font-size:14px;}
 
-    <main class="app-shell">
-      <!-- ── Zone 1: Study Navigator Rail ──────────────────────── -->
-      <aside class="left-rail" id="auth-card">
-        <div class="rail-brand">
-          <a href="/welcome.html" class="rail-brand-link" aria-label="Go to welcome page">
-            <img src="/logo-notematica.svg" alt="Notematica" class="rail-brand-logo" />
-          </a>
-          <p class="rail-kicker">Study OS</p>
-        </div>
+  /* Sidebar */
+  #sidebar{width:240px;min-width:240px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+  .sidebar-logo{padding:18px 16px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);}
+  .logo-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--accent),#a78bfa);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+  .logo-text{font-size:16px;font-weight:700;letter-spacing:-.3px;}
+  .sidebar-section-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);padding:14px 16px 6px;}
+  #notebook-list{flex:0 0 auto;overflow-y:auto;max-height:220px;}
+  #source-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;border-top:1px solid var(--border);}
+  #source-list{flex:1;overflow-y:auto;padding-bottom:8px;}
+  .nb-item{display:flex;align-items:center;gap:8px;padding:8px 16px;cursor:pointer;transition:background .15s;position:relative;}
+  .nb-item:hover{background:var(--surface);}
+  .nb-item.active{background:var(--accent-glow);color:var(--accent2);}
+  .nb-item.active::before{content:'';position:absolute;left:0;top:4px;bottom:4px;width:3px;background:var(--accent);border-radius:0 2px 2px 0;}
+  .nb-item .nb-icon{font-size:15px;}.nb-item .nb-name{flex:1;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .nb-item .nb-badge{font-size:10px;background:var(--surface3);color:var(--text3);padding:1px 6px;border-radius:10px;}
+  .src-item{display:flex;align-items:center;gap:8px;padding:7px 12px 7px 16px;cursor:pointer;transition:background .15s;}
+  .src-item:hover{background:var(--surface);}
+  .src-icon{font-size:15px;min-width:20px;text-align:center;}
+  .src-name{flex:1;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text2);}
+  .src-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0 4px;opacity:0;transition:opacity .15s;}
+  .src-item:hover .src-del{opacity:1;}
+  .add-source-btn{margin:8px 12px;padding:8px 12px;background:var(--surface);border:1px dashed var(--border2);border-radius:var(--radius-sm);color:var(--text3);cursor:pointer;font-size:12px;display:flex;align-items:center;gap:6px;transition:all .15s;}
+  .add-source-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-glow);}
 
-        <nav class="rail-nav" aria-label="Primary navigation">
-          <button class="rail-nav-item active" type="button" data-view-link="home">
-            <span class="rail-nav-glyph">01</span>
-            <span>Launchpad</span>
-          </button>
-          <button class="rail-nav-item" type="button" data-view-link="notes">
-            <span class="rail-nav-glyph">02</span>
-            <span>Notebook</span>
-          </button>
-          <button class="rail-nav-item" type="button" data-view-link="study_tools">
-            <span class="rail-nav-glyph">03</span>
-            <span>Study Lab</span>
-          </button>
-          <button class="rail-nav-item" type="button" data-view-link="sources">
-            <span class="rail-nav-glyph">04</span>
-            <span>Source Vault</span>
-          </button>
-        </nav>
+  /* Main */
+  #main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);}
+  #topbar{height:52px;min-height:52px;padding:0 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);background:var(--bg2);}
+  #topbar h2{font-size:15px;font-weight:600;flex:1;}
+  .topbar-btn{padding:6px 12px;border-radius:var(--radius-sm);background:var(--surface);border:1px solid var(--border);color:var(--text2);cursor:pointer;font-size:12.5px;display:flex;align-items:center;gap:5px;transition:all .15s;}
+  .topbar-btn:hover{background:var(--surface2);color:var(--text);}
+  .topbar-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .topbar-btn.primary:hover{background:var(--accent2);}
+  #source-badge-row{display:flex;gap:6px;align-items:center;padding:0 20px;height:36px;min-height:36px;border-bottom:1px solid var(--border);background:var(--bg2);overflow:hidden;}
+  .src-badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:3px 9px;background:var(--surface);border-radius:20px;color:var(--text2);white-space:nowrap;border:1px solid var(--border);}
+  .src-badge.all{background:var(--accent-glow);border-color:var(--accent);color:var(--accent2);}
 
-        <div class="rail-bottom">
-          <button id="rail-profile-btn" class="ghost rail-profile-btn" type="button">Profile</button>
-        </div>
-      </aside>
+  /* Chat */
+  #chat-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px;scroll-behavior:smooth;}
+  .msg-row{display:flex;gap:10px;max-width:760px;width:100%;}
+  .msg-row.user{align-self:flex-end;flex-direction:row-reverse;}
+  .msg-row.ai{align-self:flex-start;}
+  .msg-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+  .msg-row.user .msg-avatar{background:var(--accent);}
+  .msg-row.ai .msg-avatar{background:var(--surface3);}
+  .msg-bubble{padding:11px 15px;border-radius:var(--radius);max-width:640px;line-height:1.6;font-size:13.5px;}
+  .msg-row.user .msg-bubble{background:var(--accent);color:#fff;border-radius:var(--radius) 4px var(--radius) var(--radius);}
+  .msg-row.ai .msg-bubble{background:var(--surface);border:1px solid var(--border);border-radius:4px var(--radius) var(--radius) var(--radius);}
+  .msg-bubble p{margin-bottom:8px;}.msg-bubble p:last-child{margin-bottom:0;}
+  .msg-bubble strong{color:var(--accent2);}
+  .msg-bubble code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px;color:#c3b1e1;}
+  .msg-bubble pre{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;overflow-x:auto;margin:8px 0;}
+  .msg-bubble pre code{padding:0;background:none;}
+  .msg-bubble ul,.msg-bubble ol{padding-left:18px;margin:6px 0;}
+  .msg-bubble li{margin-bottom:4px;}
+  .msg-time{font-size:10.5px;color:var(--text3);margin-top:4px;padding:0 4px;}
+  .typing-indicator{display:flex;align-items:center;gap:5px;padding:11px 15px;background:var(--surface);border:1px solid var(--border);border-radius:4px var(--radius) var(--radius) var(--radius);}
+  .typing-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);animation:bounce 1.2s ease-in-out infinite;}
+  .typing-dot:nth-child(2){animation-delay:.2s;}.typing-dot:nth-child(3){animation-delay:.4s;}
+  @keyframes bounce{0%,60%,100%{transform:translateY(0);opacity:.4;}30%{transform:translateY(-6px);opacity:1;}}
 
-      <!-- ── Zone 2: Main Work Pane ────────────────────────────── -->
-      <section class="main-pane">
-        <header class="top-bar">
-          <div class="top-head">
-            <a href="/welcome.html" class="top-brand-link" aria-label="Go to welcome page">
-              <img src="/logo-notematica.svg" alt="Notematica logo" class="top-brand-logo" />
-            </a>
-            <div class="top-head-copy">
-              <div class="top-kicker">Clyde Studio</div>
-              <div class="top-title">Build source-grounded notebooks with faster synthesis</div>
-            </div>
+  /* Input */
+  #chat-input-area{padding:16px 20px;border-top:1px solid var(--border);background:var(--bg2);}
+  #input-box{display:flex;gap:10px;align-items:flex-end;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 12px;transition:border-color .2s;}
+  #input-box:focus-within{border-color:var(--accent);}
+  #chat-input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;resize:none;font-family:var(--font);max-height:140px;min-height:22px;line-height:1.5;}
+  #chat-input::placeholder{color:var(--text3);}
+  #send-btn{width:34px;height:34px;border-radius:8px;background:var(--accent);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .15s;flex-shrink:0;}
+  #send-btn:hover{background:var(--accent2);transform:scale(1.05);}
+  #send-btn:disabled{background:var(--surface3);color:var(--text3);cursor:not-allowed;transform:none;}
+  .input-hint{font-size:11px;color:var(--text3);margin-top:6px;padding-left:2px;}
+  #suggestions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+  .suggestion-chip{padding:6px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);color:var(--text2);cursor:pointer;font-size:12px;transition:all .15s;}
+  .suggestion-chip:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-glow);}
+
+  /* Studio */
+  #studio{width:280px;min-width:280px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+  .studio-tabs{display:flex;border-bottom:1px solid var(--border);padding:0 4px;}
+  .studio-tab{flex:1;padding:12px 8px;text-align:center;font-size:12.5px;font-weight:500;cursor:pointer;color:var(--text3);border-bottom:2px solid transparent;transition:all .15s;}
+  .studio-tab:hover{color:var(--text2);}
+  .studio-tab.active{color:var(--accent2);border-bottom-color:var(--accent);}
+  .studio-content{flex:1;overflow-y:auto;padding:14px;}
+  .studio-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:10px;cursor:pointer;transition:all .15s;}
+  .studio-card:hover{border-color:var(--border2);background:var(--surface2);}
+  .studio-card h4{font-size:12.5px;font-weight:600;margin-bottom:5px;}
+  .studio-card p{font-size:12px;color:var(--text2);line-height:1.5;}
+  .studio-card .card-icon{font-size:20px;margin-bottom:8px;display:block;}
+  .note-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:8px;}
+  .note-item .note-title{font-size:12.5px;font-weight:600;margin-bottom:4px;}
+  .note-item .note-body{font-size:12px;color:var(--text2);line-height:1.5;}
+  .note-item .note-meta{font-size:10.5px;color:var(--text3);margin-top:6px;}
+  .note-item .note-del{float:right;background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;}
+  .add-note-btn{width:100%;padding:8px;border:1px dashed var(--border2);background:transparent;border-radius:var(--radius-sm);color:var(--text3);cursor:pointer;font-size:12px;transition:all .15s;margin-top:4px;}
+  .add-note-btn:hover{border-color:var(--accent);color:var(--accent);}
+
+  /* Modal */
+  .modal-overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.7);align-items:center;justify-content:center;}
+  .modal-overlay.open{display:flex;}
+  .modal-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:24px;width:520px;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow);}
+  .modal-box h3{font-size:16px;margin-bottom:16px;}
+  .drop-zone{border:2px dashed var(--border2);border-radius:var(--radius);padding:28px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:12px;}
+  .drop-zone:hover,.drop-zone.dragover{border-color:var(--accent);background:var(--accent-glow);}
+  .drop-zone .dz-icon{font-size:32px;display:block;margin-bottom:8px;}
+  .drop-zone p{font-size:13px;color:var(--text2);}
+  .drop-zone small{font-size:11.5px;color:var(--text3);}
+  .modal-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;}
+  .modal-tab{padding:6px 14px;border-radius:20px;cursor:pointer;font-size:12.5px;border:1px solid var(--border);color:var(--text2);transition:all .15s;}
+  .modal-tab.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .modal-input{width:100%;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none;margin-bottom:12px;font-family:var(--font);}
+  .modal-input:focus{border-color:var(--accent);}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;}
+  .modal-btn{padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;cursor:pointer;border:1px solid var(--border);transition:all .15s;}
+  .modal-btn.cancel{background:var(--surface);color:var(--text2);}
+  .modal-btn.cancel:hover{background:var(--surface2);}
+  .modal-btn.confirm{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .modal-btn.confirm:hover{background:var(--accent2);}
+  .modal-btn:disabled{opacity:.5;cursor:not-allowed;}
+
+  /* Audio/Video */
+  .transcript-box{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;min-height:80px;max-height:140px;overflow-y:auto;font-size:12.5px;color:var(--text2);line-height:1.6;margin-bottom:12px;white-space:pre-wrap;}
+  .transcript-box.empty{color:var(--text3);font-style:italic;}
+  .mic-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:11px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;cursor:pointer;border:2px solid var(--border2);background:var(--surface);color:var(--text2);transition:all .2s;}
+  .mic-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .mic-btn.recording{border-color:var(--danger);color:var(--danger);background:rgba(224,90,107,.1);animation:pulse-border 1.2s ease-in-out infinite;}
+  @keyframes pulse-border{0%,100%{box-shadow:0 0 0 0 rgba(224,90,107,.4);}50%{box-shadow:0 0 0 6px rgba(224,90,107,0);}}
+  .waveform{display:flex;align-items:center;gap:3px;height:20px;}
+  .waveform-bar{width:3px;border-radius:2px;background:var(--danger);animation:wave .8s ease-in-out infinite;}
+  .waveform-bar:nth-child(1){animation-delay:0s;}.waveform-bar:nth-child(2){animation-delay:.1s;}.waveform-bar:nth-child(3){animation-delay:.2s;}.waveform-bar:nth-child(4){animation-delay:.3s;}.waveform-bar:nth-child(5){animation-delay:.2s;}.waveform-bar:nth-child(6){animation-delay:.1s;}
+  @keyframes wave{0%,100%{height:4px;}50%{height:18px;}}
+  .divider-label{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text3);margin:10px 0;}
+  .divider-label::before,.divider-label::after{content:'';flex:1;height:1px;background:var(--border);}
+  .yt-preview{display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px;}
+  .yt-thumb{width:80px;height:48px;border-radius:6px;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;overflow:hidden;}
+  .yt-thumb img{width:100%;height:100%;object-fit:cover;}
+  .yt-info{flex:1;min-width:0;}
+  .yt-title{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .yt-meta{font-size:11px;color:var(--text3);margin-top:2px;}
+  .processing-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:10px;}
+  .processing-bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;animation:progress 1.8s ease-in-out infinite;}
+  @keyframes progress{0%{width:0%;margin-left:0;}50%{width:70%;margin-left:15%;}100%{width:0%;margin-left:100%;}}
+  .file-info-row{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;}
+
+  /* Status banner */
+  #status-banner{padding:6px 20px;font-size:12px;display:none;align-items:center;gap:8px;}
+  #status-banner.error{display:flex;background:rgba(224,90,107,.15);color:var(--danger);border-bottom:1px solid rgba(224,90,107,.3);}
+  #status-banner.warn{display:flex;background:rgba(255,180,0,.1);color:#fbbf24;border-bottom:1px solid rgba(255,180,0,.2);}
+
+  /* Empty state */
+  #empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--text3);}
+  #empty-state .es-icon{font-size:48px;}
+  #empty-state h3{font-size:18px;color:var(--text2);}
+  #empty-state p{font-size:13px;max-width:320px;text-align:center;line-height:1.6;}
+
+  /* Mind map SVG */
+  #mind-map-area svg text{fill:var(--text2);}
+
+  ::-webkit-scrollbar{width:5px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:10px;}
+  #toast{position:fixed;bottom:24px;right:24px;background:var(--surface3);color:var(--text);padding:10px 16px;border-radius:var(--radius-sm);font-size:13px;box-shadow:var(--shadow);transform:translateY(60px);opacity:0;transition:all .3s;z-index:200;}
+  #toast.show{transform:translateY(0);opacity:1;}
+  #toast.error-toast{background:rgba(224,90,107,.9);}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">📓</div>
+    <span class="logo-text">Notematica AI</span>
+  </div>
+  <div class="sidebar-section-label">Notebooks</div>
+  <div id="notebook-list"></div>
+  <button class="add-source-btn" style="margin:6px 12px 0;" onclick="openNbModal()">＋ New notebook</button>
+  <div id="source-panel">
+    <div class="sidebar-section-label">Sources</div>
+    <div id="source-list"></div>
+    <button class="add-source-btn" onclick="openUploadModal()">＋ Add source</button>
+  </div>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <div id="topbar">
+    <h2 id="nb-title">Loading…</h2>
+    <button class="topbar-btn" onclick="openUploadModal()">📎 Add source</button>
+    <button class="topbar-btn primary" onclick="useSuggestion('Summarize all sources in one paragraph')">✨ Auto-summarize</button>
+  </div>
+  <div id="status-banner"></div>
+  <div id="source-badge-row">
+    <span class="src-badge all">🗂 All sources</span>
+    <span id="badge-area"></span>
+  </div>
+  <div id="chat-messages"></div>
+  <div id="chat-input-area">
+    <div id="suggestions"></div>
+    <div id="input-box">
+      <textarea id="chat-input" placeholder="Ask a question about your sources…" rows="1"></textarea>
+      <button id="send-btn" onclick="sendMessage()">↑</button>
+    </div>
+    <div class="input-hint">Enter to send · Shift+Enter for new line</div>
+  </div>
+</div>
+
+<!-- Studio -->
+<div id="studio">
+  <div class="studio-tabs">
+    <div class="studio-tab active" onclick="switchStudioTab('studio',this)">Studio</div>
+    <div class="studio-tab" onclick="switchStudioTab('notes',this)">Notes</div>
+    <div class="studio-tab" onclick="switchStudioTab('mind',this)">Mind Map</div>
+  </div>
+  <div class="studio-content" id="studio-content"></div>
+</div>
+
+<!-- Upload Modal -->
+<div id="upload-modal" class="modal-overlay">
+  <div class="modal-box">
+    <h3>Add a source</h3>
+    <div class="modal-tabs">
+      <div class="modal-tab active" onclick="switchUploadTab('file',this)">📄 File</div>
+      <div class="modal-tab" onclick="switchUploadTab('url',this)">🔗 URL</div>
+      <div class="modal-tab" onclick="switchUploadTab('text',this)">✏️ Text</div>
+      <div class="modal-tab" onclick="switchUploadTab('audio',this)">🎤 Audio</div>
+      <div class="modal-tab" onclick="switchUploadTab('video',this)">🎬 Video</div>
+    </div>
+
+    <!-- File -->
+    <div id="upload-file-panel">
+      <div class="drop-zone" onclick="document.getElementById('file-input').click()"
+        ondragover="event.preventDefault();this.classList.add('dragover')"
+        ondragleave="this.classList.remove('dragover')"
+        ondrop="handleFileDrop(event,'doc')">
+        <span class="dz-icon">📂</span>
+        <p>Drag & drop or <strong>click to browse</strong></p>
+        <small>PDF, TXT, DOCX, MD supported</small>
+      </div>
+      <input type="file" id="file-input" style="display:none" multiple accept=".pdf,.txt,.docx,.md,.csv" onchange="handleDocFileSelect(event)">
+    </div>
+
+    <!-- URL -->
+    <div id="upload-url-panel" style="display:none">
+      <input type="text" class="modal-input" id="url-input" placeholder="https://example.com/article">
+      <div style="font-size:12px;color:var(--text3);">The page will be fetched and its text indexed as a source.</div>
+    </div>
+
+    <!-- Text -->
+    <div id="upload-text-panel" style="display:none">
+      <textarea class="modal-input" id="text-input" rows="5" placeholder="Paste or type your text here…" style="resize:vertical;"></textarea>
+      <input type="text" class="modal-input" id="text-name-input" placeholder="Source name (optional)">
+    </div>
+
+    <!-- Audio -->
+    <div id="upload-audio-panel" style="display:none">
+      <div class="drop-zone" onclick="document.getElementById('audio-file-input').click()"
+        ondragover="event.preventDefault();this.classList.add('dragover')"
+        ondragleave="this.classList.remove('dragover')"
+        ondrop="handleFileDrop(event,'audio')">
+        <span class="dz-icon">🎵</span>
+        <p>Drop audio file or <strong>click to browse</strong></p>
+        <small>MP3, WAV, M4A, OGG, FLAC, AAC — transcribed via Whisper</small>
+      </div>
+      <input type="file" id="audio-file-input" style="display:none" accept=".mp3,.wav,.m4a,.ogg,.flac,.aac,audio/*" onchange="handleAudioFileSelect(event)">
+      <div id="audio-file-info" style="display:none">
+        <div class="file-info-row">
+          <span style="font-size:20px;">🎵</span>
+          <div style="flex:1;min-width:0;">
+            <div id="audio-file-name" style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+            <div id="audio-file-size" style="font-size:11px;color:var(--text3);"></div>
           </div>
-          <div class="row wrap top-actions">
-            <select id="theme-select">
-              <option value="clyde">Clyde Studio</option>
-              <option value="bold">Bold</option>
-              <option value="clean">Clean</option>
-            </select>
-            <span id="cloud-badge" class="badge">Local mode</span>
-            <button id="top-profile-btn" class="ghost" type="button">Profile</button>
+          <button onclick="clearAudioFile()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;">✕</button>
+        </div>
+        <div id="audio-processing" style="display:none;">
+          <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px;">Transcribing with Whisper…</div>
+          <div class="processing-bar"><div class="processing-bar-fill"></div></div>
+        </div>
+      </div>
+      <div class="divider-label">or use live microphone</div>
+      <button class="mic-btn" id="mic-btn" onclick="toggleLiveTranscript()">
+        <span id="mic-icon">🎤</span><span id="mic-label">Start Live Transcript</span>
+      </button>
+      <div id="live-transcript-box" style="margin-top:10px;display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div style="font-size:11.5px;color:var(--text3);">Live transcript</div>
+          <div id="mic-waveform" class="waveform" style="display:none;">
+            <div class="waveform-bar"></div><div class="waveform-bar"></div><div class="waveform-bar"></div>
+            <div class="waveform-bar"></div><div class="waveform-bar"></div><div class="waveform-bar"></div>
           </div>
-        </header>
-
-        <!-- ── Zone 3: Route Canvas ─────────────────────────────── -->
-        <section id="workspace" class="route-canvas">
-
-          <!-- ── Home / Launchpad ────────────────────────────────── -->
-          <section class="route-view" data-route-view="home" id="view-home">
-            <section class="home-stage">
-              <div class="home-orbit-grid">
-                <!-- Command card -->
-                <article class="card-face home-command">
-                  <div class="home-command-head">
-                    <span class="home-label">Mission control</span>
-                    <h2 class="home-title">What notebook are we building in this focus block?</h2>
-                  </div>
-                  <p id="home-welcome-message" class="muted">Your study dashboard is ready.</p>
-                  <div class="autofill-decoy" aria-hidden="true">
-                    <input type="text" name="nm_decoy_username" autocomplete="username" tabindex="-1" />
-                    <input type="password" name="nm_decoy_password" autocomplete="current-password" tabindex="-1" />
-                  </div>
-                  <div class="home-composer">
-                    <input
-                      id="home-composer-input"
-                      class="home-composer-input"
-                      type="text"
-                      name="study_prompt"
-                      autocomplete="one-time-code"
-                      autocorrect="off"
-                      autocapitalize="none"
-                      spellcheck="false"
-                      enterkeyhint="search"
-                      aria-autocomplete="none"
-                      data-lpignore="true"
-                      placeholder="Type a topic, assignment, or exam objective — Notematica will build your study path."
-                    />
-                    <div class="home-composer-actions">
-                      <button id="home-compose-btn" type="button">Generate brief</button>
-                      <button id="home-attach-btn" class="ghost" type="button">Add files</button>
-                    </div>
-                  </div>
-                  <div id="home-drop-zone" class="upload-drop-zone compact" role="button" tabindex="0">Drop or paste screenshots / files here</div>
-                  <div id="home-attach-selection" class="upload-selection muted">Attach files from your device with Add files, drag/drop, or paste.</div>
-                  <input
-                    id="chat-attach-files"
-                    class="hidden"
-                    type="file"
-                    multiple
-                    accept="image/*,video/*,audio/*,.txt,.md,.csv,.json,.html,.htm,.xml,.log,.pdf,.docx,.png,.jpg,.jpeg,.webp,.mp4,.mov,.m4v,.webm,.mp3,.wav,.m4a,.ogg"
-                  />
-                  <div class="home-chip-row">
-                    <button id="home-chip-transcribe" class="ghost home-chip" type="button">Live transcribe</button>
-                    <button id="home-chip-file-summary" class="ghost home-chip" type="button">File summary</button>
-                    <button id="home-chip-homework" class="ghost home-chip" type="button">Homework solver</button>
-                    <button id="home-chip-youtube" class="ghost home-chip" type="button">YouTube summary</button>
-                    <button id="home-chip-more" class="ghost home-chip" type="button">More actions</button>
-                  </div>
-                  <div id="home-compose-status" class="status"></div>
-                </article>
-
-                <!-- Quick-launch card -->
-                <aside class="card-face home-sprint">
-                  <h3>Studio shortcuts</h3>
-                  <p class="muted">Jump into the exact workspace you need right now.</p>
-                  <div class="home-action-stack">
-                    <button id="home-action-new-note" type="button">Start a note</button>
-                    <button id="home-action-import" class="ghost" type="button">Import sources</button>
-                    <button id="home-action-study" class="ghost" type="button">Open study lab</button>
-                  </div>
-                  <div id="home-quick-status" class="status"></div>
-                  <div class="home-sprint-meta">
-                    <div id="home-next-action" class="status"></div>
-                    <div id="home-focus-topic" class="status muted"></div>
-                  </div>
-                  <section class="home-brief-surface">
-                    <div class="home-brief-head">
-                      <h4>Notebook graph</h4>
-                      <span id="home-brief-generated-at" class="status muted"></span>
-                    </div>
-                    <p id="home-brief-summary" class="muted">Workspace brief updates from your notes, flashcards, and activity.</p>
-                    <div class="home-brief-columns">
-                      <div>
-                        <div class="home-brief-label">Top topics</div>
-                        <ul id="home-brief-topics" class="home-brief-list"></ul>
-                      </div>
-                      <div>
-                        <div class="home-brief-label">Next moves</div>
-                        <ul id="home-brief-actions" class="home-brief-list"></ul>
-                      </div>
-                    </div>
-                  </section>
-                </aside>
-              </div>
-
-              <!-- Performance board -->
-              <section class="home-outcomes card-face">
-                <div class="home-outcomes-head">
-                  <h3>Performance board</h3>
-                  <button id="home-refresh-metrics-btn" class="ghost" type="button">Refresh</button>
-                </div>
-                <div class="metrics-grid home-metrics-grid">
-                  <article class="metric-card">
-                    <div class="metric-label">7d actions</div>
-                    <div id="home-metric-actions" class="metric-value">-</div>
-                  </article>
-                  <article class="metric-card">
-                    <div class="metric-label">AI outputs (7d)</div>
-                    <div id="home-metric-ai" class="metric-value">-</div>
-                  </article>
-                  <article class="metric-card">
-                    <div class="metric-label">Cards due now</div>
-                    <div id="home-metric-due" class="metric-value">-</div>
-                  </article>
-                  <article class="metric-card">
-                    <div class="metric-label">Mastery</div>
-                    <div id="home-metric-mastery" class="metric-value">-</div>
-                  </article>
-                  <article class="metric-card">
-                    <div class="metric-label">Study streak</div>
-                    <div id="home-metric-streak" class="metric-value">-</div>
-                  </article>
-                  <article class="metric-card">
-                    <div class="metric-label">XP level</div>
-                    <div id="home-metric-level" class="metric-value">-</div>
-                  </article>
-                </div>
-                <div id="home-upgrade-card" class="home-upgrade hidden">
-                  <div id="home-upgrade-message" class="home-upgrade-message">
-                    Upgrade to Premium for higher daily limits and uninterrupted study sessions.
-                  </div>
-                  <div class="row wrap">
-                    <button id="home-upgrade-btn" type="button">Upgrade to Premium</button>
-                    <button id="home-upgrade-dismiss" class="ghost" type="button">Maybe later</button>
-                  </div>
-                </div>
-              </section>
-
-              <!-- Momentum feed -->
-              <section class="home-feed card-face">
-                <div class="home-feed-head">
-                  <h3>Momentum feed</h3>
-                  <div class="row wrap home-feed-actions">
-                    <button id="home-feed-clear" class="ghost" type="button">Clear feed</button>
-                    <button id="home-feed-view-all" class="ghost" type="button">View all</button>
-                  </div>
-                </div>
-                <div id="home-learning-grid" class="learning-grid"></div>
-              </section>
-            </section>
-          </section>
-
-          <!-- ── Notebook View ───────────────────────────────────── -->
-          <section class="route-view hidden notebook-view" data-route-view="notes" id="view-notes">
-            <section class="view-hero notebook-hero">
-              <div class="view-hero-copy">
-                <span class="view-hero-kicker">Notebook flow</span>
-                <h2>Capture fast. Refine with AI. Export polished notes.</h2>
-                <p>One focused workspace for writing, source-backed edits, and final outputs.</p>
-              </div>
-              <div class="view-hero-pills">
-                <span class="view-pill">Write</span>
-                <span class="view-pill">Cite</span>
-                <span class="view-pill">Summarize</span>
-                <span class="view-pill">Publish</span>
-              </div>
-            </section>
-            <section class="workspace notebook-workspace">
-              <aside class="panel left notebook-left-panel">
-                <header class="left-header">
-                  <strong>Notes</strong>
-                  <button id="new-note-btn">New</button>
-                </header>
-                <div class="search-wrap">
-                  <input id="search-input" placeholder="Search title, text, tags" />
-                </div>
-                <div id="notes-list" class="notes-list"></div>
-              </aside>
-
-              <section class="panel right notebook-main-panel">
-                <header class="editor-header">
-                  <input id="note-title" placeholder="Untitled note" />
-                  <input id="note-tags" placeholder="tags: work, ideas" />
-                  <div class="row wrap">
-                    <button id="save-btn">Save</button>
-                    <button id="delete-btn" class="danger">Delete</button>
-                  </div>
-                </header>
-
-                <div class="tab-bar">
-                  <button id="focus-toggle-btn" class="ghost" type="button" title="Toggle focus mode">Focus</button>
-                  <button id="tab-btn-write" class="tab active" type="button">Write</button>
-                  <button id="tab-btn-sources" class="tab" type="button">Sources</button>
-                  <button id="tab-btn-study" class="tab" type="button">Study</button>
-                </div>
-
-                <div class="output-dock">
-                  <div class="dock-head">
-                    <strong>Output</strong>
-                    <button id="clear-output-btn" class="ghost" type="button">Clear</button>
-                  </div>
-                  <div id="ai-output" class="ai-output"></div>
-                </div>
-
-                <div id="tab-write" class="tab-panel">
-                  <div class="toolbar row wrap">
-                    <button data-cmd="bold" class="ghost">Bold</button>
-                    <button data-cmd="italic" class="ghost">Italic</button>
-                    <button data-cmd="insertUnorderedList" class="ghost">Bullet List</button>
-                    <button data-cmd="insertOrderedList" class="ghost">Numbered List</button>
-                    <button id="clear-format-btn" class="ghost">Clear Format</button>
-                    <button id="clean-source-blocks-btn" class="ghost" type="button">Clean old source blocks</button>
-                  </div>
-
-                  <section class="card-face note-flow-shell">
-                    <div class="note-flow-head">
-                      <div id="note-flow-status" class="status muted">0 words · 0 min read · Saved</div>
-                      <div class="row wrap">
-                        <button id="note-flow-save-now-btn" class="ghost" type="button">Save now</button>
-                        <button id="note-flow-insert-heading-btn" class="ghost" type="button">Insert heading</button>
-                        <button id="note-flow-insert-checklist-btn" class="ghost" type="button">Insert checklist</button>
-                      </div>
-                    </div>
-                    <div class="note-flow-outline-head">
-                      <strong>Notebook outline</strong>
-                      <span class="muted">Click a line to jump inside your note</span>
-                    </div>
-                    <div id="note-outline-list" class="note-outline-list"></div>
-                    <div class="note-flow-outline-head">
-                      <strong>Send to study</strong>
-                      <span class="muted">Launch workflows from this note context</span>
-                    </div>
-                    <div class="row wrap note-handoff-row">
-                      <button id="note-handoff-tutor-btn" class="ghost" type="button">Tutor this note</button>
-                      <button id="note-handoff-cards-btn" class="ghost" type="button">Generate cards</button>
-                      <button id="note-handoff-exam-btn" class="ghost" type="button">Run exam drill</button>
-                      <button id="note-handoff-plan-btn" class="ghost" type="button">Build study plan</button>
-                    </div>
-                    <div id="note-handoff-status" class="status muted"></div>
-                  </section>
-
-                  <div id="note-editor" class="note-editor" contenteditable="true"></div>
-
-                  <section class="ai-tools">
-                    <div class="row wrap">
-                      <button data-ai="summarize">Summarize</button>
-                      <button data-ai="improve">Improve writing</button>
-                      <button data-ai="feedback">Get feedback</button>
-                      <button id="upgrade-ai-btn" class="ghost hidden">Upgrade to Premium</button>
-                      <button data-ai="tasks">Extract tasks</button>
-                      <button id="record-btn" class="ghost">Record voice note</button>
-                      <button id="clear-recording-btn" class="ghost" type="button">Clear transcript</button>
-                    </div>
-                    <p class="muted">Select text to run AI on a specific section. Voice transcription appends text to the note.</p>
-
-                    <div class="divider"></div>
-                    <div class="row wrap">
-                      <button id="share-note-btn" class="ghost">Share note link</button>
-                      <button id="export-txt-btn" class="ghost">Export TXT</button>
-                      <button id="export-json-btn" class="ghost">Export JSON</button>
-                      <button id="export-pdf-btn" class="ghost">Export PDF</button>
-                    </div>
-                    <div id="share-status" class="status"></div>
-                  </section>
-                </div>
-
-                <div id="tab-sources" class="tab-panel hidden">
-                  <div class="card-face">
-                    <h3>Sources moved to Files view</h3>
-                    <p class="muted">Use Files to import PDFs, DOCX, screenshots/images, websites, YouTube links, and media for this note.</p>
-                    <button id="tab-open-sources-btn" class="ghost" type="button">Open Files</button>
-                  </div>
-                </div>
-
-                <div id="tab-study" class="tab-panel hidden">
-                  <div class="card-face">
-                    <h3>Study tools moved</h3>
-                    <p class="muted">Use Study tools for flashcards, tutor, test prep, and plan generation.</p>
-                    <button id="tab-open-study-btn" class="ghost" type="button">Open Study tools</button>
-                  </div>
-                </div>
-              </section>
-            </section>
-          </section>
-
-          <!-- ── Source Vault View ──────────────────────────────── -->
-          <section class="route-view hidden sources-view" data-route-view="sources" id="view-sources">
-            <section class="view-hero sources-hero">
-              <div class="view-hero-copy">
-                <span class="view-hero-kicker">Source vault</span>
-                <h2>Bring every source into one trusted study vault.</h2>
-                <p>Import files, websites, YouTube, and screenshots so AI responses stay grounded and citeable.</p>
-              </div>
-              <div class="view-hero-pills">
-                <span class="view-pill">PDF</span>
-                <span class="view-pill">DOCX</span>
-                <span class="view-pill">Web</span>
-                <span class="view-pill">YouTube</span>
-                <span class="view-pill">Media</span>
-              </div>
-            </section>
-            <div class="view-stack sources-stack">
-              <div class="card-face source-card source-import-card">
-                <h3>Import sources</h3>
-                <p class="muted">Attach PDFs, DOCX, screenshots/images, websites, YouTube, and media transcripts to the current note for grounded answers and citations.</p>
-                <div class="row wrap">
-                  <button id="source-add-files-btn" class="ghost" type="button">Add files</button>
-                  <input
-                    id="source-files"
-                    type="file"
-                    multiple
-                    accept="image/*,video/*,audio/*,.txt,.md,.csv,.json,.html,.htm,.xml,.log,.pdf,.docx,.png,.jpg,.jpeg,.webp,.mp4,.mov,.m4v,.webm,.mp3,.wav,.m4a,.ogg"
-                  />
-                  <button id="import-files-btn" class="ghost">Import files</button>
-                </div>
-                <div id="source-file-selection" class="upload-selection muted">No files selected yet. Tap Add files, drag/drop, or paste screenshots/files.</div>
-                <div id="source-drop-zone" class="upload-drop-zone" role="button" tabindex="0">Drop or paste screenshots / files here</div>
-                <div class="row wrap">
-                  <input id="source-urls" placeholder="Paste one or more URLs, separated by commas or new lines" />
-                  <button id="import-urls-btn" class="ghost">Import URLs</button>
-                  <button id="upgrade-sources-btn" class="ghost hidden">Upgrade to Premium</button>
-                </div>
-                <div id="source-status" class="status"></div>
-              </div>
-
-              <div class="card-face source-card source-list-card">
-                <div class="row wrap" style="justify-content: space-between; align-items: center">
-                  <h3 style="margin: 0">Sources on this note</h3>
-                  <div class="row wrap">
-                    <button id="sources-refresh-btn" class="ghost" type="button">Refresh</button>
-                    <button id="sources-clear-btn" class="ghost danger" type="button">Clear</button>
-                  </div>
-                </div>
-                <div class="row wrap source-manager-tools">
-                  <input id="sources-filter-input" placeholder="Filter by title, type, or content" />
-                  <select id="sources-sort-select">
-                    <option value="recent">Sort: most recent</option>
-                    <option value="kind">Sort: type</option>
-                    <option value="name">Sort: title</option>
-                  </select>
-                  <button id="sources-copy-context-btn" class="ghost" type="button">Copy context bundle</button>
-                </div>
-                <div id="sources-stats" class="status muted"></div>
-                <div id="sources-list" class="sources-list"></div>
-                <p class="muted">These sources are stored on your device for this note and are sent to AI requests (up to 6 at a time).</p>
-              </div>
-            </div>
-          </section>
-
-          <!-- ── Study Lab View ─────────────────────────────────── -->
-          <section class="route-view hidden study-lab-view" data-route-view="study_tools" id="view-study-tools">
-            <section class="view-hero study-lab-hero">
-              <div class="view-hero-copy">
-                <span class="view-hero-kicker">Study lab</span>
-                <h2>Train smarter with flashcards, tutor coaching, and test drills.</h2>
-                <p>Build recall, close weak spots, and keep a daily plan with measurable progress.</p>
-              </div>
-              <div class="view-hero-pills">
-                <span class="view-pill">Flashcards</span>
-                <span class="view-pill">Tutor</span>
-                <span class="view-pill">Practice test</span>
-                <span class="view-pill">Learning plan</span>
-              </div>
-            </section>
-            <div class="view-stack study-lab-stack">
-              <div class="card-face study-card study-hub-card">
-                <h3>Study hub</h3>
-                <p class="muted">Generate flashcards, practice tests, and an auto study plan from your current note.</p>
-                <div class="row wrap">
-                  <button id="gen-cards-btn">Generate flashcards</button>
-                  <button id="study-btn" class="ghost">Study due</button>
-                  <button id="testprep-btn" class="ghost">Practice test</button>
-                  <select id="exam-mode">
-                    <option value="standard">Exam: standard</option>
-                    <option value="timed">Exam: timed</option>
-                    <option value="weak">Exam: weak topics</option>
-                  </select>
-                </div>
-                <div class="study-workflow-strip">
-                  <button id="study-workflow-recall-btn" class="ghost" type="button">Recall sprint</button>
-                  <button id="study-workflow-exam-btn" class="ghost" type="button">Exam drill</button>
-                  <button id="study-workflow-weak-btn" class="ghost" type="button">Weak-topic loop</button>
-                </div>
-                <div id="study-workflow-status" class="status muted"></div>
-              </div>
-
-              <div class="card-face study-card study-tutor-card">
-                <h3>Tutor</h3>
-                <div class="row wrap">
-                  <input id="tutor-question" placeholder="Ask anything to learn. Uses your note/files, or web search when needed." />
-                  <button id="ask-tutor-btn" class="ghost">Ask tutor</button>
-                  <button id="tutor-attach-btn" class="ghost" type="button">Add files</button>
-                </div>
-                <div id="tutor-drop-zone" class="upload-drop-zone" role="button" tabindex="0">Drop or paste screenshots / files here</div>
-                <div id="tutor-attach-selection" class="upload-selection muted">Use Add files to attach screenshots/files from your device.</div>
-                <div id="tutor-output" class="ai-output"></div>
-                <div class="row wrap tutor-output-actions">
-                  <button id="tutor-copy-btn" class="ghost" type="button">Copy answer</button>
-                  <button id="tutor-insert-btn" class="ghost" type="button">Insert into note</button>
-                </div>
-              </div>
-
-              <div class="card-face study-card study-plan-card">
-                <h3>Auto study plan</h3>
-                <div class="row wrap">
-                  <input id="plan-days" type="number" min="1" max="30" value="7" />
-                  <input id="plan-minutes" type="number" min="5" max="180" value="20" />
-                  <button id="auto-plan-btn" class="ghost">Generate study plan</button>
-                </div>
-                <div id="plan-status" class="status"></div>
-              </div>
-
-              <div class="card-face study-card study-learning-card">
-                <div class="row wrap" style="justify-content: space-between; align-items: center">
-                  <h3 style="margin: 0">Personalized Learning</h3>
-                  <div class="row wrap">
-                    <button id="upgrade-learning-btn" class="ghost hidden">Upgrade to Premium</button>
-                    <button id="clear-learning-btn" class="ghost" type="button">Clear plan</button>
-                    <button id="refresh-learning-btn" class="ghost">Refresh</button>
-                  </div>
-                </div>
-                <div id="learning-status" class="status"></div>
-                <div class="metrics-grid two-col">
-                  <article class="metric-card">
-                    <div class="metric-label">Mastery score</div>
-                    <div id="learning-mastery" class="metric-value">-</div>
-                  </article>
-                  <article class="metric-card">
-                    <div class="metric-label">Cards due now</div>
-                    <div id="learning-due" class="metric-value">-</div>
-                  </article>
-                </div>
-                <div id="learning-focus" class="status"></div>
-                <div id="learning-next" class="status"></div>
-              </div>
-            </div>
-          </section>
-
-          <!-- ── Account / Profile View ─────────────────────────── -->
-          <section class="route-view hidden account-view" data-route-view="account" id="view-account">
-            <section class="view-hero account-hero">
-              <div class="view-hero-copy">
-                <span class="view-hero-kicker">Profile center</span>
-                <h2>Manage your study account, billing, and progress controls.</h2>
-                <p>Subscription, usage, reminders, and diagnostics are centralized here.</p>
-              </div>
-              <div class="view-hero-pills">
-                <span class="view-pill">Billing</span>
-                <span class="view-pill">Usage</span>
-                <span class="view-pill">Progress</span>
-                <span class="view-pill">Settings</span>
-              </div>
-            </section>
-            <div class="view-stack account-stack account-stack-modern">
-              <div class="card-face account-card">
-                <div class="auth-head">
-                  <h3 style="margin: 0">Account</h3>
-                  <div class="row wrap">
-                    <button id="start-tutorial-btn" class="ghost">Start tutorial</button>
-                    <button id="logout-btn" class="ghost">Logout</button>
-                  </div>
-                </div>
-                <div class="account-profile-wrap">
-                  <div class="account-avatar-wrap">
-                    <img
-                      id="profile-avatar-preview"
-                      class="account-avatar-preview"
-                      src="/logo-mark-notematica.svg"
-                      alt="Profile avatar"
-                    />
-                    <input id="profile-avatar-input" type="file" accept="image/*" />
-                    <button id="profile-avatar-remove-btn" class="ghost" type="button">Remove photo</button>
-                  </div>
-                  <div class="account-profile-fields">
-                    <label class="field-label" for="profile-display-name">Display name</label>
-                    <input id="profile-display-name" maxlength="80" placeholder="How your name appears in the app" />
-                    <label class="field-label" for="profile-bio">Short bio</label>
-                    <textarea id="profile-bio" rows="3" maxlength="280" placeholder="Optional: what you are studying"></textarea>
-                    <div class="row wrap">
-                      <button id="profile-save-btn" type="button">Save profile</button>
-                    </div>
-                    <div id="profile-status" class="status"></div>
-                  </div>
-                </div>
-                <div id="auth-status" class="status"></div>
-                <div class="row wrap">
-                  <button id="subscribe-btn">Go Premium ($10/mo)</button>
-                  <button id="manage-btn" class="ghost">Manage subscription</button>
-                  <button id="cancel-membership-btn" class="ghost danger" type="button">Cancel membership</button>
-                </div>
-                <div id="billing-status" class="status"></div>
-              </div>
-
-              <div class="card-face account-card">
-                <h3>Security</h3>
-                <p class="muted">Change your password anytime.</p>
-                <div class="grid-two">
-                  <input id="password-current" type="password" autocomplete="current-password" placeholder="Current password" />
-                  <input id="password-new" type="password" autocomplete="new-password" placeholder="New password (min 8 chars)" />
-                </div>
-                <div class="row wrap">
-                  <button id="password-change-btn" class="ghost" type="button">Change password</button>
-                </div>
-                <div id="password-status" class="status"></div>
-              </div>
-
-              <div class="card-face account-card danger-zone-card">
-                <h3>Danger zone</h3>
-                <p class="muted">Delete your account and all saved data permanently.</p>
-                <div class="grid-two">
-                  <input id="delete-account-confirm" placeholder="Type DELETE to confirm" />
-                  <input id="delete-account-password" type="password" autocomplete="current-password" placeholder="Current password" />
-                </div>
-                <div class="row wrap">
-                  <button id="delete-account-btn" class="danger" type="button">Delete account</button>
-                </div>
-                <div id="delete-account-status" class="status"></div>
-              </div>
-
-              <div class="card-face account-card">
-                <h3>Usage snapshot</h3>
-                <div id="analytics-status" class="status"></div>
-                <div class="metrics-grid two-col">
-                  <article class="metric-card">
-                    <div class="metric-label">7d actions</div>
-                    <div id="metric-total" class="metric-value">-</div>
-                  </article>
-                  <article class="metric-card">
-                    <div class="metric-label">Top event</div>
-                    <div id="metric-top-event" class="metric-value">-</div>
-                  </article>
-                  <article class="metric-card">
-                    <div class="metric-label">Flashcards</div>
-                    <div id="metric-flashcards" class="metric-value">-</div>
-                  </article>
-                  <article class="metric-card">
-                    <div class="metric-label">AI actions</div>
-                    <div id="metric-ai" class="metric-value">-</div>
-                  </article>
-                </div>
-              </div>
-
-              <div class="card-face account-card">
-                <h3>Progress</h3>
-                <div class="metrics-grid two-col">
-                  <article class="metric-card">
-                    <div class="metric-label">Study streak</div>
-                    <div id="streak-days" class="metric-value">0 days</div>
-                  </article>
-                  <article class="metric-card">
-                    <div class="metric-label">XP level</div>
-                    <div id="xp-level" class="metric-value">Lv 1</div>
-                  </article>
-                </div>
-                <div id="xp-status" class="status"></div>
-              </div>
-
-              <details class="card-face account-advanced account-card">
-                <summary>Advanced</summary>
-                <div class="advanced-body">
-                  <div class="row wrap">
-                    <input id="reminder-time" type="time" />
-                    <button id="save-reminder-btn" class="ghost">Save reminder</button>
-                    <button id="test-reminder-btn" class="ghost">Test reminder</button>
-                  </div>
-                  <div id="reminder-status" class="status"></div>
-                  <div class="divider"></div>
-
-                  <div class="row wrap">
-                    <button id="refresh-dashboard-btn" class="ghost">Refresh dashboard</button>
-                  </div>
-                  <pre id="dashboard-heatmap" class="ai-output"></pre>
-                  <div class="divider"></div>
-
-                  <div class="row wrap">
-                    <input id="referral-code-input" placeholder="Enter referral code" />
-                    <button id="apply-referral-btn" class="ghost">Apply code</button>
-                  </div>
-                  <div id="my-referral-code" class="status"></div>
-                  <div id="referral-status" class="status"></div>
-                  <div class="divider"></div>
-
-                  <textarea id="feedback-text" rows="3" placeholder="Feature feedback or bug report"></textarea>
-                  <div class="row wrap">
-                    <button id="send-feedback-btn" class="ghost">Send feedback</button>
-                  </div>
-                  <div id="feedback-status" class="status"></div>
-                </div>
-              </details>
-            </div>
-          </section>
-
-        </section><!-- /workspace -->
-      </section><!-- /main-pane -->
-    </main>
-
-    <!-- ── Study / Flashcard Overlay ───────────────────────────── -->
-    <div id="study-overlay" class="overlay hidden" aria-hidden="true">
-      <div class="overlay-card">
-        <header class="overlay-head">
-          <strong id="overlay-title">Study</strong>
-          <button id="overlay-close" class="ghost">Close</button>
-        </header>
-        <div id="overlay-body" class="overlay-body"></div>
+        </div>
+        <div class="transcript-box empty" id="transcript-output">Transcript will appear here as you speak…</div>
+        <input type="text" class="modal-input" id="audio-name-input" placeholder="Source name (e.g. Meeting recording)" style="margin-top:0;">
       </div>
     </div>
 
-    <!-- ── Sponsored Break Overlay ─────────────────────────────── -->
-    <div id="output-ads-overlay" class="overlay hidden" aria-hidden="true">
-      <div class="overlay-card">
-        <header class="overlay-head">
-          <div class="overlay-head-left">
-            <strong>Sponsored Break</strong>
-            <span class="muted">Please view sponsored ads to continue</span>
+    <!-- Video -->
+    <div id="upload-video-panel" style="display:none">
+      <div style="margin-bottom:4px;">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:6px;">YouTube URL</div>
+        <input type="text" class="modal-input" id="yt-url-input" placeholder="https://youtube.com/watch?v=…" style="margin:0;" oninput="previewYouTube(this.value)">
+      </div>
+      <div id="yt-preview-box" style="display:none;margin:10px 0;">
+        <div class="yt-preview">
+          <div class="yt-thumb" id="yt-thumb">▶</div>
+          <div class="yt-info">
+            <div class="yt-title">YouTube Video</div>
+            <div class="yt-meta" id="yt-meta">Captions will be extracted automatically</div>
           </div>
-          <button id="output-ads-close" class="ghost" type="button" aria-label="Close sponsored break">Close</button>
-        </header>
-        <div class="overlay-body">
-          <div class="output-ads-grid">
-            <div id="output-ad-slot-a" class="ad-slot"></div>
-            <div id="output-ad-slot-b" class="ad-slot"></div>
-            <div id="output-ad-slot-c" class="ad-slot hidden"></div>
+        </div>
+        <div id="yt-processing" style="display:none;">
+          <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px;">Extracting transcript…</div>
+          <div class="processing-bar"><div class="processing-bar-fill"></div></div>
+        </div>
+      </div>
+      <div class="divider-label">or upload a video file</div>
+      <div class="drop-zone" onclick="document.getElementById('video-file-input').click()"
+        ondragover="event.preventDefault();this.classList.add('dragover')"
+        ondragleave="this.classList.remove('dragover')"
+        ondrop="handleFileDrop(event,'video')">
+        <span class="dz-icon">🎬</span>
+        <p>Drop video file or <strong>click to browse</strong></p>
+        <small>MP4, MOV, WEBM, AVI, MKV — audio track transcribed via Whisper</small>
+      </div>
+      <input type="file" id="video-file-input" style="display:none" accept=".mp4,.mov,.webm,.avi,.mkv,video/*" onchange="handleVideoFileSelect(event)">
+      <div id="video-file-info" style="display:none">
+        <div class="file-info-row">
+          <span style="font-size:20px;">🎬</span>
+          <div style="flex:1;min-width:0;">
+            <div id="video-file-name" style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+            <div id="video-file-size" style="font-size:11px;color:var(--text3);"></div>
           </div>
-          <div class="row wrap output-ads-actions">
-            <button id="output-ads-continue" class="ghost" type="button">Continue</button>
-          </div>
+          <button onclick="clearVideoFile()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;">✕</button>
+        </div>
+        <div id="video-processing" style="display:none;">
+          <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px;">Extracting audio & transcribing…</div>
+          <div class="processing-bar"><div class="processing-bar-fill"></div></div>
         </div>
       </div>
     </div>
 
-    <!-- ── Bottom Ad Bar ────────────────────────────────────────── -->
-    <div id="ad-bottom-bar" class="ad-bottom hidden" aria-hidden="true">
-      <div class="ad-inner">
-        <div class="ad-label">Sponsored</div>
-        <div id="ad-bottom-slot" class="ad-slot"></div>
-      </div>
+    <div class="modal-actions">
+      <button class="modal-btn cancel" onclick="closeUploadModal()">Cancel</button>
+      <button class="modal-btn confirm" id="add-source-confirm-btn" onclick="confirmUpload()">Add source</button>
     </div>
+  </div>
+</div>
 
-    <!-- ── Onboarding Overlay ──────────────────────────────────── -->
-    <div id="onboarding-overlay" class="overlay hidden" aria-hidden="true">
-      <div class="overlay-card">
-        <header class="overlay-head">
-          <strong>Welcome to Notematica</strong>
-          <button id="onboarding-close" class="ghost">Close</button>
-        </header>
-        <div class="overlay-body">
-          <div class="card-face">
-            <h3>How plans work</h3>
-            <p class="muted">Free plan includes ads. Premium is $10/month via Stripe and removes ads.</p>
-          </div>
-          <div class="card-face">
-            <h3>Study loop</h3>
-            <p class="muted">Import sources, write notes, run AI, generate flashcards, then review due cards daily.</p>
-          </div>
-          <div class="card-face">
-            <h3>Get welcome tips</h3>
-            <p class="muted">Add your best email to receive setup and study tips.</p>
-            <div class="row wrap">
-              <input id="onboarding-email" type="email" placeholder="you@example.com" />
-              <button id="onboarding-email-save" class="ghost">Save email</button>
-            </div>
-            <div id="onboarding-email-status" class="status"></div>
-            <ul id="onboarding-tips" class="tips-list hidden"></ul>
-          </div>
-          <div class="row wrap">
-            <button id="onboarding-start">Start writing</button>
-            <button id="onboarding-study" class="ghost">Open study tools</button>
-          </div>
-        </div>
-      </div>
+<!-- New Notebook Modal -->
+<div id="nb-modal" class="modal-overlay">
+  <div class="modal-box" style="width:380px;">
+    <h3>New Notebook</h3>
+    <input type="text" class="modal-input" id="nb-name-input" placeholder="Notebook title…" style="margin-top:12px;">
+    <div class="modal-actions" style="margin-top:4px;">
+      <button class="modal-btn cancel" onclick="closeNbModal()">Cancel</button>
+      <button class="modal-btn confirm" onclick="confirmNewNb()">Create</button>
     </div>
+  </div>
+</div>
 
-    <!-- ── Tutorial Overlay ────────────────────────────────────── -->
-    <div id="tutorial-overlay" class="overlay hidden" aria-hidden="true">
-      <div class="overlay-card">
-        <header class="overlay-head">
-          <strong id="tutorial-title">Tutorial</strong>
-          <button id="tutorial-skip" class="ghost">Skip</button>
-        </header>
-        <div class="overlay-body">
-          <p id="tutorial-text" class="muted"></p>
-          <div id="tutorial-progress" class="status"></div>
-          <div class="row wrap">
-            <button id="tutorial-back" class="ghost">Back</button>
-            <button id="tutorial-next">Next</button>
-          </div>
-        </div>
+<div id="toast"></div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────
+let activeNbId = null;
+let notebooks = [];
+let sources = [];
+let messages = [];
+let notesList = [];
+let uploadTab = 'file';
+let studioTab = 'studio';
+let isRecording = false;
+let recognition = null;
+let liveTranscriptText = '';
+let pendingAudioFile = null;
+let pendingVideoFile = null;
+
+const API = ''; // same-origin
+
+const SUGGESTIONS = [
+  'Summarize all sources in one paragraph',
+  'What are the key arguments?',
+  'Find contradictions across sources',
+  'Generate 5 discussion questions',
+  'What are the main conclusions?'
+];
+
+// ─── API helpers ──────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body && !(body instanceof FormData)) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  } else if (body) {
+    opts.body = body;
+  }
+  const r = await fetch(API + path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const health = await api('GET', '/api/health');
+    if (health.openai !== 'configured') {
+      showBanner('warn', '⚠️ OpenAI API key not configured — copy .env.example to .env and add your key, then restart the server.');
+    }
+  } catch { /* server might not be up yet */ }
+
+  await loadNotebooks();
+}
+
+// ─── Notebooks ────────────────────────────────────────────────────────────
+async function loadNotebooks() {
+  try {
+    notebooks = await api('GET', '/api/notebooks');
+    if (notebooks.length > 0 && !activeNbId) activeNbId = notebooks[0].id;
+    renderNotebooks();
+    if (activeNbId) await loadNotebook(activeNbId);
+  } catch (err) {
+    showBanner('error', '⚠️ Could not connect to server. Make sure the server is running: npm start');
+  }
+}
+
+async function loadNotebook(id) {
+  activeNbId = id;
+  const nb = notebooks.find(n => n.id === id);
+  if (nb) document.getElementById('nb-title').textContent = nb.name;
+  renderNotebooks();
+  await Promise.all([loadSources(id), loadMessages(id), loadNotes(id)]);
+  renderStudio();
+}
+
+async function loadSources(nbId) {
+  try {
+    sources = await api('GET', `/api/notebooks/${nbId}/sources`);
+    renderSources();
+  } catch(e) { console.error(e); }
+}
+
+async function loadMessages(nbId) {
+  try {
+    const msgs = await api('GET', `/api/notebooks/${nbId}/messages`);
+    messages = msgs.map(m => ({ role: m.role === 'assistant' ? 'ai' : m.role, text: m.content, ts: formatTs(m.created_at) }));
+    renderMessages();
+  } catch(e) { console.error(e); }
+}
+
+async function loadNotes(nbId) {
+  try {
+    notesList = await api('GET', `/api/notebooks/${nbId}/notes`);
+    if (studioTab === 'notes') renderStudio();
+  } catch(e) { console.error(e); }
+}
+
+// ─── Renders ──────────────────────────────────────────────────────────────
+function renderNotebooks() {
+  const el = document.getElementById('notebook-list');
+  el.innerHTML = notebooks.map(nb => `
+    <div class="nb-item ${nb.id === activeNbId ? 'active' : ''}" onclick="switchNb(${nb.id})">
+      <span class="nb-icon">📓</span>
+      <span class="nb-name">${esc(nb.name)}</span>
+      <span class="nb-badge">${nb.source_count || 0}</span>
+    </div>`).join('');
+}
+
+function renderSources() {
+  const el = document.getElementById('source-list');
+  if (!sources.length) {
+    el.innerHTML = `<div style="padding:12px 16px;font-size:12px;color:var(--text3);">No sources yet</div>`;
+  } else {
+    el.innerHTML = sources.map(s => `
+      <div class="src-item">
+        <span class="src-icon">${srcIcon(s.type)}</span>
+        <span class="src-name" title="${esc(s.name)}">${esc(s.name)}</span>
+        <button class="src-del" title="Remove source" onclick="deleteSource(${s.id},event)">✕</button>
+      </div>`).join('');
+  }
+  const badgeArea = document.getElementById('badge-area');
+  badgeArea.innerHTML = sources.slice(0,4).map(s =>
+    `<span class="src-badge">${srcIcon(s.type)} ${esc(s.name.length > 22 ? s.name.slice(0,22)+'…' : s.name)}</span>`
+  ).join('');
+}
+
+function renderMessages() {
+  const el = document.getElementById('chat-messages');
+  if (!messages.length) {
+    el.innerHTML = `<div id="empty-state">
+      <div class="es-icon">💬</div>
+      <h3>Start a conversation</h3>
+      <p>Ask anything about your sources. Notematica AI grounds its answers in the documents you've added.</p>
+    </div>`;
+    renderSuggestions();
+    return;
+  }
+  el.innerHTML = messages.map(renderMsg).join('');
+  el.scrollTop = el.scrollHeight;
+  renderSuggestions();
+}
+
+function renderMsg(m) {
+  const time = m.ts || '';
+  if (m.role === 'user') {
+    return `<div class="msg-row user"><div class="msg-avatar">👤</div><div><div class="msg-bubble">${esc(m.text)}</div><div class="msg-time">${time}</div></div></div>`;
+  }
+  if (m.role === 'typing') {
+    return `<div class="msg-row ai"><div class="msg-avatar">🤖</div><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>`;
+  }
+  return `<div class="msg-row ai"><div class="msg-avatar">🤖</div><div><div class="msg-bubble">${mdToHtml(m.text)}</div><div class="msg-time">${time}</div></div></div>`;
+}
+
+function renderSuggestions() {
+  const el = document.getElementById('suggestions');
+  if (messages.length) { el.innerHTML = ''; return; }
+  el.innerHTML = SUGGESTIONS.map(s =>
+    `<div class="suggestion-chip" onclick="useSuggestion('${s}')">${s}</div>`
+  ).join('');
+}
+
+function renderStudio() {
+  const el = document.getElementById('studio-content');
+  const nb = notebooks.find(n => n.id === activeNbId) || {};
+  if (studioTab === 'studio') {
+    el.innerHTML = `
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">AI outputs for <strong style="color:var(--text2)">${esc(nb.name || '')}</strong></div>
+      <div class="studio-card" onclick="useSuggestion('Summarize all sources in one paragraph')"><span class="card-icon">📋</span><h4>Notebook Guide</h4><p>Structured summary of all sources with key themes and connections.</p></div>
+      <div class="studio-card" onclick="useSuggestion('Generate a study guide with key terms and practice questions')"><span class="card-icon">🎓</span><h4>Study Guide</h4><p>Flashcards, key terms, and practice questions from your sources.</p></div>
+      <div class="studio-card" onclick="useSuggestion('Create an executive briefing document from all sources')"><span class="card-icon">📰</span><h4>Briefing Doc</h4><p>Polished executive summary ready to share with stakeholders.</p></div>
+      <div class="studio-card" onclick="useSuggestion('Extract all timeline events from my sources chronologically')"><span class="card-icon">📅</span><h4>Timeline</h4><p>Chronological events extracted and organized from your sources.</p></div>
+      <div class="studio-card" onclick="useSuggestion('Generate an FAQ with detailed answers based on my sources')"><span class="card-icon">❓</span><h4>FAQ</h4><p>Frequently asked questions with grounded answers from sources.</p></div>`;
+  } else if (studioTab === 'notes') {
+    el.innerHTML = notesList.map(n => `
+      <div class="note-item">
+        <button class="note-del" onclick="deleteNote(${n.id})">✕</button>
+        <div class="note-title">${esc(n.title)}</div>
+        <div class="note-body">${esc(n.body)}</div>
+        <div class="note-meta">${formatTs(n.created_at)}</div>
+      </div>`).join('') +
+      `<button class="add-note-btn" onclick="addNote()">＋ Add note</button>`;
+  } else if (studioTab === 'mind') {
+    el.innerHTML = `
+      <div style="text-align:center;padding:24px 0;">
+        <div style="font-size:40px;margin-bottom:12px;">🕸</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:8px;">Mind Map</div>
+        <div style="font-size:12px;color:var(--text3);">Concept map of your source connections</div>
+        <button class="topbar-btn primary" style="margin:14px auto 0;display:inline-flex;" onclick="renderMindMap()">Generate</button>
       </div>
-    </div>
+      <div id="mind-map-area"></div>`;
+  }
+}
 
-    <footer class="legal-links">
-      <a href="/privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
-      <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a>
-    </footer>
+// ─── Actions ──────────────────────────────────────────────────────────────
+async function switchNb(id) {
+  messages = []; sources = []; notesList = [];
+  await loadNotebook(id);
+}
 
-    <script src="/app.js?v=20260222v10"></script>
-  </body>
+function switchStudioTab(tab, el) {
+  studioTab = tab;
+  document.querySelectorAll('.studio-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderStudio();
+}
+
+function useSuggestion(text) {
+  document.getElementById('chat-input').value = text;
+  sendMessage();
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text || !activeNbId) return;
+
+  messages.push({ role: 'user', text, ts: nowStr() });
+  input.value = '';
+  autoResize();
+  messages.push({ role: 'typing' });
+  renderMessages();
+  document.getElementById('send-btn').disabled = true;
+
+  try {
+    const { reply } = await api('POST', '/api/chat', { notebookId: activeNbId, message: text });
+    messages.pop();
+    messages.push({ role: 'ai', text: reply, ts: nowStr() });
+  } catch (err) {
+    messages.pop();
+    messages.push({ role: 'ai', text: `⚠️ Error: ${err.message}`, ts: nowStr() });
+  }
+  renderMessages();
+  document.getElementById('send-btn').disabled = false;
+}
+
+async function deleteSource(id, e) {
+  e.stopPropagation();
+  if (!confirm('Remove this source?')) return;
+  await api('DELETE', `/api/notebooks/${activeNbId}/sources/${id}`);
+  await loadSources(activeNbId);
+  await loadNotebooks();
+}
+
+async function addNote() {
+  const title = prompt('Note title:');
+  if (!title) return;
+  const body = prompt('Note content:');
+  if (body === null) return;
+  await api('POST', `/api/notebooks/${activeNbId}/notes`, { title, body });
+  await loadNotes(activeNbId);
+  renderStudio();
+  showToast('Note saved!');
+}
+
+async function deleteNote(id) {
+  await api('DELETE', `/api/notebooks/${activeNbId}/notes/${id}`);
+  await loadNotes(activeNbId);
+  renderStudio();
+}
+
+function renderMindMap() {
+  const el = document.getElementById('mind-map-area');
+  const nodes = sources.slice(0,6).map(s => s.name.split('.')[0].slice(0,14));
+  if (!nodes.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px;">Add sources first</div>'; return; }
+  const nb = notebooks.find(n => n.id === activeNbId) || {};
+  el.innerHTML = `
+    <div style="font-size:11px;color:var(--text3);text-align:center;margin-bottom:8px;">Concept Map</div>
+    <svg viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-height:200px;">
+      <circle cx="110" cy="110" r="28" fill="rgba(124,106,247,0.25)" stroke="#7c6af7" stroke-width="1.5"/>
+      <text x="110" y="114" text-anchor="middle" fill="#9c8fff" font-size="8">${esc((nb.name||'').slice(0,12))}</text>
+      ${nodes.map((n,i)=>{const a=(i/nodes.length)*2*Math.PI-Math.PI/2;const x=110+78*Math.cos(a);const y=110+78*Math.sin(a);return`<line x1="110" y1="110" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#3d3d70" stroke-width="1"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="20" fill="#1e1e3a" stroke="#3d3d70" stroke-width="1"/><text x="${x.toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="middle" fill="#a0a0c0" font-size="6.5">${esc(n)}</text>`;}).join('')}
+    </svg>`;
+}
+
+// ─── Upload modal ─────────────────────────────────────────────────────────
+function openUploadModal() { document.getElementById('upload-modal').classList.add('open'); }
+function closeUploadModal() {
+  if (isRecording) stopLiveTranscript();
+  document.getElementById('upload-modal').classList.remove('open');
+  // Reset panels
+  clearAudioFile(); clearVideoFile();
+  document.getElementById('url-input').value = '';
+  document.getElementById('text-input').value = '';
+  document.getElementById('yt-url-input').value = '';
+  document.getElementById('yt-preview-box').style.display = 'none';
+  liveTranscriptText = '';
+  const tout = document.getElementById('transcript-output');
+  tout.textContent = 'Transcript will appear here as you speak…';
+  tout.classList.add('empty');
+  document.getElementById('live-transcript-box').style.display = 'none';
+}
+
+function switchUploadTab(tab, el) {
+  if (uploadTab === 'audio' && isRecording) stopLiveTranscript();
+  uploadTab = tab;
+  document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  ['file','url','text','audio','video'].forEach(t => {
+    const p = document.getElementById(`upload-${t}-panel`);
+    if (p) p.style.display = t === tab ? '' : 'none';
+  });
+}
+
+function handleFileDrop(event, kind) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('dragover');
+  const file = event.dataTransfer.files[0];
+  if (!file) return;
+  if (kind === 'audio') setAudioFile(file);
+  else if (kind === 'video') setVideoFile(file);
+  else uploadDocFile(file);
+}
+
+function handleDocFileSelect(e) {
+  [...e.target.files].forEach(uploadDocFile);
+  e.target.value = '';
+}
+
+async function uploadDocFile(file) {
+  closeUploadModal();
+  showToast(`Uploading ${file.name}…`);
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('notebookId', activeNbId);
+    await api('POST', '/api/sources/upload', fd);
+    await loadSources(activeNbId);
+    await loadNotebooks();
+    showToast(`✅ "${file.name}" added`);
+  } catch (err) {
+    showToast('❌ ' + err.message, true);
+  }
+}
+
+async function confirmUpload() {
+  const btn = document.getElementById('add-source-confirm-btn');
+  btn.disabled = true;
+
+  try {
+    if (uploadTab === 'url') {
+      const url = document.getElementById('url-input').value.trim();
+      if (!url) { showToast('Please enter a URL'); btn.disabled = false; return; }
+      showToast('Fetching URL…');
+      await api('POST', '/api/sources/url', { notebookId: activeNbId, url });
+      closeUploadModal();
+      await loadSources(activeNbId); await loadNotebooks();
+      showToast('✅ URL source added');
+
+    } else if (uploadTab === 'text') {
+      const text = document.getElementById('text-input').value.trim();
+      const name = document.getElementById('text-name-input').value.trim() || 'Pasted text';
+      if (!text) { showToast('Please enter some text'); btn.disabled = false; return; }
+      await api('POST', '/api/sources/text', { notebookId: activeNbId, name, text });
+      closeUploadModal();
+      await loadSources(activeNbId); await loadNotebooks();
+      showToast('✅ Text source added');
+
+    } else if (uploadTab === 'audio') {
+      if (liveTranscriptText.trim()) {
+        const name = document.getElementById('audio-name-input').value.trim() || 'Live Transcript';
+        stopLiveTranscript();
+        await api('POST', '/api/sources/transcript', { notebookId: activeNbId, name, transcript: liveTranscriptText, type: 'audio' });
+        closeUploadModal();
+        await loadSources(activeNbId); await loadNotebooks();
+        showToast('✅ Live transcript saved');
+      } else if (pendingAudioFile) {
+        await transcribeAndSave(pendingAudioFile, 'audio');
+      } else {
+        showToast('Record audio or upload a file first');
+        btn.disabled = false; return;
+      }
+
+    } else if (uploadTab === 'video') {
+      const ytUrl = document.getElementById('yt-url-input').value.trim();
+      const ytId = extractYouTubeId(ytUrl);
+      if (ytId) {
+        await fetchYouTubeTranscript(ytUrl);
+      } else if (pendingVideoFile) {
+        await transcribeAndSave(pendingVideoFile, 'video');
+      } else {
+        showToast('Paste a YouTube URL or upload a video file');
+        btn.disabled = false; return;
+      }
+    }
+  } catch (err) {
+    showToast('❌ ' + err.message, true);
+  }
+  btn.disabled = false;
+}
+
+async function transcribeAndSave(file, type) {
+  const proc = document.getElementById(type === 'audio' ? 'audio-processing' : 'video-processing');
+  if (proc) proc.style.display = '';
+  showToast(`Transcribing ${file.name} with Whisper…`);
+
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const { transcript, filename } = await api('POST', '/api/transcribe/file', fd);
+
+    await api('POST', '/api/sources/transcript', {
+      notebookId: activeNbId,
+      name: filename || file.name,
+      transcript,
+      type
+    });
+    closeUploadModal();
+    await loadSources(activeNbId); await loadNotebooks();
+    showToast(`✅ ${type === 'audio' ? 'Audio' : 'Video'} transcript saved`);
+  } catch (err) {
+    if (proc) proc.style.display = 'none';
+    throw err;
+  }
+}
+
+async function fetchYouTubeTranscript(url) {
+  const proc = document.getElementById('yt-processing');
+  if (proc) proc.style.display = '';
+  showToast('Fetching YouTube transcript…');
+  try {
+    const { transcript, videoId } = await api('POST', '/api/transcribe/youtube', { url });
+    const name = 'YouTube: ' + url.replace(/^https?:\/\/(www\.)?/, '').slice(0,50);
+    await api('POST', '/api/sources/transcript', { notebookId: activeNbId, name, transcript, type: 'youtube' });
+    closeUploadModal();
+    await loadSources(activeNbId); await loadNotebooks();
+    showToast('✅ YouTube transcript saved');
+  } catch (err) {
+    if (proc) proc.style.display = 'none';
+    throw err;
+  }
+}
+
+// ─── Audio file helpers ───────────────────────────────────────────────────
+function handleAudioFileSelect(e) { const f = e.target.files[0]; if (f) setAudioFile(f); e.target.value = ''; }
+function handleVideoFileSelect(e) { const f = e.target.files[0]; if (f) setVideoFile(f); e.target.value = ''; }
+
+function setAudioFile(file) {
+  pendingAudioFile = file;
+  document.getElementById('audio-file-name').textContent = file.name;
+  document.getElementById('audio-file-size').textContent = fmtSize(file.size);
+  document.getElementById('audio-file-info').style.display = '';
+  document.getElementById('live-transcript-box').style.display = '';
+  document.getElementById('audio-name-input').value = file.name.replace(/\.[^.]+$/,'');
+}
+function clearAudioFile() {
+  pendingAudioFile = null;
+  document.getElementById('audio-file-info').style.display = 'none';
+  const inp = document.getElementById('audio-file-input');
+  if (inp) inp.value = '';
+}
+function setVideoFile(file) {
+  pendingVideoFile = file;
+  document.getElementById('video-file-name').textContent = file.name;
+  document.getElementById('video-file-size').textContent = fmtSize(file.size);
+  document.getElementById('video-file-info').style.display = '';
+}
+function clearVideoFile() {
+  pendingVideoFile = null;
+  document.getElementById('video-file-info').style.display = 'none';
+  const inp = document.getElementById('video-file-input');
+  if (inp) inp.value = '';
+}
+
+// ─── Live transcript (Web Speech API) ────────────────────────────────────
+function toggleLiveTranscript() {
+  if (isRecording) stopLiveTranscript(); else startLiveTranscript();
+}
+
+function startLiveTranscript() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { showToast('Live transcript requires Chrome or Edge'); return; }
+  recognition = new SR();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+  recognition.onstart = () => setMicState(true);
+  recognition.onresult = e => {
+    let interim = '', final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += t + ' '; else interim += t;
+    }
+    if (final) liveTranscriptText += final;
+    const box = document.getElementById('transcript-output');
+    if (box) { box.classList.remove('empty'); box.innerHTML = esc(liveTranscriptText) + (interim ? `<span style="color:var(--text3)">${esc(interim)}</span>` : ''); box.scrollTop = box.scrollHeight; }
+  };
+  recognition.onerror = e => { showToast('Mic error: ' + e.error, true); setMicState(false); };
+  recognition.onend = () => setMicState(false);
+  recognition.start();
+}
+
+function stopLiveTranscript() {
+  if (recognition) { try { recognition.stop(); } catch(e){} }
+  setMicState(false);
+}
+
+function setMicState(on) {
+  isRecording = on;
+  const btn = document.getElementById('mic-btn');
+  if (!btn) return;
+  document.getElementById('mic-icon').textContent = on ? '⏹' : '🎤';
+  document.getElementById('mic-label').textContent = on ? 'Stop Recording' : 'Start Live Transcript';
+  btn.classList.toggle('recording', on);
+  const wf = document.getElementById('mic-waveform');
+  if (wf) wf.style.display = on ? 'flex' : 'none';
+  document.getElementById('live-transcript-box').style.display = on ? '' : (liveTranscriptText ? '' : 'none');
+}
+
+// ─── YouTube preview ──────────────────────────────────────────────────────
+function extractYouTubeId(url) {
+  const m = url.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+function previewYouTube(val) {
+  const id = extractYouTubeId(val);
+  const box = document.getElementById('yt-preview-box');
+  if (!id) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  document.getElementById('yt-thumb').innerHTML = `<img src="https://img.youtube.com/vi/${id}/mqdefault.jpg" onerror="this.parentElement.textContent='▶'" alt="">`;
+  document.getElementById('yt-meta').textContent = 'youtube.com/watch?v=' + id;
+}
+
+// ─── Notebook modal ───────────────────────────────────────────────────────
+function openNbModal() { document.getElementById('nb-modal').classList.add('open'); setTimeout(() => document.getElementById('nb-name-input').focus(), 50); }
+function closeNbModal() { document.getElementById('nb-modal').classList.remove('open'); }
+
+async function confirmNewNb() {
+  const name = document.getElementById('nb-name-input').value.trim() || 'Untitled Notebook';
+  document.getElementById('nb-name-input').value = '';
+  closeNbModal();
+  const nb = await api('POST', '/api/notebooks', { name });
+  await loadNotebooks();
+  await loadNotebook(nb.id);
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────
+function srcIcon(type) {
+  return { pdf:'📄', txt:'📝', url:'🔗', docx:'📘', md:'📋', audio:'🎵', video:'🎬', youtube:'▶️', csv:'📊' }[type] || '📎';
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function mdToHtml(text) {
+  if (!text) return '';
+  return text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^### (.+)$/gm, '<strong style="font-size:13px">$1</strong>')
+    .replace(/^## (.+)$/gm, '<strong>$1</strong>')
+    .replace(/^# (.+)$/gm, '<strong>$1</strong>')
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+    .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>\n?)+/g, s => `<ul>${s}</ul>`)
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>')
+    .replace(/^(.)/,'<p>$1').replace(/(.)$/,'$1</p>');
+}
+
+function showToast(msg, isErr = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = isErr ? 'show error-toast' : 'show';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.className = isErr ? 'error-toast' : ''; }, 3200);
+}
+
+function showBanner(type, msg) {
+  const b = document.getElementById('status-banner');
+  b.textContent = msg;
+  b.className = type;
+}
+
+function nowStr() {
+  const d = new Date();
+  return 'Today, ' + d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+}
+
+function formatTs(ts) {
+  if (!ts) return '';
+  const d = new Date(ts.includes('T') ? ts : ts + 'Z');
+  return isNaN(d) ? '' : d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+}
+
+function fmtSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+
+function autoResize() {
+  const ta = document.getElementById('chat-input');
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(ta.scrollHeight, 140) + 'px';
+}
+
+// ─── Keyboard ─────────────────────────────────────────────────────────────
+document.getElementById('chat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+document.getElementById('chat-input').addEventListener('input', autoResize);
+document.getElementById('nb-name-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmNewNb();
+  if (e.key === 'Escape') closeNbModal();
+});
+['upload-modal','nb-modal'].forEach(id => {
+  document.getElementById(id).addEventListener('click', e => {
+    if (e.target.id === id) { if (id === 'upload-modal') closeUploadModal(); else closeNbModal(); }
+  });
+});
+
+// ─── Boot ─────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
 </html>

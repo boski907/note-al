@@ -1,12 +1,8 @@
-.env
 node_modules/
+.env
+uploads/
+*.db
+*.db.json
+*.sqlite
+*.sqlite3
 .DS_Store
-supabase/.temp/
-data/analytics.json
-public/*.svg.png
-**/.idea/
-**/*.iml
-
-# Keystores (never commit)
-keystore/
-*.jks

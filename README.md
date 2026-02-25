@@ -1,121 +1,116 @@
-# AI Note App
+# Notematica AI
 
-AI note-taking app with:
+A full-stack, local-first research assistant inspired by Google NotebookLM.
+Upload documents, audio, and video — then chat with your content using real AI.
 
-- Supabase Auth (email/password)
-- Supabase RLS-backed notes storage
-- Rich-text editor
-- Tagging + search
-- Voice note transcription
-- AI note actions (summarize, improve, tasks)
+---
 
-## GitHub AI Agent Setup
+## Quick Start
 
-This repository includes:
+### 1. Install dependencies
+```bash
+cd Notematica-AI
+npm install
+```
 
-- `AGENTS.md` for Codex-compatible agent instructions
-- `CLAUDE.md` for Claude-compatible agent instructions
-- `GEMINI.md` for Gemini-compatible agent instructions
-- `.github/copilot-instructions.md` for GitHub Copilot instructions
+### 2. Set up your API key
+```bash
+cp .env.example .env
+```
+Open `.env` and paste your OpenAI API key:
+```
+OPENAI_API_KEY=sk-...your-key-here...
+PORT=3000
+```
 
-When using AI coding agents on GitHub, keep these instruction files aligned so behavior is consistent across tools.
-
-### Using Claude In This Repo
-
-1. Open this repository in your Claude-compatible coding tool.
-2. Start tasks in natural language (for example: "fix login bug" or "add tests for notes API").
-3. Claude will use `/Users/larryrobinson/Documents/note app/CLAUDE.md` and `/Users/larryrobinson/Documents/note app/AGENTS.md` as project instructions.
-4. Review and run changes locally before merging.
-
-## Setup
-
-1. Install Node.js 18+.
-2. Copy `.env.example` to `.env`.
-3. Set:
-   - `OPENAI_API_KEY`
-   - `SUPABASE_URL`
-   - `SUPABASE_ANON_KEY`
-   - (optional ads) `ADSENSE_CLIENT`, `ADSENSE_SLOT_BOTTOM`, `ADSENSE_SLOT_BREAK`
-  - (optional premium subscription) `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID_PREMIUM_10`, `APP_BASE_URL`
-   - (optional but recommended) `STRIPE_WEBHOOK_SECRET`
-4. Start the app:
-
+### 3. Run the app
 ```bash
 npm start
 ```
 
-5. Open [http://127.0.0.1:3000](http://127.0.0.1:3000)
+Open **http://localhost:3000** in your browser.
 
-## Supabase Migration
+---
 
-Run:
+## Features
 
-- `supabase/migrations/20260215_create_notes_table.sql`
-- `supabase/migrations/202602160910_create_flashcards_table.sql`
-- `supabase/migrations/202602160900_create_billing_profiles.sql`
-- `supabase/migrations/202602170700_create_analytics_events.sql`
+| Feature | How it works |
+|---|---|
+| 📄 PDF / DOCX / TXT upload | Real text extraction via pdf-parse & mammoth |
+| 🔗 URL source | Page is fetched and text indexed |
+| ✏️ Paste text | Saved directly as a source |
+| 🎵 Audio upload | Transcribed via OpenAI Whisper |
+| 🎬 Video upload (MP4, MOV…) | Audio track extracted & transcribed via Whisper |
+| ▶️ YouTube URL | Captions fetched via youtube-transcript |
+| 🎤 Live mic transcript | Browser Web Speech API (Chrome/Edge) |
+| 💬 AI Chat | GPT-4o-mini, grounded in your sources |
+| 💾 Persistence | SQLite database — notebooks survive restarts |
+| 📝 Notes | Saved per notebook in the database |
 
-It creates:
+---
 
-- `public.notes` table
-- `public.flashcards` table (spaced repetition fields)
-- update trigger for `updated_at`
-- indexes (`user_id`, `user_id+updated_at`, tags GIN, full-text GIN)
-- RLS policies for owner-only CRUD
+## Project Structure
 
-## Security Model
-
-- Runtime note operations use user JWT + RLS (`SUPABASE_ANON_KEY`), not `service_role`.
-- Keep `SUPABASE_SERVICE_ROLE_KEY` out of client/runtime paths.
-- Rotate secrets if they were shared in chat.
-
-## API Summary
-
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `GET /api/auth/me`
-- `GET /api/notes`
-- `POST /api/notes`
-- `DELETE /api/notes/:id`
-- `GET /api/flashcards?due=1`
-- `POST /api/flashcards`
-- `DELETE /api/flashcards/:id`
-- `POST /api/flashcards/generate`
-- `POST /api/flashcards/review`
-- `GET /api/flashcards/stats`
-- `POST /api/ai`
-- `POST /api/transcribe`
-- `POST /api/testprep/generate`
-- `GET /api/billing/status`
-- `POST /api/billing/create-checkout-session`
-- `POST /api/billing/portal`
-- `POST /api/stripe/webhook`
-- `POST /api/analytics/event`
-- `GET /api/analytics/summary`
-
-## Legal Pages
-
-- `/privacy.html`
-- `/terms.html`
-
-## Stripe Webhook Setup
-
-Configure a Stripe webhook endpoint to auto-sync subscription status:
-
-- Endpoint URL: `https://your-domain.com/api/stripe/webhook`
-- Events:
-  - `checkout.session.completed`
-  - `customer.subscription.created`
-  - `customer.subscription.updated`
-  - `customer.subscription.deleted`
-
-Add the webhook signing secret to `.env`:
-
-- `STRIPE_WEBHOOK_SECRET=whsec_...`
-
-Local testing example with Stripe CLI:
-
-```bash
-stripe listen --forward-to http://127.0.0.1:3000/api/stripe/webhook
 ```
+Notematica-AI/
+├── server.js          ← Express server entry point
+├── package.json
+├── .env               ← Your API key (create from .env.example)
+├── notematica.db      ← SQLite database (auto-created on first run)
+├── db/
+│   └── schema.js      ← Database schema & seeding
+├── routes/
+│   ├── notebooks.js   ← Notebook, note & message CRUD
+│   ├── sources.js     ← File upload, URL & text sources
+│   ├── chat.js        ← AI chat endpoint
+│   └── transcribe.js  ← Whisper & YouTube transcript
+├── services/
+│   ├── parser.js      ← PDF, DOCX, TXT parsing
+│   └── ai.js          ← OpenAI (GPT + Whisper) integration
+├── uploads/           ← Temp storage for uploaded files (auto-cleaned)
+└── public/
+    └── index.html     ← Full frontend (served by Express)
+```
+
+---
+
+## Deploying
+
+### Fly.io (free tier)
+```bash
+fly launch
+fly secrets set OPENAI_API_KEY=sk-...
+fly deploy
+```
+
+### Railway
+1. Push to GitHub
+2. Connect repo in Railway dashboard
+3. Add `OPENAI_API_KEY` environment variable
+
+### Render
+Same as Railway — connect repo, set env var, deploy.
+
+> **Note:** For cloud deployment, replace SQLite with PostgreSQL (use `pg` + `drizzle-orm`).
+> SQLite works perfectly for local / single-user use.
+
+---
+
+## API Reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/notebooks` | List all notebooks |
+| POST | `/api/notebooks` | Create notebook |
+| PATCH | `/api/notebooks/:id` | Rename notebook |
+| DELETE | `/api/notebooks/:id` | Delete notebook |
+| GET | `/api/notebooks/:id/sources` | List sources |
+| POST | `/api/sources/upload` | Upload file (PDF, DOCX, TXT) |
+| POST | `/api/sources/url` | Add URL source |
+| POST | `/api/sources/text` | Add pasted text |
+| POST | `/api/sources/transcript` | Save transcript as source |
+| DELETE | `/api/notebooks/:id/sources/:sid` | Delete source |
+| POST | `/api/chat` | Chat with sources |
+| POST | `/api/transcribe/file` | Transcribe audio/video |
+| POST | `/api/transcribe/youtube` | Extract YouTube captions |
+| GET | `/api/health` | Server health check |

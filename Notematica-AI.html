@@ -1,0 +1,1432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Notematica AI</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --bg2: #16213e;
+    --bg3: #0f3460;
+    --surface: #1e1e3a;
+    --surface2: #252545;
+    --surface3: #2d2d55;
+    --accent: #7c6af7;
+    --accent2: #9c8fff;
+    --accent-glow: rgba(124,106,247,0.18);
+    --text: #e8e8f0;
+    --text2: #a0a0c0;
+    --text3: #6060a0;
+    --border: #2d2d55;
+    --border2: #3d3d70;
+    --success: #4caf89;
+    --danger: #e05a6b;
+    --chat-user: #7c6af7;
+    --chat-ai: #1e1e3a;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+    font-size: 14px;
+  }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: 240px;
+    min-width: 240px;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow: hidden;
+  }
+
+  .sidebar-logo {
+    padding: 18px 16px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent), #a78bfa);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+
+  .logo-text { font-size: 16px; font-weight: 700; letter-spacing: -0.3px; }
+
+  .sidebar-section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text3);
+    padding: 14px 16px 6px;
+  }
+
+  #notebook-list { flex: 0 0 auto; overflow-y: auto; max-height: 220px; }
+  #source-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; border-top: 1px solid var(--border); }
+  #source-list { flex: 1; overflow-y: auto; padding-bottom: 8px; }
+
+  .nb-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px; cursor: pointer;
+    border-radius: 0;
+    transition: background 0.15s;
+    position: relative;
+  }
+  .nb-item:hover { background: var(--surface); }
+  .nb-item.active { background: var(--accent-glow); color: var(--accent2); }
+  .nb-item.active::before {
+    content: '';
+    position: absolute; left: 0; top: 4px; bottom: 4px;
+    width: 3px; background: var(--accent); border-radius: 0 2px 2px 0;
+  }
+  .nb-item .nb-icon { font-size: 15px; }
+  .nb-item .nb-name { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nb-item .nb-badge {
+    font-size: 10px; background: var(--surface3);
+    color: var(--text3); padding: 1px 6px; border-radius: 10px;
+  }
+
+  .src-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 12px 7px 16px; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .src-item:hover { background: var(--surface); }
+  .src-item.active { background: var(--accent-glow); }
+  .src-icon { font-size: 15px; min-width: 20px; text-align: center; }
+  .src-name { flex: 1; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text2); }
+  .src-item.active .src-name { color: var(--text); }
+
+  .add-source-btn {
+    margin: 8px 12px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border: 1px dashed var(--border2);
+    border-radius: var(--radius-sm);
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 12px;
+    display: flex; align-items: center; gap: 6px;
+    transition: all 0.15s;
+  }
+  .add-source-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+
+  /* ── Main chat area ── */
+  #main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+  }
+
+  #topbar {
+    height: 52px; min-height: 52px;
+    padding: 0 20px;
+    display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+
+  #topbar h2 { font-size: 15px; font-weight: 600; flex: 1; }
+
+  .topbar-btn {
+    padding: 6px 12px; border-radius: var(--radius-sm);
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text2); cursor: pointer; font-size: 12.5px;
+    display: flex; align-items: center; gap: 5px;
+    transition: all 0.15s;
+  }
+  .topbar-btn:hover { background: var(--surface2); color: var(--text); }
+  .topbar-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .topbar-btn.primary:hover { background: var(--accent2); }
+
+  #source-badge-row {
+    display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; overflow: hidden;
+    padding: 0 20px; height: 36px; min-height: 36px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .src-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11.5px; padding: 3px 9px;
+    background: var(--surface); border-radius: 20px;
+    color: var(--text2); white-space: nowrap;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .src-badge:hover { border-color: var(--accent); color: var(--accent); }
+  .src-badge.all { background: var(--accent-glow); border-color: var(--accent); color: var(--accent2); }
+
+  /* ── Chat messages ── */
+  #chat-messages {
+    flex: 1; overflow-y: auto;
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+    scroll-behavior: smooth;
+  }
+
+  .msg-row { display: flex; gap: 10px; max-width: 760px; width: 100%; }
+  .msg-row.user { align-self: flex-end; flex-direction: row-reverse; }
+  .msg-row.ai { align-self: flex-start; }
+
+  .msg-avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+  }
+  .msg-row.user .msg-avatar { background: var(--accent); }
+  .msg-row.ai .msg-avatar { background: var(--surface3); }
+
+  .msg-bubble {
+    padding: 11px 15px;
+    border-radius: var(--radius);
+    max-width: 640px;
+    line-height: 1.6;
+    font-size: 13.5px;
+  }
+  .msg-row.user .msg-bubble {
+    background: var(--accent);
+    color: #fff;
+    border-radius: var(--radius) 4px var(--radius) var(--radius);
+  }
+  .msg-row.ai .msg-bubble {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px var(--radius) var(--radius) var(--radius);
+  }
+
+  .msg-bubble p { margin-bottom: 8px; }
+  .msg-bubble p:last-child { margin-bottom: 0; }
+  .msg-bubble strong { color: var(--accent2); }
+  .msg-bubble code {
+    background: var(--bg); padding: 1px 5px; border-radius: 4px;
+    font-size: 12px; color: #c3b1e1;
+  }
+
+  .citation {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 10.5px; padding: 1px 6px;
+    background: var(--accent-glow); border: 1px solid var(--accent);
+    border-radius: 4px; color: var(--accent2); cursor: pointer;
+    margin: 0 2px; vertical-align: middle;
+  }
+
+  .msg-time { font-size: 10.5px; color: var(--text3); margin-top: 4px; padding: 0 4px; }
+
+  /* Typing indicator */
+  .typing-indicator {
+    display: flex; align-items: center; gap: 5px;
+    padding: 11px 15px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 4px var(--radius) var(--radius) var(--radius);
+  }
+  .typing-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--text3);
+    animation: bounce 1.2s ease-in-out infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-6px); opacity: 1; }
+  }
+
+  /* ── Chat input ── */
+  #chat-input-area {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--bg2);
+  }
+
+  #input-box {
+    display: flex; gap: 10px; align-items: flex-end;
+    background: var(--surface); border: 1px solid var(--border2);
+    border-radius: var(--radius); padding: 10px 12px;
+    transition: border-color 0.2s;
+  }
+  #input-box:focus-within { border-color: var(--accent); }
+
+  #chat-input {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: var(--text); font-size: 13.5px; resize: none;
+    font-family: var(--font); max-height: 140px; min-height: 22px;
+    line-height: 1.5;
+  }
+  #chat-input::placeholder { color: var(--text3); }
+
+  #send-btn {
+    width: 34px; height: 34px; border-radius: 8px;
+    background: var(--accent); border: none; color: #fff;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; transition: all 0.15s; flex-shrink: 0;
+  }
+  #send-btn:hover { background: var(--accent2); transform: scale(1.05); }
+  #send-btn:disabled { background: var(--surface3); color: var(--text3); cursor: not-allowed; transform: none; }
+
+  .input-hint { font-size: 11px; color: var(--text3); margin-top: 6px; padding-left: 2px; }
+
+  /* ── Suggested prompts ── */
+  #suggestions {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .suggestion-chip {
+    padding: 6px 12px; border-radius: 20px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text2); cursor: pointer; font-size: 12px;
+    transition: all 0.15s;
+  }
+  .suggestion-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+
+  /* ── Right panel (Studio) ── */
+  #studio {
+    width: 280px; min-width: 280px;
+    background: var(--bg2);
+    border-left: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  .studio-tabs {
+    display: flex; border-bottom: 1px solid var(--border);
+    padding: 0 4px;
+  }
+  .studio-tab {
+    flex: 1; padding: 12px 8px; text-align: center;
+    font-size: 12.5px; font-weight: 500; cursor: pointer;
+    color: var(--text3); border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .studio-tab:hover { color: var(--text2); }
+  .studio-tab.active { color: var(--accent2); border-bottom-color: var(--accent); }
+
+  .studio-content { flex: 1; overflow-y: auto; padding: 14px; }
+
+  .studio-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 12px; margin-bottom: 10px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .studio-card:hover { border-color: var(--border2); background: var(--surface2); }
+  .studio-card h4 { font-size: 12.5px; font-weight: 600; margin-bottom: 5px; }
+  .studio-card p { font-size: 12px; color: var(--text2); line-height: 1.5; }
+
+  .studio-card .card-icon {
+    font-size: 20px; margin-bottom: 8px;
+    display: block;
+  }
+
+  .note-item {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px;
+  }
+  .note-item .note-title { font-size: 12.5px; font-weight: 600; margin-bottom: 4px; }
+  .note-item .note-body { font-size: 12px; color: var(--text2); line-height: 1.5; }
+  .note-item .note-meta { font-size: 10.5px; color: var(--text3); margin-top: 6px; }
+
+  .add-note-btn {
+    width: 100%; padding: 8px; border: 1px dashed var(--border2);
+    background: transparent; border-radius: var(--radius-sm);
+    color: var(--text3); cursor: pointer; font-size: 12px;
+    transition: all 0.15s; margin-top: 4px;
+  }
+  .add-note-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Upload modal ── */
+  #upload-modal {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.7); align-items: center; justify-content: center;
+  }
+  #upload-modal.open { display: flex; }
+  .modal-box {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px; width: 480px;
+    box-shadow: var(--shadow);
+  }
+  .modal-box h3 { font-size: 16px; margin-bottom: 16px; }
+  .drop-zone {
+    border: 2px dashed var(--border2); border-radius: var(--radius);
+    padding: 32px; text-align: center; cursor: pointer;
+    transition: all 0.2s; margin-bottom: 16px;
+  }
+  .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: var(--accent-glow); }
+  .drop-zone .dz-icon { font-size: 36px; display: block; margin-bottom: 10px; }
+  .drop-zone p { font-size: 13px; color: var(--text2); }
+  .drop-zone small { font-size: 11.5px; color: var(--text3); }
+
+  .modal-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .modal-tab {
+    padding: 6px 14px; border-radius: 20px; cursor: pointer;
+    font-size: 12.5px; border: 1px solid var(--border);
+    color: var(--text2); transition: all 0.15s;
+  }
+  .modal-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .modal-input {
+    width: 100%; padding: 10px 12px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text);
+    font-size: 13px; outline: none; margin-bottom: 12px;
+    font-family: var(--font);
+  }
+  .modal-input:focus { border-color: var(--accent); }
+
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .modal-btn {
+    padding: 8px 16px; border-radius: var(--radius-sm);
+    font-size: 13px; cursor: pointer; border: 1px solid var(--border);
+    transition: all 0.15s;
+  }
+  .modal-btn.cancel { background: var(--surface); color: var(--text2); }
+  .modal-btn.cancel:hover { background: var(--surface2); }
+  .modal-btn.confirm { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .modal-btn.confirm:hover { background: var(--accent2); }
+
+  /* ── New notebook modal ── */
+  #nb-modal {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.7); align-items: center; justify-content: center;
+  }
+  #nb-modal.open { display: flex; }
+
+  /* ── Empty state ── */
+  #empty-state {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px;
+    color: var(--text3);
+  }
+  #empty-state .es-icon { font-size: 48px; }
+  #empty-state h3 { font-size: 18px; color: var(--text2); }
+  #empty-state p { font-size: 13px; max-width: 320px; text-align: center; line-height: 1.6; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border2); }
+
+  /* ── Audio / Video panels ── */
+  .transcript-box {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 10px 12px;
+    min-height: 80px; max-height: 140px; overflow-y: auto;
+    font-size: 12.5px; color: var(--text2); line-height: 1.6;
+    margin-bottom: 12px; white-space: pre-wrap;
+  }
+  .transcript-box.empty { color: var(--text3); font-style: italic; }
+
+  .mic-btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; padding: 11px; border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    border: 2px solid var(--border2); background: var(--surface);
+    color: var(--text2); transition: all 0.2s;
+  }
+  .mic-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .mic-btn.recording {
+    border-color: var(--danger); color: var(--danger);
+    background: rgba(224,90,107,0.1);
+    animation: pulse-border 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse-border {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(224,90,107,0.4); }
+    50% { box-shadow: 0 0 0 6px rgba(224,90,107,0); }
+  }
+
+  .waveform {
+    display: flex; align-items: center; gap: 3px; height: 20px;
+  }
+  .waveform-bar {
+    width: 3px; border-radius: 2px; background: var(--danger);
+    animation: wave 0.8s ease-in-out infinite;
+  }
+  .waveform-bar:nth-child(1) { animation-delay: 0s; }
+  .waveform-bar:nth-child(2) { animation-delay: 0.1s; }
+  .waveform-bar:nth-child(3) { animation-delay: 0.2s; }
+  .waveform-bar:nth-child(4) { animation-delay: 0.3s; }
+  .waveform-bar:nth-child(5) { animation-delay: 0.2s; }
+  .waveform-bar:nth-child(6) { animation-delay: 0.1s; }
+  @keyframes wave {
+    0%, 100% { height: 4px; }
+    50% { height: 18px; }
+  }
+
+  .audio-dropzone {
+    border: 2px dashed var(--border2); border-radius: var(--radius);
+    padding: 18px; text-align: center; cursor: pointer;
+    transition: all 0.2s; margin-bottom: 12px;
+  }
+  .audio-dropzone:hover { border-color: var(--accent); background: var(--accent-glow); }
+
+  .divider-label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: var(--text3); margin: 10px 0;
+  }
+  .divider-label::before, .divider-label::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  .yt-preview {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    margin-bottom: 12px;
+  }
+  .yt-thumb {
+    width: 80px; height: 48px; border-radius: 6px;
+    background: var(--surface3); display: flex; align-items: center;
+    justify-content: center; font-size: 22px; flex-shrink: 0;
+    overflow: hidden;
+  }
+  .yt-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .yt-info { flex: 1; min-width: 0; }
+  .yt-title { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .yt-meta { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+  .processing-bar {
+    height: 4px; background: var(--border); border-radius: 2px;
+    overflow: hidden; margin-bottom: 10px;
+  }
+  .processing-bar-fill {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 2px; animation: progress 1.8s ease-in-out infinite;
+  }
+  @keyframes progress {
+    0% { width: 0%; margin-left: 0; }
+    50% { width: 70%; margin-left: 15%; }
+    100% { width: 0%; margin-left: 100%; }
+  }
+
+  .modal-box.wide { width: 520px; }
+
+  /* Toast */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--surface3); color: var(--text);
+    padding: 10px 16px; border-radius: var(--radius-sm);
+    font-size: 13px; box-shadow: var(--shadow);
+    transform: translateY(60px); opacity: 0;
+    transition: all 0.3s; z-index: 200;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ── LEFT SIDEBAR ── -->
+<div id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">📓</div>
+    <span class="logo-text">Notematica AI</span>
+  </div>
+
+  <div class="sidebar-section-label">Notebooks</div>
+  <div id="notebook-list"></div>
+  <button class="add-source-btn" style="margin:6px 12px 0;" onclick="openNbModal()">＋ New notebook</button>
+
+  <div id="source-panel">
+    <div class="sidebar-section-label">Sources</div>
+    <div id="source-list"></div>
+    <button class="add-source-btn" onclick="openUploadModal()">＋ Add source</button>
+  </div>
+</div>
+
+<!-- ── MAIN AREA ── -->
+<div id="main">
+  <div id="topbar">
+    <h2 id="nb-title">My Research</h2>
+    <button class="topbar-btn" onclick="openUploadModal()">📎 Add source</button>
+    <button class="topbar-btn primary" onclick="generateSummary()">✨ Auto-summarize</button>
+  </div>
+
+  <div id="source-badge-row">
+    <span class="src-badge all" onclick="filterSources('all')">🗂 All sources</span>
+    <span id="badge-area"></span>
+  </div>
+
+  <div id="chat-messages"></div>
+
+  <div id="chat-input-area">
+    <div id="suggestions"></div>
+    <div id="input-box">
+      <textarea id="chat-input" placeholder="Ask a question about your sources…" rows="1"></textarea>
+      <button id="send-btn" onclick="sendMessage()">↑</button>
+    </div>
+    <div class="input-hint">Press Enter to send · Shift+Enter for new line</div>
+  </div>
+</div>
+
+<!-- ── STUDIO PANEL ── -->
+<div id="studio">
+  <div class="studio-tabs">
+    <div class="studio-tab active" onclick="switchStudioTab('studio', this)">Studio</div>
+    <div class="studio-tab" onclick="switchStudioTab('notes', this)">Notes</div>
+    <div class="studio-tab" onclick="switchStudioTab('mind', this)">Mind Map</div>
+  </div>
+  <div class="studio-content" id="studio-content"></div>
+</div>
+
+<!-- ── UPLOAD MODAL ── -->
+<div id="upload-modal">
+  <div class="modal-box wide">
+    <h3>Add a source</h3>
+    <div class="modal-tabs" style="flex-wrap:wrap;gap:6px;">
+      <div class="modal-tab active" onclick="switchUploadTab('file', this)">📄 File</div>
+      <div class="modal-tab" onclick="switchUploadTab('url', this)">🔗 URL</div>
+      <div class="modal-tab" onclick="switchUploadTab('text', this)">✏️ Text</div>
+      <div class="modal-tab" onclick="switchUploadTab('audio', this)">🎤 Audio</div>
+      <div class="modal-tab" onclick="switchUploadTab('video', this)">🎬 Video</div>
+    </div>
+
+    <!-- File panel -->
+    <div id="upload-file-panel">
+      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()"
+        ondragover="event.preventDefault();this.classList.add('dragover')"
+        ondragleave="this.classList.remove('dragover')"
+        ondrop="handleFileDrop(event)">
+        <span class="dz-icon">📂</span>
+        <p>Drag & drop files here or <strong>click to browse</strong></p>
+        <small>PDF, TXT, DOCX, MD supported</small>
+      </div>
+      <input type="file" id="file-input" style="display:none" multiple accept=".pdf,.txt,.docx,.md" onchange="handleFileSelect(event)">
+    </div>
+
+    <!-- URL panel -->
+    <div id="upload-url-panel" style="display:none">
+      <input type="text" class="modal-input" id="url-input" placeholder="Paste a URL, e.g. https://example.com/article">
+    </div>
+
+    <!-- Text panel -->
+    <div id="upload-text-panel" style="display:none">
+      <textarea class="modal-input" id="text-input" rows="5" placeholder="Paste or type your text here…" style="resize:vertical;"></textarea>
+      <input type="text" class="modal-input" id="text-name-input" placeholder="Source name (optional)">
+    </div>
+
+    <!-- ── Audio panel ── -->
+    <div id="upload-audio-panel" style="display:none">
+      <!-- File upload -->
+      <div class="audio-dropzone" onclick="document.getElementById('audio-file-input').click()"
+        ondragover="event.preventDefault();this.classList.add('dragover')"
+        ondragleave="this.classList.remove('dragover')"
+        ondrop="handleAudioFileDrop(event)">
+        <div style="font-size:28px;margin-bottom:6px;">🎵</div>
+        <p style="font-size:13px;color:var(--text2);">Drop audio file or <strong>click to browse</strong></p>
+        <small style="font-size:11px;color:var(--text3);">MP3, WAV, M4A, OGG, FLAC, AAC</small>
+      </div>
+      <input type="file" id="audio-file-input" style="display:none" accept=".mp3,.wav,.m4a,.ogg,.flac,.aac,audio/*" onchange="handleAudioFileSelect(event)">
+
+      <div id="audio-file-info" style="display:none;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);">
+          <span style="font-size:20px;">🎵</span>
+          <div style="flex:1;min-width:0;">
+            <div id="audio-file-name" style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+            <div id="audio-file-size" style="font-size:11px;color:var(--text3);"></div>
+          </div>
+          <button onclick="clearAudioFile()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;">✕</button>
+        </div>
+        <div id="audio-processing" style="display:none;margin-top:8px;">
+          <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px;">Transcribing audio…</div>
+          <div class="processing-bar"><div class="processing-bar-fill"></div></div>
+        </div>
+      </div>
+
+      <div class="divider-label">or use live microphone</div>
+
+      <!-- Live microphone -->
+      <button class="mic-btn" id="mic-btn" onclick="toggleLiveTranscript()">
+        <span id="mic-icon">🎤</span>
+        <span id="mic-label">Start Live Transcript</span>
+      </button>
+
+      <div id="live-transcript-box" style="margin-top:10px;display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div style="font-size:11.5px;color:var(--text3);">Live transcript</div>
+          <div id="mic-waveform" class="waveform" style="display:none;">
+            <div class="waveform-bar" style="height:6px;"></div>
+            <div class="waveform-bar" style="height:10px;"></div>
+            <div class="waveform-bar" style="height:14px;"></div>
+            <div class="waveform-bar" style="height:10px;"></div>
+            <div class="waveform-bar" style="height:14px;"></div>
+            <div class="waveform-bar" style="height:6px;"></div>
+          </div>
+        </div>
+        <div class="transcript-box empty" id="transcript-output">Transcript will appear here as you speak…</div>
+        <input type="text" class="modal-input" id="audio-name-input" placeholder="Source name (e.g. Meeting recording)" style="margin-top:0;">
+      </div>
+    </div>
+
+    <!-- ── Video panel ── -->
+    <div id="upload-video-panel" style="display:none">
+      <!-- YouTube URL -->
+      <div style="margin-bottom:4px;">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:6px;">YouTube URL</div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" class="modal-input" id="yt-url-input" placeholder="https://youtube.com/watch?v=…" style="margin:0;flex:1;" oninput="previewYouTube(this.value)">
+        </div>
+      </div>
+
+      <div id="yt-preview-box" style="display:none;margin:10px 0;">
+        <div class="yt-preview">
+          <div class="yt-thumb" id="yt-thumb">▶</div>
+          <div class="yt-info">
+            <div class="yt-title" id="yt-title">YouTube Video</div>
+            <div class="yt-meta" id="yt-meta">Transcript will be extracted automatically</div>
+          </div>
+        </div>
+        <div id="yt-processing" style="display:none;">
+          <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px;">Extracting transcript…</div>
+          <div class="processing-bar"><div class="processing-bar-fill"></div></div>
+        </div>
+      </div>
+
+      <div class="divider-label">or upload a video file</div>
+
+      <!-- MP4 upload -->
+      <div class="audio-dropzone" onclick="document.getElementById('video-file-input').click()"
+        ondragover="event.preventDefault();this.classList.add('dragover')"
+        ondragleave="this.classList.remove('dragover')"
+        ondrop="handleVideoFileDrop(event)">
+        <div style="font-size:28px;margin-bottom:6px;">🎬</div>
+        <p style="font-size:13px;color:var(--text2);">Drop video file or <strong>click to browse</strong></p>
+        <small style="font-size:11px;color:var(--text3);">MP4, MOV, WEBM, AVI, MKV</small>
+      </div>
+      <input type="file" id="video-file-input" style="display:none" accept=".mp4,.mov,.webm,.avi,.mkv,video/*" onchange="handleVideoFileSelect(event)">
+
+      <div id="video-file-info" style="display:none;">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);">
+          <span style="font-size:20px;">🎬</span>
+          <div style="flex:1;min-width:0;">
+            <div id="video-file-name" style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+            <div id="video-file-size" style="font-size:11px;color:var(--text3);"></div>
+          </div>
+          <button onclick="clearVideoFile()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;">✕</button>
+        </div>
+        <div id="video-processing" style="display:none;margin-top:8px;">
+          <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px;">Extracting audio & transcribing…</div>
+          <div class="processing-bar"><div class="processing-bar-fill"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="modal-btn cancel" onclick="closeUploadModal()">Cancel</button>
+      <button class="modal-btn confirm" id="add-source-btn" onclick="confirmUpload()">Add source</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── NEW NOTEBOOK MODAL ── -->
+<div id="nb-modal">
+  <div class="modal-box">
+    <h3>New Notebook</h3>
+    <input type="text" class="modal-input" id="nb-name-input" placeholder="Notebook title…" style="margin-top:12px;">
+    <div class="modal-actions" style="margin-top:4px;">
+      <button class="modal-btn cancel" onclick="closeNbModal()">Cancel</button>
+      <button class="modal-btn confirm" onclick="confirmNewNb()">Create</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────
+let notebooks = [
+  { id: 1, name: "My Research", sources: [
+    { id: 1, name: "Climate Change Report 2024.pdf", type: "pdf", summary: "A comprehensive overview of global temperature trends and policy recommendations for reducing carbon emissions." },
+    { id: 2, name: "AI Safety Whitepaper.pdf", type: "pdf", summary: "Discusses alignment challenges, interpretability research, and proposed governance frameworks for advanced AI systems." },
+    { id: 3, name: "arxiv.org/abs/2401.00001", type: "url", summary: "Research paper on emergent capabilities in large language models and their implications for safety." }
+  ]},
+  { id: 2, name: "Meeting Notes", sources: [
+    { id: 4, name: "Q1 Planning Notes.txt", type: "txt", summary: "Notes from Q1 planning session covering roadmap, headcount, and budget allocations." }
+  ]},
+  { id: 3, name: "Literature Review", sources: [] }
+];
+
+let activeNbId = 1;
+let messages = [];
+let uploadTab = 'file';
+let studioTab = 'studio';
+let notesList = [
+  { title: "Key finding", body: "Ocean temperatures are rising 3x faster than previously modeled, with significant implications for marine ecosystems.", ts: "Today, 9:41 AM" },
+  { title: "Follow up", body: "Need to cross-reference the AI safety paper's timeline claims with the 2023 UN report.", ts: "Today, 10:12 AM" }
+];
+let nextNbId = 4;
+let nextSrcId = 5;
+
+// ─── Suggested prompts per notebook ──────────────────────────────────────
+const SUGGESTIONS = [
+  "Summarize all sources in one paragraph",
+  "What are the key arguments?",
+  "Find contradictions across sources",
+  "Generate 5 discussion questions",
+  "What does source 1 say about risks?"
+];
+
+// ─── AI response simulation ───────────────────────────────────────────────
+const AI_RESPONSES = {
+  summary: [
+    "Based on your sources, here's an overview:\n\n**Climate Change Report** highlights accelerating temperature anomalies and urges immediate policy action, particularly around carbon pricing. **The AI Safety Whitepaper** focuses on alignment challenges, arguing that interpretability research is the highest-leverage intervention. The **arXiv paper** provides empirical data on emergent behaviors in LLMs that may complicate safety guarantees.",
+    "Across your {n} sources, several key themes emerge:\n\n1. **Urgency** — both the climate and AI sources emphasize that current timelines are shorter than expected\n2. **Governance gaps** — existing regulatory frameworks are seen as insufficient\n3. **Technical solutions** — each source proposes domain-specific interventions\n\nWould you like me to drill deeper into any of these themes?"
+  ],
+  contradictions: [
+    "I found a potential tension between your sources:\n\n- **Climate Report** <span class='citation'>① Source 1</span> argues for carbon taxes as the primary lever\n- **AI Safety paper** <span class='citation'>② Source 2</span> suggests compute governance is more tractable in the short term\n\nThese aren't directly contradictory, but they reflect different philosophies about where regulatory effort should be focused. Want me to map out the full set of disagreements?",
+  ],
+  questions: [
+    "Here are 5 discussion questions based on your sources:\n\n1. How do the proposed governance frameworks in <span class='citation'>② Source 2</span> apply to climate institutions?\n2. What would a unified risk assessment framework look like for both AI and climate?\n3. Are the timelines in <span class='citation'>③ Source 3</span> compatible with the projections in <span class='citation'>① Source 1</span>?\n4. Which interventions have the highest expected value under deep uncertainty?\n5. How do power dynamics affect the tractability of the solutions proposed?"
+  ],
+  default: [
+    "Based on your sources, {answer}. The evidence from <span class='citation'>① Source 1</span> suggests that this is a significant consideration, while <span class='citation'>② Source 2</span> takes a more nuanced view, noting that context matters substantially. Would you like me to go deeper on any aspect of this?",
+    "Great question. Looking across your {n} sources, the most relevant content comes from the documents you've added. Here's what stands out:\n\n**Key points:**\n- The data supports a multi-factor analysis\n- There are both short-term and long-term dimensions to consider\n- <span class='citation'>① Source 1</span> provides the strongest empirical evidence\n\nWould you like me to generate a structured outline on this topic?",
+    "I've reviewed your sources and here's a synthesis: the topic you're asking about is addressed from multiple angles. The primary source <span class='citation'>① Source 1</span> frames this as a systemic issue, while <span class='citation'>② Source 2</span> focuses on individual components. This tension is worth exploring further.",
+  ]
+};
+
+// ─── Render helpers ───────────────────────────────────────────────────────
+function getActiveNb() { return notebooks.find(n => n.id === activeNbId); }
+
+function renderNotebooks() {
+  const el = document.getElementById('notebook-list');
+  el.innerHTML = notebooks.map(nb => `
+    <div class="nb-item ${nb.id === activeNbId ? 'active' : ''}" onclick="switchNb(${nb.id})">
+      <span class="nb-icon">📓</span>
+      <span class="nb-name">${nb.name}</span>
+      <span class="nb-badge">${nb.sources.length}</span>
+    </div>`).join('');
+}
+
+function renderSources() {
+  const nb = getActiveNb();
+  const el = document.getElementById('source-list');
+  if (!nb.sources.length) {
+    el.innerHTML = `<div style="padding:12px 16px;font-size:12px;color:var(--text3);">No sources yet</div>`;
+  } else {
+    el.innerHTML = nb.sources.map(s => `
+      <div class="src-item active" onclick="">
+        <span class="src-icon">${srcIcon(s.type)}</span>
+        <span class="src-name" title="${s.name}">${s.name}</span>
+      </div>`).join('');
+  }
+
+  // badge row
+  const badgeArea = document.getElementById('badge-area');
+  badgeArea.innerHTML = nb.sources.slice(0,5).map(s =>
+    `<span class="src-badge">${srcIcon(s.type)} ${s.name.length > 22 ? s.name.slice(0,22)+'…' : s.name}</span>`
+  ).join('');
+}
+
+function srcIcon(type) {
+  return { pdf: '📄', txt: '📝', url: '🔗', docx: '📘', md: '📋', audio: '🎵', video: '🎬', youtube: '▶️' }[type] || '📎';
+}
+
+function renderStudio() {
+  const el = document.getElementById('studio-content');
+  const nb = getActiveNb();
+
+  if (studioTab === 'studio') {
+    el.innerHTML = `
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">AI-powered outputs for <strong style="color:var(--text2)">${nb.name}</strong></div>
+      <div class="studio-card" onclick="generateSummary()">
+        <span class="card-icon">📋</span>
+        <h4>Notebook Guide</h4>
+        <p>Get a structured summary of all sources with key themes and connections.</p>
+      </div>
+      <div class="studio-card" onclick="generateStudyGuide()">
+        <span class="card-icon">🎓</span>
+        <h4>Study Guide</h4>
+        <p>Auto-generate flashcards, key terms, and practice questions from your sources.</p>
+      </div>
+      <div class="studio-card" onclick="generateBriefing()">
+        <span class="card-icon">📰</span>
+        <h4>Briefing Doc</h4>
+        <p>Create a polished executive summary ready to share with stakeholders.</p>
+      </div>
+      <div class="studio-card" onclick="generateTimeline()">
+        <span class="card-icon">📅</span>
+        <h4>Timeline</h4>
+        <p>Extract and organize chronological events from your sources.</p>
+      </div>
+      <div class="studio-card" onclick="generateFAQ()">
+        <span class="card-icon">❓</span>
+        <h4>FAQ</h4>
+        <p>Generate a list of frequently asked questions with answers.</p>
+      </div>
+    `;
+  } else if (studioTab === 'notes') {
+    el.innerHTML = notesList.map((n, i) => `
+      <div class="note-item">
+        <div class="note-title">${n.title}</div>
+        <div class="note-body">${n.body}</div>
+        <div class="note-meta">${n.ts}</div>
+      </div>`).join('') +
+      `<button class="add-note-btn" onclick="addNote()">＋ Add note</button>`;
+  } else if (studioTab === 'mind') {
+    el.innerHTML = `
+      <div style="text-align:center;padding:24px 0;">
+        <div style="font-size:40px;margin-bottom:12px;">🕸</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:8px;">Mind Map</div>
+        <div style="font-size:12px;color:var(--text3);">Generate a visual concept map from your sources</div>
+        <button class="topbar-btn primary" style="margin:14px auto 0;display:inline-flex;" onclick="generateMindMap()">Generate</button>
+      </div>
+      <div id="mind-map-area"></div>
+    `;
+  }
+}
+
+function renderSuggestions() {
+  const el = document.getElementById('suggestions');
+  if (messages.length > 0) { el.innerHTML = ''; return; }
+  el.innerHTML = SUGGESTIONS.map(s =>
+    `<div class="suggestion-chip" onclick="useSuggestion('${s}')">${s}</div>`
+  ).join('');
+}
+
+function renderMessages() {
+  const el = document.getElementById('chat-messages');
+  if (!messages.length) {
+    el.innerHTML = `
+      <div id="empty-state">
+        <div class="es-icon">💬</div>
+        <h3>Start a conversation</h3>
+        <p>Ask anything about your sources. Notematica AI grounds its answers in the documents you've added.</p>
+      </div>`;
+    renderSuggestions();
+    return;
+  }
+  el.innerHTML = messages.map(m => renderMsg(m)).join('');
+  el.scrollTop = el.scrollHeight;
+  renderSuggestions();
+}
+
+function renderMsg(m) {
+  const time = m.ts || '';
+  if (m.role === 'user') {
+    return `<div class="msg-row user">
+      <div class="msg-avatar">👤</div>
+      <div>
+        <div class="msg-bubble">${m.text}</div>
+        <div class="msg-time">${time}</div>
+      </div>
+    </div>`;
+  }
+  if (m.role === 'typing') {
+    return `<div class="msg-row ai" id="typing-row">
+      <div class="msg-avatar">🤖</div>
+      <div class="typing-indicator">
+        <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+      </div>
+    </div>`;
+  }
+  return `<div class="msg-row ai">
+    <div class="msg-avatar">🤖</div>
+    <div>
+      <div class="msg-bubble">${formatMsgText(m.text)}</div>
+      <div class="msg-time">${time}</div>
+    </div>
+  </div>`;
+}
+
+function formatMsgText(text) {
+  return text
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/^/, '<p>').replace(/$/, '</p>');
+}
+
+function now() {
+  const d = new Date();
+  return 'Today, ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// ─── Actions ─────────────────────────────────────────────────────────────
+function switchNb(id) {
+  activeNbId = id;
+  messages = [];
+  document.getElementById('nb-title').textContent = getActiveNb().name;
+  renderNotebooks(); renderSources(); renderMessages(); renderStudio();
+}
+
+function switchStudioTab(tab, el) {
+  studioTab = tab;
+  document.querySelectorAll('.studio-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderStudio();
+}
+
+function filterSources() {}
+
+function useSuggestion(text) {
+  document.getElementById('chat-input').value = text;
+  sendMessage();
+}
+
+function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const nb = getActiveNb();
+  messages.push({ role: 'user', text, ts: now() });
+  input.value = '';
+  autoResize();
+
+  // clear empty state
+  renderMessages();
+
+  // show typing
+  messages.push({ role: 'typing' });
+  renderMessages();
+
+  setTimeout(() => {
+    messages.pop(); // remove typing
+    const resp = pickResponse(text, nb);
+    messages.push({ role: 'ai', text: resp, ts: now() });
+    renderMessages();
+  }, 900 + Math.random() * 700);
+}
+
+function pickResponse(text, nb) {
+  const t = text.toLowerCase();
+  const n = nb.sources.length;
+  if (t.includes('summar') || t.includes('overview')) {
+    const r = AI_RESPONSES.summary[Math.floor(Math.random() * AI_RESPONSES.summary.length)];
+    return r.replace('{n}', n);
+  }
+  if (t.includes('contradict') || t.includes('disagree') || t.includes('conflict')) {
+    return AI_RESPONSES.contradictions[0];
+  }
+  if (t.includes('question') || t.includes('discuss')) {
+    return AI_RESPONSES.questions[0];
+  }
+  const r = AI_RESPONSES.default[Math.floor(Math.random() * AI_RESPONSES.default.length)];
+  return r.replace('{n}', n).replace('{answer}', 'the evidence points in a consistent direction');
+}
+
+// Studio actions
+function generateSummary() {
+  const nb = getActiveNb();
+  if (!nb.sources.length) { showToast('Add sources first!'); return; }
+  useSuggestion('Summarize all sources in one paragraph');
+}
+function generateStudyGuide() { useSuggestion('Generate a study guide with key terms and practice questions'); }
+function generateBriefing() { useSuggestion('Create an executive briefing document from all sources'); }
+function generateTimeline() { useSuggestion('Extract all timeline events from my sources chronologically'); }
+function generateFAQ() { useSuggestion('Generate a FAQ with answers based on my sources'); }
+function generateMindMap() {
+  const el = document.getElementById('mind-map-area');
+  if (!el) return;
+  const nb = getActiveNb();
+  const nodes = nb.sources.length ? nb.sources.slice(0,4).map(s => s.name.split('.')[0]) : ['No sources'];
+  el.innerHTML = `
+    <div style="padding:12px 0;font-size:12px;color:var(--text3);text-align:center;">Concept Map Preview</div>
+    <svg viewBox="0 0 220 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-height:200px;">
+      <circle cx="110" cy="100" r="28" fill="rgba(124,106,247,0.25)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="110" y="104" text-anchor="middle" fill="var(--accent2)" font-size="9">${nb.name.slice(0,12)}</text>
+      ${nodes.map((n, i) => {
+        const angles = [0, 90, 180, 270];
+        const a = (angles[i] * Math.PI) / 180;
+        const x = 110 + 72 * Math.cos(a);
+        const y = 100 + 72 * Math.sin(a);
+        return `
+          <line x1="110" y1="100" x2="${x}" y2="${y}" stroke="var(--border2)" stroke-width="1"/>
+          <circle cx="${x}" cy="${y}" r="20" fill="var(--surface)" stroke="var(--border2)" stroke-width="1"/>
+          <text x="${x}" y="${y+4}" text-anchor="middle" fill="var(--text2)" font-size="7">${n.slice(0,10)}</text>`;
+      }).join('')}
+    </svg>`;
+}
+
+function addNote() {
+  const title = prompt('Note title:');
+  if (!title) return;
+  const body = prompt('Note content:');
+  if (!body) return;
+  notesList.unshift({ title, body, ts: now() });
+  renderStudio();
+  showToast('Note added!');
+}
+
+// ─── Upload modal ─────────────────────────────────────────────────────────
+function openUploadModal() { document.getElementById('upload-modal').classList.add('open'); }
+function closeUploadModal() { document.getElementById('upload-modal').classList.remove('open'); }
+
+function switchUploadTab(tab, el) {
+  // Stop mic if switching away from audio
+  if (uploadTab === 'audio' && isRecording) stopLiveTranscript();
+  uploadTab = tab;
+  document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  ['file','url','text','audio','video'].forEach(t => {
+    const p = document.getElementById(`upload-${t}-panel`);
+    if (p) p.style.display = t === tab ? '' : 'none';
+  });
+}
+
+function handleFileDrop(event) {
+  event.preventDefault();
+  document.getElementById('drop-zone').classList.remove('dragover');
+  const files = [...event.dataTransfer.files];
+  files.forEach(addFileSource);
+  closeUploadModal();
+}
+
+function handleFileSelect(event) {
+  const files = [...event.target.files];
+  files.forEach(addFileSource);
+  closeUploadModal();
+}
+
+function addFileSource(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const type = ['pdf','txt','docx','md'].includes(ext) ? ext : 'txt';
+  const nb = getActiveNb();
+  nb.sources.push({ id: nextSrcId++, name: file.name, type, summary: 'Uploaded file — content indexed.' });
+  renderSources(); renderNotebooks();
+  showToast(`"${file.name}" added`);
+}
+
+function confirmUpload() {
+  const nb = getActiveNb();
+  if (uploadTab === 'url') {
+    const url = document.getElementById('url-input').value.trim();
+    if (!url) { showToast('Please enter a URL'); return; }
+    nb.sources.push({ id: nextSrcId++, name: url.replace(/^https?:\/\//, ''), type: 'url', summary: 'Web page — content indexed.' });
+    document.getElementById('url-input').value = '';
+    finishUpload(nb);
+  } else if (uploadTab === 'text') {
+    const text = document.getElementById('text-input').value.trim();
+    const name = document.getElementById('text-name-input').value.trim() || 'Pasted text';
+    if (!text) { showToast('Please enter some text'); return; }
+    nb.sources.push({ id: nextSrcId++, name, type: 'txt', summary: text.slice(0,120) + (text.length > 120 ? '…' : '') });
+    document.getElementById('text-input').value = '';
+    document.getElementById('text-name-input').value = '';
+    finishUpload(nb);
+  } else if (uploadTab === 'audio') {
+    // Live transcript
+    if (liveTranscriptText.trim()) {
+      const name = document.getElementById('audio-name-input').value.trim() || 'Live Transcript';
+      nb.sources.push({ id: nextSrcId++, name, type: 'audio', summary: liveTranscriptText.slice(0,200) + (liveTranscriptText.length > 200 ? '…' : '') });
+      stopLiveTranscript();
+      liveTranscriptText = '';
+      document.getElementById('transcript-output').textContent = 'Transcript will appear here as you speak…';
+      document.getElementById('transcript-output').classList.add('empty');
+      document.getElementById('audio-name-input').value = '';
+      finishUpload(nb);
+    } else if (pendingAudioFile) {
+      simulateAudioTranscript(pendingAudioFile, nb);
+    } else {
+      showToast('Record audio or upload a file first');
+    }
+  } else if (uploadTab === 'video') {
+    const ytUrl = document.getElementById('yt-url-input').value.trim();
+    const ytId = extractYouTubeId(ytUrl);
+    if (ytId) {
+      simulateYouTubeTranscript(ytId, ytUrl, nb);
+    } else if (pendingVideoFile) {
+      simulateVideoTranscript(pendingVideoFile, nb);
+    } else {
+      showToast('Paste a YouTube URL or upload a video file');
+    }
+  }
+}
+
+function finishUpload(nb) {
+  closeUploadModal();
+  renderSources(); renderNotebooks();
+  showToast('Source added!');
+}
+
+// ─── Audio ────────────────────────────────────────────────────────────────
+let isRecording = false;
+let recognition = null;
+let liveTranscriptText = '';
+let pendingAudioFile = null;
+
+function toggleLiveTranscript() {
+  if (isRecording) stopLiveTranscript();
+  else startLiveTranscript();
+}
+
+function startLiveTranscript() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    showToast('⚠️ Live transcript requires Chrome or Edge');
+    // Simulate for demo
+    simulateLiveTranscript();
+    return;
+  }
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  recognition.onstart = () => setMicRecording(true);
+
+  recognition.onresult = (e) => {
+    let interim = '';
+    let final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += t + ' ';
+      else interim += t;
+    }
+    if (final) liveTranscriptText += final;
+    updateTranscriptBox(liveTranscriptText + (interim ? `<span style="color:var(--text3)">${interim}</span>` : ''));
+  };
+
+  recognition.onerror = (e) => {
+    showToast('Mic error: ' + e.error);
+    setMicRecording(false);
+  };
+
+  recognition.onend = () => setMicRecording(false);
+  recognition.start();
+}
+
+function simulateLiveTranscript() {
+  // Demo mode — streams sample text word by word
+  setMicRecording(true);
+  const sample = "This is a simulated live transcript. In a production environment, this would capture your actual speech in real time using the Web Speech API. You can speak into your microphone and your words will appear here automatically as you talk. Once done, click Stop and the transcript will be saved as a source.";
+  const words = sample.split(' ');
+  let i = 0;
+  const timer = setInterval(() => {
+    if (!isRecording || i >= words.length) { clearInterval(timer); return; }
+    liveTranscriptText += words[i] + ' ';
+    updateTranscriptBox(liveTranscriptText);
+    i++;
+  }, 180);
+  recognition = { stop: () => clearInterval(timer) };
+}
+
+function stopLiveTranscript() {
+  if (recognition) { try { recognition.stop(); } catch(e) {} }
+  setMicRecording(false);
+}
+
+function setMicRecording(on) {
+  isRecording = on;
+  const btn = document.getElementById('mic-btn');
+  const label = document.getElementById('mic-label');
+  const waveform = document.getElementById('mic-waveform');
+  const box = document.getElementById('live-transcript-box');
+  if (!btn) return;
+  if (on) {
+    btn.classList.add('recording');
+    document.getElementById('mic-icon').textContent = '⏹';
+    label.textContent = 'Stop Recording';
+    if (waveform) waveform.style.display = 'flex';
+    box.style.display = '';
+    const out = document.getElementById('transcript-output');
+    out.classList.remove('empty');
+    if (!liveTranscriptText) out.innerHTML = '<span style="color:var(--text3)">Listening…</span>';
+  } else {
+    btn.classList.remove('recording');
+    document.getElementById('mic-icon').textContent = '🎤';
+    label.textContent = 'Start Live Transcript';
+    if (waveform) waveform.style.display = 'none';
+  }
+}
+
+function updateTranscriptBox(html) {
+  const box = document.getElementById('transcript-output');
+  if (!box) return;
+  box.classList.remove('empty');
+  box.innerHTML = html;
+  box.scrollTop = box.scrollHeight;
+}
+
+// Audio file handling
+function handleAudioFileDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) setAudioFile(file);
+}
+
+function handleAudioFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) setAudioFile(file);
+}
+
+function setAudioFile(file) {
+  pendingAudioFile = file;
+  document.getElementById('audio-file-name').textContent = file.name;
+  document.getElementById('audio-file-size').textContent = formatSize(file.size);
+  document.getElementById('audio-file-info').style.display = '';
+  document.getElementById('live-transcript-box').style.display = '';
+  document.getElementById('audio-name-input').value = file.name.replace(/\.[^.]+$/, '');
+}
+
+function clearAudioFile() {
+  pendingAudioFile = null;
+  document.getElementById('audio-file-info').style.display = 'none';
+  document.getElementById('audio-file-input').value = '';
+}
+
+function simulateAudioTranscript(file, nb) {
+  const proc = document.getElementById('audio-processing');
+  const btn = document.getElementById('add-source-btn');
+  proc.style.display = ''; btn.disabled = true;
+  setTimeout(() => {
+    proc.style.display = 'none'; btn.disabled = false;
+    const transcript = `Transcript of "${file.name}":\n\nThis is a simulated transcript extracted from the uploaded audio file. In production this would contain the actual speech-to-text output of your recording, time-stamped and speaker-attributed where possible.`;
+    nb.sources.push({ id: nextSrcId++, name: file.name, type: 'audio', summary: transcript });
+    clearAudioFile();
+    pendingAudioFile = null;
+    finishUpload(nb);
+  }, 2200);
+}
+
+// ─── Video ────────────────────────────────────────────────────────────────
+let pendingVideoFile = null;
+
+function handleVideoFileDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) setVideoFile(file);
+}
+
+function handleVideoFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) setVideoFile(file);
+}
+
+function setVideoFile(file) {
+  pendingVideoFile = file;
+  document.getElementById('video-file-name').textContent = file.name;
+  document.getElementById('video-file-size').textContent = formatSize(file.size);
+  document.getElementById('video-file-info').style.display = '';
+}
+
+function clearVideoFile() {
+  pendingVideoFile = null;
+  document.getElementById('video-file-info').style.display = 'none';
+  document.getElementById('video-file-input').value = '';
+}
+
+function extractYouTubeId(url) {
+  const m = url.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+function previewYouTube(val) {
+  const id = extractYouTubeId(val);
+  const box = document.getElementById('yt-preview-box');
+  if (!id) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  document.getElementById('yt-title').textContent = 'YouTube Video';
+  document.getElementById('yt-meta').textContent = 'youtube.com/watch?v=' + id;
+  const thumb = document.getElementById('yt-thumb');
+  thumb.innerHTML = `<img src="https://img.youtube.com/vi/${id}/mqdefault.jpg" onerror="this.parentElement.textContent='▶'" alt="">`;
+}
+
+function simulateYouTubeTranscript(ytId, url, nb) {
+  const proc = document.getElementById('yt-processing');
+  const btn = document.getElementById('add-source-btn');
+  proc.style.display = ''; btn.disabled = true;
+  setTimeout(() => {
+    proc.style.display = 'none'; btn.disabled = false;
+    const name = 'YouTube: ' + url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 40);
+    const transcript = `Transcript of YouTube video (${ytId}):\n\n[00:00] Welcome to this video. This is a simulated transcript that would normally contain the full spoken content of the YouTube video.\n[00:30] In production, this integrates with the YouTube Transcript API to extract auto-generated or manual captions.\n[01:00] The transcript is then indexed and made available for AI-powered Q&A in your notebook.`;
+    nb.sources.push({ id: nextSrcId++, name, type: 'youtube', summary: transcript });
+    document.getElementById('yt-url-input').value = '';
+    document.getElementById('yt-preview-box').style.display = 'none';
+    finishUpload(nb);
+  }, 2400);
+}
+
+function simulateVideoTranscript(file, nb) {
+  const proc = document.getElementById('video-processing');
+  const btn = document.getElementById('add-source-btn');
+  proc.style.display = ''; btn.disabled = true;
+  setTimeout(() => {
+    proc.style.display = 'none'; btn.disabled = false;
+    const transcript = `Transcript of "${file.name}":\n\n[00:00] This is a simulated transcript extracted from the uploaded video file. In production, the audio track is extracted and run through speech-to-text processing.\n[00:45] Speaker identification and timestamps are added automatically.\n[01:30] The transcript is then indexed and available for Q&A in your notebook.`;
+    nb.sources.push({ id: nextSrcId++, name: file.name, type: 'video', summary: transcript });
+    clearVideoFile();
+    finishUpload(nb);
+  }, 2800);
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// ─── Notebook modal ───────────────────────────────────────────────────────
+function openNbModal() { document.getElementById('nb-modal').classList.add('open'); setTimeout(() => document.getElementById('nb-name-input').focus(), 50); }
+function closeNbModal() { document.getElementById('nb-modal').classList.remove('open'); }
+
+function confirmNewNb() {
+  const name = document.getElementById('nb-name-input').value.trim() || 'New Notebook';
+  notebooks.push({ id: nextNbId++, name, sources: [] });
+  document.getElementById('nb-name-input').value = '';
+  closeNbModal();
+  switchNb(nextNbId - 1);
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+function autoResize() {
+  const ta = document.getElementById('chat-input');
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(ta.scrollHeight, 140) + 'px';
+}
+
+// ─── Keyboard ─────────────────────────────────────────────────────────────
+document.getElementById('chat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+document.getElementById('chat-input').addEventListener('input', autoResize);
+
+document.getElementById('nb-name-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmNewNb();
+  if (e.key === 'Escape') closeNbModal();
+});
+
+// Close modals on backdrop click
+['upload-modal','nb-modal'].forEach(id => {
+  document.getElementById(id).addEventListener('click', e => {
+    if (e.target.id === id) document.getElementById(id).classList.remove('open');
+  });
+});
+
+// ─── Init ────────────────────────────────────────────────────────────────
+renderNotebooks();
+renderSources();
+renderMessages();
+renderStudio();
+</script>
+</body>
+</html>

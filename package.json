@@ -1,13 +1,20 @@
 {
-  "name": "ai-note-app",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Minimal AI note app with Node.js and OpenAI",
+  "name": "notematica-ai",
+  "version": "1.0.0",
+  "description": "Notematica AI – a full-stack NotebookLM-style research assistant",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node --watch server.js"
   },
-  "engines": {
-    "node": ">=18"
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.3",
+    "mammoth": "^1.7.2",
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.47.1",
+    "pdf-parse": "^1.1.1",
+    "youtube-transcript": "^1.2.1"
   }
 }
