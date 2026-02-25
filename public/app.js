@@ -45,6 +45,16 @@ const editorEl = document.getElementById("note-editor");
 const newBtn = document.getElementById("new-note-btn");
 const saveBtn = document.getElementById("save-btn");
 const deleteBtn = document.getElementById("delete-btn");
+const noteFlowStatusEl = document.getElementById("note-flow-status");
+const noteFlowSaveNowBtn = document.getElementById("note-flow-save-now-btn");
+const noteFlowInsertHeadingBtn = document.getElementById("note-flow-insert-heading-btn");
+const noteFlowInsertChecklistBtn = document.getElementById("note-flow-insert-checklist-btn");
+const noteOutlineListEl = document.getElementById("note-outline-list");
+const noteHandoffTutorBtn = document.getElementById("note-handoff-tutor-btn");
+const noteHandoffCardsBtn = document.getElementById("note-handoff-cards-btn");
+const noteHandoffExamBtn = document.getElementById("note-handoff-exam-btn");
+const noteHandoffPlanBtn = document.getElementById("note-handoff-plan-btn");
+const noteHandoffStatusEl = document.getElementById("note-handoff-status");
 const aiOutputEl = document.getElementById("ai-output");
 const aiButtons = [...document.querySelectorAll("[data-ai]")];
 const feedbackAiBtn = document.querySelector('[data-ai="feedback"]');
@@ -70,6 +80,8 @@ const examModeEl = document.getElementById("exam-mode");
 const tutorQuestionEl = document.getElementById("tutor-question");
 const askTutorBtn = document.getElementById("ask-tutor-btn");
 const tutorOutputEl = document.getElementById("tutor-output");
+const tutorCopyBtn = document.getElementById("tutor-copy-btn");
+const tutorInsertBtn = document.getElementById("tutor-insert-btn");
 const tutorDropZoneEl = document.getElementById("tutor-drop-zone");
 const tutorAttachSelectionEl = document.getElementById("tutor-attach-selection");
 const planDaysEl = document.getElementById("plan-days");
@@ -115,6 +127,10 @@ const tabStudyEl = document.getElementById("tab-study");
 const sourcesListEl = document.getElementById("sources-list");
 const sourcesRefreshBtn = document.getElementById("sources-refresh-btn");
 const sourcesClearBtn = document.getElementById("sources-clear-btn");
+const sourcesFilterInputEl = document.getElementById("sources-filter-input");
+const sourcesSortSelectEl = document.getElementById("sources-sort-select");
+const sourcesCopyContextBtnEl = document.getElementById("sources-copy-context-btn");
+const sourcesStatsEl = document.getElementById("sources-stats");
 
 const onboardingOverlayEl = document.getElementById("onboarding-overlay");
 const onboardingCloseEl = document.getElementById("onboarding-close");
@@ -181,6 +197,14 @@ const homeUpgradeCardEl = document.getElementById("home-upgrade-card");
 const homeUpgradeMessageEl = document.getElementById("home-upgrade-message");
 const homeUpgradeBtnEl = document.getElementById("home-upgrade-btn");
 const homeUpgradeDismissEl = document.getElementById("home-upgrade-dismiss");
+const homeBriefGeneratedAtEl = document.getElementById("home-brief-generated-at");
+const homeBriefSummaryEl = document.getElementById("home-brief-summary");
+const homeBriefTopicsEl = document.getElementById("home-brief-topics");
+const homeBriefActionsEl = document.getElementById("home-brief-actions");
+const studyWorkflowRecallBtn = document.getElementById("study-workflow-recall-btn");
+const studyWorkflowExamBtn = document.getElementById("study-workflow-exam-btn");
+const studyWorkflowWeakBtn = document.getElementById("study-workflow-weak-btn");
+const studyWorkflowStatusEl = document.getElementById("study-workflow-status");
 
 let adsenseCfg = null;
 let adFree = false;
@@ -219,6 +243,18 @@ let activeTab = "write";
 let currentId = null;
 let analyticsSummary = null;
 let learningSummary = { masteryScore: 0, dueNow: 0, weakTags: [], nextActions: [] };
+let workspaceBrief = null;
+let workspaceBriefFetchedAt = 0;
+let noteHasUnsavedChanges = false;
+let noteAutoSaveTimer = null;
+let noteAutoSaving = false;
+let noteLastSavedAt = 0;
+let studyWorkflowRunning = false;
+let noteHandoffRunning = false;
+let viewMotionTimer = null;
+let tabMotionTimer = null;
+let lastTutorAnswerText = "";
+let lastTutorAnswerCitations = [];
 let recorder = null;
 let recordingStream = null;
 let recordingChunks = [];
@@ -333,6 +369,20 @@ function updateRouteNavState(view) {
   });
 }
 
+function triggerRouteEntranceMotion(view) {
+  const target = String(view || "");
+  const section = routeViewEls.find((el) => String(el?.dataset?.routeView || "") === target);
+  if (!section) return;
+  section.classList.remove("view-enter");
+  // Force reflow so repeated selections replay the entrance motion.
+  void section.offsetWidth;
+  section.classList.add("view-enter");
+  if (viewMotionTimer) clearTimeout(viewMotionTimer);
+  viewMotionTimer = setTimeout(() => {
+    section.classList.remove("view-enter");
+  }, 420);
+}
+
 function setView(view, { persist = true, updateUrl = true, replaceHistory = true } = {}) {
   const next = isAppView(view) ? String(view) : "home";
   currentView = next;
@@ -350,7 +400,9 @@ function setView(view, { persist = true, updateUrl = true, replaceHistory = true
     renderLearningFeed();
     updateHomeOutcomeMetrics();
     evaluatePremiumPrompt();
+    loadWorkspaceBrief().catch(() => {});
   }
+  triggerRouteEntranceMotion(next);
 }
 
 function renderView() {
@@ -1162,22 +1214,37 @@ function resetLearningPlanUi(message = "Personalized learning plan cleared. Clic
 }
 
 function getThemeKey() {
+  return authScopedKey("theme_v2");
+}
+
+function getLegacyThemeKey() {
   return authScopedKey("theme_v1");
 }
 
+function normalizeTheme(theme) {
+  const raw = String(theme || "").trim().toLowerCase();
+  return raw === "clean" || raw === "bold" || raw === "clyde" ? raw : "clyde";
+}
+
 function applyTheme(theme) {
-  const t = theme === "clean" ? "clean" : "bold";
+  const t = normalizeTheme(theme);
   document.body.setAttribute("data-theme", t);
   if (themeSelectEl) themeSelectEl.value = t;
 }
 
 function loadTheme() {
-  const saved = localStorage.getItem(getThemeKey()) || "bold";
-  applyTheme(saved);
+  try {
+    const saved = localStorage.getItem(getThemeKey()) || localStorage.getItem(getLegacyThemeKey()) || "clyde";
+    const t = normalizeTheme(saved);
+    applyTheme(t);
+    localStorage.setItem(getThemeKey(), t);
+  } catch {
+    applyTheme("clyde");
+  }
 }
 
 function saveTheme(theme) {
-  localStorage.setItem(getThemeKey(), theme);
+  localStorage.setItem(getThemeKey(), normalizeTheme(theme));
 }
 
 function setAnalyticsStatus(msg, isError = false) {
@@ -1230,6 +1297,8 @@ function aiOutputCountFromAnalytics(counts = {}) {
 }
 
 function homeNextActionText({ dueNow = 0, noteCount = 0, sourceCount = 0, aiOutputs7d = 0 } = {}) {
+  const briefAction = Array.isArray(workspaceBrief?.nextMoves) ? String(workspaceBrief.nextMoves[0] || "").trim() : "";
+  if (briefAction) return briefAction;
   if (dueNow > 0) return `Review ${dueNow} due flashcard(s).`;
   if (noteCount === 0) return "Create your first note, then run Summarize.";
   if (sourceCount === 0) return "Import at least one source for grounded answers and citations.";
@@ -1237,6 +1306,90 @@ function homeNextActionText({ dueNow = 0, noteCount = 0, sourceCount = 0, aiOutp
   const next = Array.isArray(learningSummary?.nextActions) ? learningSummary.nextActions[0] : "";
   if (next) return String(next);
   return "Open Study tools and run a short practice test.";
+}
+
+function formatWorkspaceBriefTime(iso) {
+  const raw = String(iso || "").trim();
+  if (!raw) return "";
+  const dt = new Date(raw);
+  if (Number.isNaN(dt.getTime())) return "";
+  return dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function renderWorkspaceBriefList(listEl, items, mapItem, emptyText) {
+  if (!listEl) return;
+  listEl.innerHTML = "";
+  const arr = Array.isArray(items) ? items : [];
+  if (!arr.length) {
+    const li = document.createElement("li");
+    li.textContent = String(emptyText || "No items yet.");
+    listEl.appendChild(li);
+    return;
+  }
+  arr.slice(0, 4).forEach((item) => {
+    const li = document.createElement("li");
+    li.textContent = mapItem(item);
+    listEl.appendChild(li);
+  });
+}
+
+function renderWorkspaceBrief() {
+  if (!homeBriefSummaryEl || !homeBriefTopicsEl || !homeBriefActionsEl || !homeBriefGeneratedAtEl) return;
+
+  if (!workspaceBrief || typeof workspaceBrief !== "object") {
+    homeBriefGeneratedAtEl.textContent = "";
+    homeBriefSummaryEl.textContent = "Workspace brief updates from your notes, flashcards, and activity.";
+    renderWorkspaceBriefList(homeBriefTopicsEl, [], () => "", "Tag your notes to build a topic map.");
+    renderWorkspaceBriefList(homeBriefActionsEl, [], () => "", "Your next moves will appear after activity.");
+    return;
+  }
+
+  const overview = workspaceBrief.overview && typeof workspaceBrief.overview === "object" ? workspaceBrief.overview : {};
+  const noteCount = Number(overview.notes || 0);
+  const flashcardCount = Number(overview.flashcards || 0);
+  const dueNow = Number(overview.dueNow || 0);
+  const masteryScore = Number(overview.masteryScore || 0);
+  const actions7d = Number(overview.actions7d || 0);
+  const sourceImports7d = Number(overview.sourceImports7d || 0);
+
+  homeBriefGeneratedAtEl.textContent = formatWorkspaceBriefTime(workspaceBrief.generatedAt)
+    ? `Updated ${formatWorkspaceBriefTime(workspaceBrief.generatedAt)}`
+    : "";
+  homeBriefSummaryEl.textContent =
+    `${noteCount} notes, ${flashcardCount} cards, ${dueNow} due, ${masteryScore}% mastery, ` +
+    `${actions7d} actions in 7d, ${sourceImports7d} source imports.`;
+
+  renderWorkspaceBriefList(
+    homeBriefTopicsEl,
+    workspaceBrief.topTopics,
+    (item) => {
+      const topic = String(item?.topic || "untagged");
+      const score = Number(item?.score || 0);
+      return score > 0 ? `${topic} (${score})` : topic;
+    },
+    "No topic map yet. Add tags to notes and cards."
+  );
+  renderWorkspaceBriefList(
+    homeBriefActionsEl,
+    workspaceBrief.nextMoves,
+    (item) => String(item || "").trim(),
+    "No actions yet. Keep writing and studying to generate guidance."
+  );
+}
+
+async function loadWorkspaceBrief({ force = false } = {}) {
+  if (!token) return null;
+  const now = Date.now();
+  if (!force && workspaceBrief && now - workspaceBriefFetchedAt < 45_000) {
+    renderWorkspaceBrief();
+    return workspaceBrief;
+  }
+  const out = await api("/api/workspace/brief", { method: "GET" });
+  workspaceBrief = out && typeof out === "object" ? out : null;
+  workspaceBriefFetchedAt = now;
+  renderWorkspaceBrief();
+  updateHomeOutcomeMetrics();
+  return workspaceBrief;
 }
 
 function updateHomeOutcomeMetrics() {
@@ -1800,6 +1953,253 @@ function noteToPayload() {
   };
 }
 
+function noteWordCount(text) {
+  const parts = String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return parts.length;
+}
+
+function noteReadMinutes(text) {
+  const words = noteWordCount(text);
+  if (!words) return 0;
+  return Math.max(1, Math.round(words / 190));
+}
+
+function normalizeOutlineLine(line) {
+  return String(line || "")
+    .replace(/^#+\s*/, "")
+    .replace(/^[-*•\d.)\s]+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildNoteOutlineFromText(text, maxItems = 8) {
+  const lines = String(text || "")
+    .split(/\n+/)
+    .map((line) => normalizeOutlineLine(line))
+    .filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  for (const line of lines) {
+    if (out.length >= maxItems) break;
+    if (line.length < 8 || line.length > 96) continue;
+    const headingLike = /:$/.test(line) || (/^[A-Za-z0-9]/.test(line) && !/[.!?]$/.test(line) && line.length <= 72);
+    if (!headingLike) continue;
+    const key = line.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(line);
+  }
+  if (out.length) return out;
+
+  for (const line of lines) {
+    if (out.length >= Math.min(4, maxItems)) break;
+    if (line.length < 14 || line.length > 90) continue;
+    const key = line.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(line);
+  }
+  return out;
+}
+
+function focusEditorOnSnippet(snippet) {
+  const target = String(snippet || "").trim().toLowerCase();
+  if (!target || !editorEl) return false;
+  const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const text = String(node?.nodeValue || "");
+    const at = text.toLowerCase().indexOf(target);
+    if (at < 0) continue;
+    try {
+      const range = document.createRange();
+      range.setStart(node, at);
+      range.setEnd(node, Math.min(text.length, at + target.length));
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      const parent = range.startContainer?.parentElement;
+      parent?.scrollIntoView({ block: "center", behavior: "smooth" });
+      editorEl.focus();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function renderNoteOutline(lines = []) {
+  if (!noteOutlineListEl) return;
+  noteOutlineListEl.innerHTML = "";
+  const arr = Array.isArray(lines) ? lines : [];
+  if (!arr.length) {
+    const empty = document.createElement("div");
+    empty.className = "muted";
+    empty.textContent = "Add headings or short section lines to build a clickable outline.";
+    noteOutlineListEl.appendChild(empty);
+    return;
+  }
+  arr.forEach((line) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ghost note-outline-item";
+    btn.textContent = line;
+    btn.title = `Jump to "${line}"`;
+    btn.addEventListener("click", () => {
+      const ok = focusEditorOnSnippet(line);
+      if (!ok && aiOutputEl) aiOutputEl.textContent = `Could not find "${line}" in the note.`;
+    });
+    noteOutlineListEl.appendChild(btn);
+  });
+}
+
+function updateNoteFlowStatus({ message = "" } = {}) {
+  if (!noteFlowStatusEl) return;
+  const text = getAiReadyNoteText();
+  const words = noteWordCount(text);
+  const readMin = noteReadMinutes(text);
+  const saveLabel = noteHasUnsavedChanges
+    ? "Unsaved changes"
+    : noteLastSavedAt
+      ? `Saved ${new Date(noteLastSavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+      : "Saved";
+  const segments = [`${words} words`, `${readMin} min read`, saveLabel];
+  if (message) segments.push(String(message));
+  noteFlowStatusEl.textContent = segments.join(" · ");
+  const outline = buildNoteOutlineFromText(text);
+  renderNoteOutline(outline);
+}
+
+function clearNoteAutoSaveTimer() {
+  if (!noteAutoSaveTimer) return;
+  clearTimeout(noteAutoSaveTimer);
+  noteAutoSaveTimer = null;
+}
+
+async function runNoteAutoSave() {
+  if (noteAutoSaving || !noteHasUnsavedChanges) return;
+  if (!token || !currentId) return;
+  noteAutoSaving = true;
+  updateNoteFlowStatus({ message: "Autosaving..." });
+  try {
+    await saveNote({ silent: true, reason: "autosave", refreshBrief: false });
+  } catch {
+    updateNoteFlowStatus({ message: "Autosave failed" });
+  } finally {
+    noteAutoSaving = false;
+  }
+}
+
+function scheduleNoteAutoSave() {
+  clearNoteAutoSaveTimer();
+  if (!token || !currentId || !noteHasUnsavedChanges) return;
+  noteAutoSaveTimer = setTimeout(() => {
+    runNoteAutoSave().catch(() => {});
+  }, 1400);
+}
+
+function markNoteDirtyAndRefresh() {
+  noteHasUnsavedChanges = true;
+  updateNoteFlowStatus();
+  scheduleNoteAutoSave();
+}
+
+function setNoteCleanState(savedAtMs = 0) {
+  noteHasUnsavedChanges = false;
+  clearNoteAutoSaveTimer();
+  noteLastSavedAt = Number(savedAtMs || Date.now()) || Date.now();
+  updateNoteFlowStatus();
+}
+
+function insertIntoEditorAtCursor(text) {
+  const safeText = String(text || "");
+  if (!safeText || !editorEl) return;
+  editorEl.focus();
+  try {
+    document.execCommand("insertText", false, safeText);
+  } catch {
+    editorEl.innerHTML += `${editorEl.innerHTML ? "<br>" : ""}${escapeHtml(safeText).replaceAll("\n", "<br>")}`;
+  }
+  markNoteDirtyAndRefresh();
+}
+
+function setNoteHandoffStatus(msg, isError = false) {
+  if (!noteHandoffStatusEl) return;
+  noteHandoffStatusEl.textContent = String(msg || "");
+  noteHandoffStatusEl.style.color = isError ? "var(--danger)" : "var(--accent-hover)";
+}
+
+function noteHandoffQuestion() {
+  const title = String(titleEl?.value || "").trim() || "this note";
+  const tags = String(tagsEl?.value || "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  const tagHint = tags.length ? ` Focus tags: ${tags.join(", ")}.` : "";
+  return `Teach me "${title}" as a high-yield study guide with core concepts, pitfalls, and a short self-check.${tagHint}`;
+}
+
+async function runNoteToStudyHandoff(mode) {
+  const flow = String(mode || "").trim();
+  if (!flow) return;
+  if (noteHandoffRunning) {
+    setNoteHandoffStatus("Handoff already running. Please wait.");
+    return;
+  }
+  const noteText = getAiReadyNoteText();
+  if (!noteText) {
+    setNoteHandoffStatus("Add note text first, then send to study tools.", true);
+    return;
+  }
+  noteHandoffRunning = true;
+  setNoteHandoffBusy(flow);
+  try {
+    setView("study_tools");
+    if (flow === "tutor") {
+      tutorQuestionEl.value = noteHandoffQuestion();
+      setNoteHandoffStatus("Launching tutor handoff...");
+      await askTutor({ preferWebSearch: false, source: "notes_handoff" });
+      setNoteHandoffStatus("Tutor handoff complete.");
+      fireAndForgetTrack("notes.handoff", { mode: "tutor" });
+      return;
+    }
+    if (flow === "cards") {
+      setNoteHandoffStatus("Generating flashcards from this note...");
+      await generateFlashcards();
+      setNoteHandoffStatus("Flashcard handoff complete.");
+      fireAndForgetTrack("notes.handoff", { mode: "cards" });
+      return;
+    }
+    if (flow === "exam") {
+      if (examModeEl) examModeEl.value = "weak";
+      setNoteHandoffStatus("Building practice exam from this note...");
+      await renderTestPrep();
+      setNoteHandoffStatus("Exam handoff complete.");
+      fireAndForgetTrack("notes.handoff", { mode: "exam" });
+      return;
+    }
+    if (flow === "plan") {
+      setNoteHandoffStatus("Building study plan from this note...");
+      await generateAutoPlan();
+      setNoteHandoffStatus("Plan handoff complete.");
+      fireAndForgetTrack("notes.handoff", { mode: "plan" });
+      return;
+    }
+  } catch (e) {
+    setNoteHandoffStatus(`Handoff failed: ${e.message}`, true);
+  } finally {
+    noteHandoffRunning = false;
+    setNoteHandoffBusy("");
+  }
+}
+
 function applySearch() {
   const q = String(searchInputEl.value || "").trim().toLowerCase();
   if (!q) {
@@ -1839,21 +2239,30 @@ function renderNotes() {
 function selectNote(id) {
   const note = notes.find((n) => n.id === id);
   if (!note) return;
+  clearNoteAutoSaveTimer();
   currentId = note.id;
   titleEl.value = note.title || "";
   tagsEl.value = Array.isArray(note.tags) ? note.tags.join(", ") : "";
   editorEl.innerHTML = note.contentHtml || escapeHtml(note.contentText || "");
   aiOutputEl.textContent = "";
+  const savedAtMs = new Date(note.updatedAt || Date.now()).getTime();
+  setNoteCleanState(savedAtMs);
+  setNoteHandoffStatus("Ready to send this note to tutor, cards, exam, or plan.");
   renderSourcesManager();
   renderNotes();
 }
 
 function clearEditor() {
+  clearNoteAutoSaveTimer();
   currentId = null;
   titleEl.value = "";
   tagsEl.value = "";
   editorEl.innerHTML = "";
   aiOutputEl.textContent = "";
+  noteHasUnsavedChanges = false;
+  noteLastSavedAt = 0;
+  updateNoteFlowStatus({ message: "Draft mode" });
+  setNoteHandoffStatus("Draft note: add content, then launch a study handoff.");
   renderSourcesManager();
   titleEl.focus();
   renderNotes();
@@ -1863,6 +2272,7 @@ function appendToEditor(text) {
   const clean = String(text || "").trim();
   if (!clean) return;
   editorEl.innerHTML += `${editorEl.innerHTML ? "<br><br>" : ""}${escapeHtml(clean).replaceAll("\n", "<br>")}`;
+  markNoteDirtyAndRefresh();
 }
 
 function stripLegacySourceDumpText(text) {
@@ -2406,6 +2816,11 @@ async function logout() {
   setHomeQuickStatus("");
   setSourceFileSelection(SOURCE_UPLOAD_HINT);
   setChatAttachSelection(CHAT_UPLOAD_HINT);
+  clearNoteAutoSaveTimer();
+  noteHasUnsavedChanges = false;
+  noteLastSavedAt = 0;
+  updateNoteFlowStatus({ message: "Signed out" });
+  setNoteHandoffStatus("");
   pendingAvatarDataUrl = "";
   if (profileDisplayNameEl) profileDisplayNameEl.value = "";
   if (profileBioEl) profileBioEl.value = "";
@@ -2449,22 +2864,49 @@ async function loadMe() {
 
 async function loadNotes() {
   if (!token) return;
-  const data = await api("/api/notes", { method: "GET" });
-  notes = data.notes || [];
-  notes.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
-  renderNotes();
-  if (notes.length) {
-    selectNote(notes[0].id);
-  } else {
+  try {
+    const data = await api("/api/notes", { method: "GET" });
+    notes = data.notes || [];
+    notes.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+    renderNotes();
+    if (notes.length) {
+      selectNote(notes[0].id);
+    } else {
+      clearNoteAutoSaveTimer();
+      currentId = null;
+      titleEl.value = "";
+      tagsEl.value = "";
+      editorEl.innerHTML = "";
+      aiOutputEl.textContent = "";
+      noteHasUnsavedChanges = false;
+      noteLastSavedAt = 0;
+      updateNoteFlowStatus({ message: "Draft mode" });
+      setNoteHandoffStatus("Draft note: add content, then launch a study handoff.");
+      renderSourcesManager();
+    }
+    renderLearningFeed();
+    updateHomeOutcomeMetrics();
+    await loadWorkspaceBrief({ force: true }).catch(() => {});
+  } catch (e) {
+    notes = [];
+    filteredNotes = [];
+    renderNotes();
+    clearNoteAutoSaveTimer();
     currentId = null;
     titleEl.value = "";
     tagsEl.value = "";
     editorEl.innerHTML = "";
-    aiOutputEl.textContent = "";
+    noteHasUnsavedChanges = false;
+    noteLastSavedAt = 0;
+    updateNoteFlowStatus({ message: "Draft mode (sync unavailable)" });
+    setNoteHandoffStatus("Draft note: add content, then launch a study handoff.");
     renderSourcesManager();
+    renderLearningFeed();
+    updateHomeOutcomeMetrics();
+    const msg = String(e?.message || "unknown network issue");
+    if (aiOutputEl) aiOutputEl.textContent = `Notes sync unavailable (${msg}). You can keep drafting and retry shortly.`;
+    setHomeQuickStatus("Could not sync notebook list right now. Working in draft mode.", true);
   }
-  renderLearningFeed();
-  updateHomeOutcomeMetrics();
 }
 
 function parseUrlInput(raw) {
@@ -3028,6 +3470,14 @@ function setActiveTab(name) {
     localStorage.setItem(authScopedKey("active_tab_v1"), n);
   } catch {}
   if (n === "sources") renderSourcesManager();
+  const activePanel = n === "write" ? tabWriteEl : n === "sources" ? tabSourcesEl : tabStudyEl;
+  if (activePanel) {
+    activePanel.classList.remove("tab-enter");
+    void activePanel.offsetWidth;
+    activePanel.classList.add("tab-enter");
+    if (tabMotionTimer) clearTimeout(tabMotionTimer);
+    tabMotionTimer = setTimeout(() => activePanel.classList.remove("tab-enter"), 300);
+  }
 }
 
 function loadActiveTab() {
@@ -3039,10 +3489,87 @@ function loadActiveTab() {
   }
 }
 
+function getSourceRowsForManager(list = []) {
+  const query = String(sourcesFilterInputEl?.value || "")
+    .trim()
+    .toLowerCase();
+  const sortMode = String(sourcesSortSelectEl?.value || "recent");
+
+  let rows = (Array.isArray(list) ? list : []).map((s, i) => ({ s, i }));
+  if (query) {
+    rows = rows.filter(({ s }) => {
+      const hay = [s?.name || "", s?.kind || "", s?.content || "", s?.url || ""].join("\n").toLowerCase();
+      return hay.includes(query);
+    });
+  }
+
+  if (sortMode === "name") {
+    rows.sort((a, b) => String(a.s?.name || "").localeCompare(String(b.s?.name || "")));
+  } else if (sortMode === "kind") {
+    rows.sort((a, b) => {
+      const ak = String(a.s?.kind || "");
+      const bk = String(b.s?.kind || "");
+      const byKind = ak.localeCompare(bk);
+      if (byKind !== 0) return byKind;
+      return String(a.s?.name || "").localeCompare(String(b.s?.name || ""));
+    });
+  } else {
+    rows.sort((a, b) => Number(b.s?.addedAt || 0) - Number(a.s?.addedAt || 0));
+  }
+  return rows;
+}
+
+function updateSourcesStats(allList = [], visibleRows = []) {
+  if (!sourcesStatsEl) return;
+  const allCount = Array.isArray(allList) ? allList.length : 0;
+  const visibleCount = Array.isArray(visibleRows) ? visibleRows.length : 0;
+  const chars = (Array.isArray(visibleRows) ? visibleRows : []).reduce(
+    (sum, row) => sum + String(row?.s?.content || "").length,
+    0
+  );
+  const approxWords = Math.max(0, Math.round(chars / 5));
+  const reading = approxWords ? Math.max(1, Math.round(approxWords / 190)) : 0;
+  sourcesStatsEl.textContent = `${visibleCount}/${allCount} sources visible · ${chars.toLocaleString()} chars · ~${reading} min read`;
+}
+
+function buildSourceContextBundle(rows = [], maxItems = 8) {
+  const limited = (Array.isArray(rows) ? rows : []).slice(0, Math.max(1, Number(maxItems) || 8));
+  if (!limited.length) return "";
+  const blocks = limited.map((row, index) => {
+    const s = row?.s || {};
+    const name = String(s?.name || "Source").trim();
+    const kind = String(s?.kind || "source").trim();
+    const content = String(s?.content || "").trim().slice(0, 1400);
+    const lines = [`[S${index + 1}] ${name}`, `Kind: ${kind}`];
+    if (s?.url) lines.push(`URL: ${String(s.url).trim()}`);
+    lines.push(content || "(no extracted text)");
+    return lines.join("\n");
+  });
+  return blocks.join("\n\n---\n\n");
+}
+
+async function copyVisibleSourceContextBundle() {
+  const list = loadSourcesForCurrentNote();
+  const rows = getSourceRowsForManager(list);
+  if (!rows.length) {
+    setSourceStatus("No visible sources to copy.", true);
+    return;
+  }
+  const bundle = buildSourceContextBundle(rows, 8);
+  if (!bundle) {
+    setSourceStatus("No source context to copy yet.", true);
+    return;
+  }
+  await navigator.clipboard.writeText(bundle);
+  setSourceStatus(`Copied ${Math.min(8, rows.length)} source block(s) to clipboard.`);
+}
+
 function renderSourcesManager() {
   if (!sourcesListEl) return;
   const list = loadSourcesForCurrentNote();
   sourcesListEl.innerHTML = "";
+  const rows = getSourceRowsForManager(list);
+  updateSourcesStats(list, rows);
 
   if (!list.length) {
     if (!currentId) {
@@ -3061,11 +3588,12 @@ function renderSourcesManager() {
     sourcesListEl.appendChild(draftHint);
   }
 
-  const sorted = list
-    .map((s, i) => ({ s, i }))
-    .sort((a, b) => Number(b.s.addedAt || 0) - Number(a.s.addedAt || 0));
+  if (!rows.length) {
+    sourcesListEl.innerHTML = `<div class="muted">No sources match your current filter.</div>`;
+    return;
+  }
 
-  for (const { s, i } of sorted) {
+  for (const { s, i } of rows) {
     const wrap = document.createElement("div");
     wrap.className = "source-item";
     const head = document.createElement("div");
@@ -3126,10 +3654,11 @@ function renderCitationsInline(citations = []) {
   const arr = Array.isArray(citations) ? citations : [];
   if (!arr.length) return null;
   const wrap = document.createElement("div");
-  wrap.className = "muted";
-  wrap.style.marginTop = "0.75rem";
-  wrap.style.fontSize = "0.78rem";
-  wrap.textContent = "Sources: ";
+  wrap.className = "citation-inline";
+  const labelEl = document.createElement("span");
+  labelEl.className = "citation-inline-label";
+  labelEl.textContent = "Sources:";
+  wrap.appendChild(labelEl);
   arr.forEach((c, i) => {
     const id = String(c?.id || "").trim();
     const url = String(c?.url || "").trim();
@@ -3139,9 +3668,7 @@ function renderCitationsInline(citations = []) {
     const title = name ? name.slice(0, 66) : kind.includes("video") ? "Video result" : "Source";
     const a = document.createElement("a");
     a.textContent = `[${label}] ${title}`;
-    a.style.marginRight = "0.45rem";
-    a.style.fontWeight = "800";
-    a.style.color = "#164e63";
+    a.className = "citation-chip";
     a.href = url || "#";
     if (url) {
       a.target = "_blank";
@@ -3164,6 +3691,192 @@ function setOutputWithCitations(el, text, citations = []) {
   el.appendChild(main);
   const cit = renderCitationsInline(citations);
   if (cit) el.appendChild(cit);
+}
+
+function setButtonBusy(btn, busy, busyLabel = "") {
+  if (!btn) return;
+  if (!btn.dataset.idleLabel) btn.dataset.idleLabel = String(btn.textContent || "");
+  const isBusy = Boolean(busy);
+  btn.disabled = isBusy;
+  btn.classList.toggle("is-busy", isBusy);
+  if (isBusy && busyLabel) btn.textContent = busyLabel;
+  if (!isBusy) btn.textContent = String(btn.dataset.idleLabel || btn.textContent || "");
+}
+
+function setNoteHandoffBusy(flow = "") {
+  const active = String(flow || "");
+  const defs = [
+    { key: "tutor", btn: noteHandoffTutorBtn, busyLabel: "Launching tutor..." },
+    { key: "cards", btn: noteHandoffCardsBtn, busyLabel: "Generating cards..." },
+    { key: "exam", btn: noteHandoffExamBtn, busyLabel: "Building exam..." },
+    { key: "plan", btn: noteHandoffPlanBtn, busyLabel: "Building plan..." }
+  ];
+  defs.forEach(({ key, btn, busyLabel }) => {
+    const engaged = Boolean(active);
+    const selected = engaged && key === active;
+    setButtonBusy(btn, engaged, selected ? busyLabel : "");
+  });
+}
+
+function isLikelyTutorHeading(line) {
+  const s = String(line || "").trim();
+  if (!s) return false;
+  if (/^#{1,3}\s+/.test(s)) return true;
+  return /^[A-Za-z][A-Za-z0-9\s/&\-]{2,56}:$/.test(s);
+}
+
+function normalizeTutorHeading(line) {
+  const s = String(line || "")
+    .replace(/^#{1,3}\s+/, "")
+    .replace(/:$/, "")
+    .trim();
+  return s || "Section";
+}
+
+function normalizeTutorBullet(line) {
+  return String(line || "")
+    .replace(/^[-*•]\s+/, "")
+    .replace(/^\d+[.)]\s+/, "")
+    .trim();
+}
+
+function parseTutorSections(text) {
+  const lines = String(text || "").replace(/\r/g, "").split("\n");
+  const sections = [];
+  let current = { title: "Overview", bullets: [], paragraphs: [] };
+
+  const pushCurrent = () => {
+    if (!current.bullets.length && !current.paragraphs.length) return;
+    sections.push(current);
+  };
+
+  lines.forEach((raw) => {
+    const line = String(raw || "").trim();
+    if (!line) return;
+    if (isLikelyTutorHeading(line)) {
+      pushCurrent();
+      current = { title: normalizeTutorHeading(line), bullets: [], paragraphs: [] };
+      return;
+    }
+    if (/^[-*•]\s+/.test(line) || /^\d+[.)]\s+/.test(line)) {
+      const bullet = normalizeTutorBullet(line);
+      if (bullet) current.bullets.push(bullet);
+      return;
+    }
+    current.paragraphs.push(line);
+  });
+  pushCurrent();
+  return sections.slice(0, 10);
+}
+
+function renderTutorStructuredOutput(el, text, citations = []) {
+  if (!el) return;
+  const body = String(text || "").trim();
+  if (!body) {
+    el.textContent = "No tutor response.";
+    return;
+  }
+  const sections = parseTutorSections(body);
+  el.innerHTML = "";
+
+  const shell = document.createElement("section");
+  shell.className = "tutor-structured-shell";
+  if (!sections.length) {
+    const p = document.createElement("p");
+    p.className = "tutor-structured-paragraph";
+    p.textContent = body;
+    shell.appendChild(p);
+  } else {
+    sections.forEach((section, index) => {
+      const block = document.createElement("article");
+      block.className = "tutor-structured-block";
+      const title = document.createElement("h4");
+      title.className = "tutor-structured-title";
+      title.textContent = String(section.title || `Section ${index + 1}`);
+      block.appendChild(title);
+
+      section.paragraphs.slice(0, 3).forEach((paragraph) => {
+        const p = document.createElement("p");
+        p.className = "tutor-structured-paragraph";
+        p.textContent = paragraph;
+        block.appendChild(p);
+      });
+      if (section.bullets.length) {
+        const ul = document.createElement("ul");
+        ul.className = "tutor-structured-list";
+        section.bullets.slice(0, 8).forEach((item) => {
+          const li = document.createElement("li");
+          li.textContent = item;
+          ul.appendChild(li);
+        });
+        block.appendChild(ul);
+      }
+      shell.appendChild(block);
+    });
+  }
+
+  el.appendChild(shell);
+  const cit = renderCitationsInline(citations);
+  if (cit) el.appendChild(cit);
+}
+
+function setTutorResponse(text, citations = []) {
+  lastTutorAnswerText = String(text || "");
+  lastTutorAnswerCitations = Array.isArray(citations) ? citations : [];
+  renderTutorStructuredOutput(tutorOutputEl, lastTutorAnswerText, lastTutorAnswerCitations);
+  const hasAnswer = Boolean(String(lastTutorAnswerText || "").trim());
+  if (tutorCopyBtn) tutorCopyBtn.disabled = !hasAnswer;
+  if (tutorInsertBtn) tutorInsertBtn.disabled = !hasAnswer;
+}
+
+async function copyTutorAnswerToClipboard() {
+  const text = String(lastTutorAnswerText || "").trim();
+  if (!text) {
+    setStudyWorkflowStatus("No tutor answer to copy yet.", true);
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    setStudyWorkflowStatus("Tutor answer copied.");
+  } catch {
+    const fallback = document.createElement("textarea");
+    fallback.value = text;
+    fallback.setAttribute("readonly", "readonly");
+    fallback.style.position = "fixed";
+    fallback.style.opacity = "0";
+    document.body.appendChild(fallback);
+    fallback.focus();
+    fallback.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(fallback);
+    if (!ok) throw new Error("Clipboard blocked");
+    setStudyWorkflowStatus("Tutor answer copied.");
+  }
+}
+
+function tutorAnswerWithCitationsText() {
+  const body = String(lastTutorAnswerText || "").trim();
+  if (!body) return "";
+  const cites = Array.isArray(lastTutorAnswerCitations)
+    ? lastTutorAnswerCitations
+        .map((c) => String(c?.id || "").trim())
+        .filter(Boolean)
+    : [];
+  if (!cites.length) return body;
+  return `${body}\n\nSources: ${cites.map((id) => `[${id}]`).join(" ")}`;
+}
+
+function insertTutorAnswerIntoCurrentNote() {
+  const text = tutorAnswerWithCitationsText();
+  if (!text) {
+    setStudyWorkflowStatus("No tutor answer to insert yet.", true);
+    return;
+  }
+  setView("notes");
+  setActiveTab("write");
+  appendToEditor(`Tutor synthesis\n${text}`);
+  setNoteHandoffStatus("Inserted tutor answer into your current note.");
+  setStudyWorkflowStatus("Tutor answer inserted into note.");
 }
 
 function estimateSourceUploadSizeChars(src) {
@@ -3343,28 +4056,116 @@ async function askTutor({ preferWebSearch = false, source = "study_tools" } = {}
   const noteText = getAiReadyNoteText();
   const sources = getAiSourcesForRequest(6);
   const shouldPreferWeb = Boolean(preferWebSearch);
-  if (!question) return (tutorOutputEl.textContent = "Enter a tutor question.");
-  tutorOutputEl.textContent =
+  if (!question) {
+    setTutorResponse("Enter a tutor question.");
+    return;
+  }
+  setTutorResponse(
     shouldPreferWeb || !(noteText || sources.length)
       ? "Searching the web for learning resources..."
-      : "Tutor is thinking...";
+      : "Tutor is thinking..."
+  );
   try {
     const out = await api("/api/tutor", {
       method: "POST",
       body: JSON.stringify({ question, noteText, sources, preferWebSearch: shouldPreferWeb })
     });
-    setOutputWithCitations(tutorOutputEl, out.answer || "No tutor response.", out.citations || []);
+    setTutorResponse(out.answer || "No tutor response.", out.citations || []);
     if (source === "home") {
       if (out.mode === "web_search") setHomeComposeStatus("Showing web pages and videos for your topic.");
       else setHomeComposeStatus("Using your current note and attached files.");
+    } else if (source === "notes_handoff") {
+      setNoteHandoffStatus("Tutor handoff answer generated.");
     }
     awardXp("tutor", 8);
     await countOutputAndMaybeShowAds("tutor.ask");
   } catch (e) {
     const quota = formatQuotaError(e, "Tutor limit reached.");
     if (quota) promptUpgradeForQuota("ai_output");
-    tutorOutputEl.textContent = quota ? quota : `Tutor error: ${e.message}`;
+    setTutorResponse(quota ? quota : `Tutor error: ${e.message}`);
     if (source === "home") setHomeComposeStatus(quota ? quota : `Tutor error: ${e.message}`, true);
+    if (source === "notes_handoff") setNoteHandoffStatus(quota ? quota : `Tutor error: ${e.message}`, true);
+  }
+}
+
+function setStudyWorkflowStatus(msg, isError = false) {
+  if (!studyWorkflowStatusEl) return;
+  studyWorkflowStatusEl.textContent = String(msg || "");
+  studyWorkflowStatusEl.style.color = isError ? "var(--danger)" : "var(--accent-hover)";
+}
+
+function setStudyWorkflowBusy(flow = "") {
+  const active = String(flow || "");
+  const defs = [
+    { key: "recall", btn: studyWorkflowRecallBtn, busyLabel: "Running recall..." },
+    { key: "exam", btn: studyWorkflowExamBtn, busyLabel: "Building exam..." },
+    { key: "weak", btn: studyWorkflowWeakBtn, busyLabel: "Coaching weak topic..." }
+  ];
+  defs.forEach(({ key, btn, busyLabel }) => {
+    const engaged = Boolean(active);
+    const selected = engaged && key === active;
+    setButtonBusy(btn, engaged, selected ? busyLabel : "");
+  });
+}
+
+async function runStudyWorkflow(kind) {
+  const flow = String(kind || "").trim();
+  if (!flow) return;
+  if (studyWorkflowRunning) {
+    setStudyWorkflowStatus("Workflow already running. Please wait.");
+    return;
+  }
+  studyWorkflowRunning = true;
+  setStudyWorkflowBusy(flow);
+  try {
+    if (flow === "recall") {
+      if (!getAiReadyNoteText()) {
+        setStudyWorkflowStatus("Add note text first, then run Recall sprint.", true);
+        return;
+      }
+      setStudyWorkflowStatus("Recall sprint: generating cards...");
+      await generateFlashcards();
+      setStudyWorkflowStatus("Recall sprint: opening due-card review...");
+      await renderStudyDue();
+      setStudyWorkflowStatus("Recall sprint ready. Grade cards with 1-4 keys.");
+      return;
+    }
+
+    if (flow === "exam") {
+      if (!getAiReadyNoteText()) {
+        setStudyWorkflowStatus("Add note text first, then run Exam drill.", true);
+        return;
+      }
+      setStudyWorkflowStatus("Exam drill: building practice test...");
+      if (examModeEl) examModeEl.value = "timed";
+      await renderTestPrep();
+      setStudyWorkflowStatus("Exam drill ready (timed mode).");
+      return;
+    }
+
+    if (flow === "weak") {
+      setStudyWorkflowStatus("Weak-topic loop: refreshing personalized plan...");
+      await loadLearningPlan({ force: true });
+      const weak = Array.isArray(learningSummary?.weakTags) ? learningSummary.weakTags : [];
+      const focus = weak.length ? String(weak[0]?.tag || "").trim() : "";
+      if (focus) {
+        tutorQuestionEl.value = `Teach me ${focus} from first principles, then give 3 quick checks to verify mastery.`;
+      } else if (!String(tutorQuestionEl.value || "").trim()) {
+        tutorQuestionEl.value = "Identify my weakest topic from this notebook and coach me through it with a short drill.";
+      }
+      setStudyWorkflowStatus("Weak-topic loop: generating tutor coaching...");
+      await askTutor({ preferWebSearch: false, source: "study_tools" });
+      if (examModeEl) examModeEl.value = "weak";
+      setStudyWorkflowStatus("Weak-topic loop: generating follow-up practice...");
+      await renderTestPrep();
+      setStudyWorkflowStatus("Weak-topic loop ready. Review tutor output, then grade the practice set.");
+      return;
+    }
+  } catch (e) {
+    setStudyWorkflowStatus(`Workflow error: ${e.message}`, true);
+  } finally {
+    studyWorkflowRunning = false;
+    setStudyWorkflowBusy("");
   }
 }
 
@@ -3480,7 +4281,7 @@ async function sendFeedbackReport() {
   }
 }
 
-async function saveNote() {
+async function saveNote({ silent = false, reason = "manual", refreshBrief = true } = {}) {
   if (!token) return;
   const prevSourcesKey = sourcesKeyForCurrentNote();
   const prevSources = loadSourcesForCurrentNote();
@@ -3506,10 +4307,12 @@ async function saveNote() {
     // ignore
   }
   renderNotes();
-  aiOutputEl.textContent = "Saved.";
+  if (!silent) aiOutputEl.textContent = "Saved.";
+  setNoteCleanState(new Date(saved.updatedAt || Date.now()).getTime());
   renderLearningFeed();
   updateHomeOutcomeMetrics();
-  fireAndForgetTrack("notes.save", { noteId: saved.id });
+  if (refreshBrief) await loadWorkspaceBrief({ force: true }).catch(() => {});
+  fireAndForgetTrack("notes.save", { noteId: saved.id, reason: String(reason || "manual") });
 }
 
 async function deleteNote() {
@@ -3523,6 +4326,7 @@ async function deleteNote() {
   aiOutputEl.textContent = "Deleted.";
   renderLearningFeed();
   updateHomeOutcomeMetrics();
+  await loadWorkspaceBrief({ force: true }).catch(() => {});
   fireAndForgetTrack("notes.delete", {});
 }
 
@@ -4679,20 +5483,67 @@ if (profileAvatarRemoveBtn) {
   });
 }
 newBtn.addEventListener("click", clearEditor);
-saveBtn.addEventListener("click", () => saveNote().catch((e) => (aiOutputEl.textContent = e.message)));
+saveBtn.addEventListener("click", () => saveNote({ reason: "manual" }).catch((e) => (aiOutputEl.textContent = e.message)));
 deleteBtn.addEventListener("click", () => deleteNote().catch((e) => (aiOutputEl.textContent = e.message)));
 searchInputEl.addEventListener("input", renderNotes);
+if (titleEl) {
+  titleEl.addEventListener("input", () => {
+    markNoteDirtyAndRefresh();
+  });
+}
+if (tagsEl) {
+  tagsEl.addEventListener("input", () => {
+    markNoteDirtyAndRefresh();
+  });
+}
+if (noteFlowSaveNowBtn) {
+  noteFlowSaveNowBtn.addEventListener("click", () => {
+    saveNote({ reason: "note_flow" }).catch((e) => (aiOutputEl.textContent = e.message));
+  });
+}
+if (noteFlowInsertHeadingBtn) {
+  noteFlowInsertHeadingBtn.addEventListener("click", () => {
+    insertIntoEditorAtCursor("\n## Section heading\n");
+  });
+}
+if (noteFlowInsertChecklistBtn) {
+  noteFlowInsertChecklistBtn.addEventListener("click", () => {
+    insertIntoEditorAtCursor("\n- [ ] Key point 1\n- [ ] Key point 2\n");
+  });
+}
+if (noteHandoffTutorBtn) {
+  noteHandoffTutorBtn.addEventListener("click", () => {
+    runNoteToStudyHandoff("tutor").catch((e) => setNoteHandoffStatus(`Handoff failed: ${e.message}`, true));
+  });
+}
+if (noteHandoffCardsBtn) {
+  noteHandoffCardsBtn.addEventListener("click", () => {
+    runNoteToStudyHandoff("cards").catch((e) => setNoteHandoffStatus(`Handoff failed: ${e.message}`, true));
+  });
+}
+if (noteHandoffExamBtn) {
+  noteHandoffExamBtn.addEventListener("click", () => {
+    runNoteToStudyHandoff("exam").catch((e) => setNoteHandoffStatus(`Handoff failed: ${e.message}`, true));
+  });
+}
+if (noteHandoffPlanBtn) {
+  noteHandoffPlanBtn.addEventListener("click", () => {
+    runNoteToStudyHandoff("plan").catch((e) => setNoteHandoffStatus(`Handoff failed: ${e.message}`, true));
+  });
+}
 
 formatButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
     document.execCommand(btn.dataset.cmd);
     editorEl.focus();
+    markNoteDirtyAndRefresh();
   });
 });
 
 clearFormatBtn.addEventListener("click", () => {
   document.execCommand("removeFormat");
   editorEl.focus();
+  markNoteDirtyAndRefresh();
 });
 if (cleanSourceBlocksBtn) {
   cleanSourceBlocksBtn.addEventListener("click", () => {
@@ -4703,6 +5554,7 @@ if (cleanSourceBlocksBtn) {
 }
 editorEl.addEventListener("input", () => {
   lastTypingAt = Date.now();
+  markNoteDirtyAndRefresh();
 });
 
 aiButtons.forEach((btn) => btn.addEventListener("click", () => runAi(btn.dataset.ai)));
@@ -4737,6 +5589,18 @@ testprepBtn.addEventListener("click", () => {
   renderTestPrep().catch((e) => (aiOutputEl.textContent = `Test prep error: ${e.message}`));
 });
 askTutorBtn.addEventListener("click", () => askTutor());
+if (tutorCopyBtn) {
+  tutorCopyBtn.addEventListener("click", () => {
+    copyTutorAnswerToClipboard().catch((e) => setStudyWorkflowStatus(`Copy failed: ${e.message}`, true));
+  });
+}
+if (tutorInsertBtn) {
+  tutorInsertBtn.addEventListener("click", () => {
+    insertTutorAnswerIntoCurrentNote();
+  });
+}
+if (tutorCopyBtn) tutorCopyBtn.disabled = !String(lastTutorAnswerText || "").trim();
+if (tutorInsertBtn) tutorInsertBtn.disabled = !String(lastTutorAnswerText || "").trim();
 autoPlanBtn.addEventListener("click", () => generateAutoPlan());
 shareNoteBtn.addEventListener("click", () => shareCurrentNote());
 exportTxtBtn.addEventListener("click", () => exportCurrentNoteTxt());
@@ -4948,7 +5812,7 @@ if (homeRefreshMetricsBtnEl) {
   homeRefreshMetricsBtnEl.addEventListener("click", async () => {
     setHomeQuickStatus("Refreshing study outcomes...");
     try {
-      await Promise.all([loadBillingStatus(), loadAnalyticsSummary(), loadLearningPlan({ force: true })]);
+      await Promise.all([loadBillingStatus(), loadAnalyticsSummary(), loadLearningPlan({ force: true }), loadWorkspaceBrief({ force: true })]);
       updateHomeOutcomeMetrics();
       setHomeQuickStatus("Study outcomes updated.");
     } catch (e) {
@@ -4983,10 +5847,31 @@ if (clearOutputBtn) {
     aiOutputEl.textContent = "";
     setPlanStatus("");
     tutorOutputEl.textContent = "";
+    lastTutorAnswerText = "";
+    lastTutorAnswerCitations = [];
+    if (tutorCopyBtn) tutorCopyBtn.disabled = true;
+    if (tutorInsertBtn) tutorInsertBtn.disabled = true;
   });
 }
 
 if (sourcesRefreshBtn) sourcesRefreshBtn.addEventListener("click", () => renderSourcesManager());
+if (sourcesFilterInputEl) {
+  sourcesFilterInputEl.addEventListener("input", () => {
+    renderSourcesManager();
+  });
+}
+if (sourcesSortSelectEl) {
+  sourcesSortSelectEl.addEventListener("change", () => {
+    renderSourcesManager();
+  });
+}
+if (sourcesCopyContextBtnEl) {
+  sourcesCopyContextBtnEl.addEventListener("click", () => {
+    copyVisibleSourceContextBundle().catch((e) => {
+      setSourceStatus(`Copy failed: ${e.message}`, true);
+    });
+  });
+}
 if (sourcesClearBtn) {
   sourcesClearBtn.addEventListener("click", async () => {
     if (!confirm("Clear all sources attached to this note?")) return;
@@ -4996,6 +5881,21 @@ if (sourcesClearBtn) {
     renderSourcesManager();
     renderLearningFeed();
     setSourceStatus("Cleared sources for this note.");
+  });
+}
+if (studyWorkflowRecallBtn) {
+  studyWorkflowRecallBtn.addEventListener("click", () => {
+    runStudyWorkflow("recall").catch((e) => setStudyWorkflowStatus(`Workflow error: ${e.message}`, true));
+  });
+}
+if (studyWorkflowExamBtn) {
+  studyWorkflowExamBtn.addEventListener("click", () => {
+    runStudyWorkflow("exam").catch((e) => setStudyWorkflowStatus(`Workflow error: ${e.message}`, true));
+  });
+}
+if (studyWorkflowWeakBtn) {
+  studyWorkflowWeakBtn.addEventListener("click", () => {
+    runStudyWorkflow("weak").catch((e) => setStudyWorkflowStatus(`Workflow error: ${e.message}`, true));
   });
 }
 
@@ -5048,7 +5948,7 @@ tutorialOverlayEl.addEventListener("click", (e) => {
 });
 if (themeSelectEl) {
   themeSelectEl.addEventListener("change", () => {
-    const t = String(themeSelectEl.value || "bold");
+    const t = String(themeSelectEl.value || "clyde");
     applyTheme(t);
     saveTheme(t);
   });
@@ -5073,6 +5973,9 @@ window.addEventListener("popstate", () => {
     if (focusOn) document.body.classList.add("focus-mode");
   } catch {}
   loadTheme();
+  renderWorkspaceBrief();
+  updateNoteFlowStatus({ message: "Draft mode" });
+  setStudyWorkflowStatus("");
   const explicitView = readViewFromUrl();
   const savedView = readStoredView();
   const fromLoginPage = /\/login\.html(?:$|\?)/.test(String(document.referrer || ""));
@@ -5101,6 +6004,7 @@ window.addEventListener("popstate", () => {
   await loadBillingStatus();
   await loadAnalyticsSummary();
   await loadLearningPlan();
+  await loadWorkspaceBrief({ force: true }).catch(() => {});
   await loadDashboard();
   await loadReferralCode();
   flushFlashcardReviewQueue().catch(() => {});

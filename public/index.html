@@ -62,12 +62,13 @@
               <img src="/logo-notematica.svg" alt="Notematica logo" class="top-brand-logo" />
             </a>
             <div class="top-head-copy">
-              <div class="top-kicker">Notematica Studio</div>
-              <div class="top-title">Design your next learning win</div>
+              <div class="top-kicker">Clyde Studio</div>
+              <div class="top-title">Build source-grounded notebooks with faster synthesis</div>
             </div>
           </div>
           <div class="row wrap top-actions">
             <select id="theme-select">
+              <option value="clyde">Clyde Studio</option>
               <option value="bold">Bold</option>
               <option value="clean">Clean</option>
             </select>
@@ -87,7 +88,7 @@
                 <article class="card-face home-command">
                   <div class="home-command-head">
                     <span class="home-label">Mission control</span>
-                    <h2 class="home-title">What are we studying in this focus block?</h2>
+                    <h2 class="home-title">What notebook are we building in this focus block?</h2>
                   </div>
                   <p id="home-welcome-message" class="muted">Your study dashboard is ready.</p>
                   <div class="autofill-decoy" aria-hidden="true">
@@ -110,7 +111,7 @@
                       placeholder="Type a topic, assignment, or exam objective — Notematica will build your study path."
                     />
                     <div class="home-composer-actions">
-                      <button id="home-compose-btn" type="button">Build plan</button>
+                      <button id="home-compose-btn" type="button">Generate brief</button>
                       <button id="home-attach-btn" class="ghost" type="button">Add files</button>
                     </div>
                   </div>
@@ -135,8 +136,8 @@
 
                 <!-- Quick-launch card -->
                 <aside class="card-face home-sprint">
-                  <h3>Quick launch</h3>
-                  <p class="muted">Jump into the exact tool you need right now.</p>
+                  <h3>Studio shortcuts</h3>
+                  <p class="muted">Jump into the exact workspace you need right now.</p>
                   <div class="home-action-stack">
                     <button id="home-action-new-note" type="button">Start a note</button>
                     <button id="home-action-import" class="ghost" type="button">Import sources</button>
@@ -147,6 +148,23 @@
                     <div id="home-next-action" class="status"></div>
                     <div id="home-focus-topic" class="status muted"></div>
                   </div>
+                  <section class="home-brief-surface">
+                    <div class="home-brief-head">
+                      <h4>Notebook graph</h4>
+                      <span id="home-brief-generated-at" class="status muted"></span>
+                    </div>
+                    <p id="home-brief-summary" class="muted">Workspace brief updates from your notes, flashcards, and activity.</p>
+                    <div class="home-brief-columns">
+                      <div>
+                        <div class="home-brief-label">Top topics</div>
+                        <ul id="home-brief-topics" class="home-brief-list"></ul>
+                      </div>
+                      <div>
+                        <div class="home-brief-label">Next moves</div>
+                        <ul id="home-brief-actions" class="home-brief-list"></ul>
+                      </div>
+                    </div>
+                  </section>
                 </aside>
               </div>
 
@@ -269,6 +287,33 @@
                     <button id="clean-source-blocks-btn" class="ghost" type="button">Clean old source blocks</button>
                   </div>
 
+                  <section class="card-face note-flow-shell">
+                    <div class="note-flow-head">
+                      <div id="note-flow-status" class="status muted">0 words · 0 min read · Saved</div>
+                      <div class="row wrap">
+                        <button id="note-flow-save-now-btn" class="ghost" type="button">Save now</button>
+                        <button id="note-flow-insert-heading-btn" class="ghost" type="button">Insert heading</button>
+                        <button id="note-flow-insert-checklist-btn" class="ghost" type="button">Insert checklist</button>
+                      </div>
+                    </div>
+                    <div class="note-flow-outline-head">
+                      <strong>Notebook outline</strong>
+                      <span class="muted">Click a line to jump inside your note</span>
+                    </div>
+                    <div id="note-outline-list" class="note-outline-list"></div>
+                    <div class="note-flow-outline-head">
+                      <strong>Send to study</strong>
+                      <span class="muted">Launch workflows from this note context</span>
+                    </div>
+                    <div class="row wrap note-handoff-row">
+                      <button id="note-handoff-tutor-btn" class="ghost" type="button">Tutor this note</button>
+                      <button id="note-handoff-cards-btn" class="ghost" type="button">Generate cards</button>
+                      <button id="note-handoff-exam-btn" class="ghost" type="button">Run exam drill</button>
+                      <button id="note-handoff-plan-btn" class="ghost" type="button">Build study plan</button>
+                    </div>
+                    <div id="note-handoff-status" class="status muted"></div>
+                  </section>
+
                   <div id="note-editor" class="note-editor" contenteditable="true"></div>
 
                   <section class="ai-tools">
@@ -361,6 +406,16 @@
                     <button id="sources-clear-btn" class="ghost danger" type="button">Clear</button>
                   </div>
                 </div>
+                <div class="row wrap source-manager-tools">
+                  <input id="sources-filter-input" placeholder="Filter by title, type, or content" />
+                  <select id="sources-sort-select">
+                    <option value="recent">Sort: most recent</option>
+                    <option value="kind">Sort: type</option>
+                    <option value="name">Sort: title</option>
+                  </select>
+                  <button id="sources-copy-context-btn" class="ghost" type="button">Copy context bundle</button>
+                </div>
+                <div id="sources-stats" class="status muted"></div>
                 <div id="sources-list" class="sources-list"></div>
                 <p class="muted">These sources are stored on your device for this note and are sent to AI requests (up to 6 at a time).</p>
               </div>
@@ -396,6 +451,12 @@
                     <option value="weak">Exam: weak topics</option>
                   </select>
                 </div>
+                <div class="study-workflow-strip">
+                  <button id="study-workflow-recall-btn" class="ghost" type="button">Recall sprint</button>
+                  <button id="study-workflow-exam-btn" class="ghost" type="button">Exam drill</button>
+                  <button id="study-workflow-weak-btn" class="ghost" type="button">Weak-topic loop</button>
+                </div>
+                <div id="study-workflow-status" class="status muted"></div>
               </div>
 
               <div class="card-face study-card study-tutor-card">
@@ -408,6 +469,10 @@
                 <div id="tutor-drop-zone" class="upload-drop-zone" role="button" tabindex="0">Drop or paste screenshots / files here</div>
                 <div id="tutor-attach-selection" class="upload-selection muted">Use Add files to attach screenshots/files from your device.</div>
                 <div id="tutor-output" class="ai-output"></div>
+                <div class="row wrap tutor-output-actions">
+                  <button id="tutor-copy-btn" class="ghost" type="button">Copy answer</button>
+                  <button id="tutor-insert-btn" class="ghost" type="button">Insert into note</button>
+                </div>
               </div>
 
               <div class="card-face study-card study-plan-card">

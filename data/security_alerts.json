@@ -67,5 +67,28 @@
       "d95d25db-2d55-4d5a-8f65-c7e0f84ea472"
     ],
     "createdAt": "2026-02-20T20:44:01.942Z"
+  },
+  {
+    "id": "9b6aff5e-eeb7-4052-80c3-744948d63890",
+    "key": "auth-unauthorized-ip-spike:12ca17b49af2289436f3",
+    "ruleId": "auth-unauthorized-ip-spike",
+    "eventType": "auth.unauthorized",
+    "severity": "medium",
+    "title": "Unauthorized request burst",
+    "message": "20 unauthorized API requests from one IP fingerprint within 5 minutes.",
+    "group": "12ca17b49af2289436f3",
+    "count": 20,
+    "threshold": 20,
+    "windowMs": 300000,
+    "firstSeenAt": "2026-02-24T05:59:26.200Z",
+    "lastSeenAt": "2026-02-24T06:03:18.814Z",
+    "sampleEventIds": [
+      "0a1c76b0-0ad2-47fe-9393-1f4ef0f6a676",
+      "f56c1666-c498-4071-aac5-753308e25779",
+      "cf07f9e5-ed45-4728-bcb9-461c80900df4",
+      "65244722-5c10-4313-89c2-e698e3c7da0e",
+      "d92a889f-d27a-42bf-acb3-1679f4f1fa7a"
+    ],
+    "createdAt": "2026-02-24T06:03:18.814Z"
   }
 ]

@@ -2565,11 +2565,13 @@ function estimateMastery(cards) {
   return Math.round((100 * total) / cards.length);
 }
 
-async function buildLearningPlan(user) {
-  const cards = await listFlashcards(user, { dueOnly: false, limit: 5000 });
-  const dueCards = await listFlashcards(user, { dueOnly: true, limit: 2000 });
-  const notes = await listNotes(user);
+function isCardDueAtOrBeforeNow(card, nowMs = Date.now()) {
+  const ts = new Date(card?.dueAt || "").getTime();
+  if (!Number.isFinite(ts)) return false;
+  return ts <= nowMs;
+}
 
+function buildLearningPlanFromData(cards = [], dueCards = [], notes = []) {
   const weakTagMap = new Map();
   for (const c of cards) {
     const tags = Array.isArray(c.tags) && c.tags.length ? c.tags : ["untagged"];
@@ -2614,6 +2616,123 @@ async function buildLearningPlan(user) {
     dueNow: dueCards.length,
     weakTags,
     nextActions: actions.slice(0, 4)
+  };
+}
+
+async function buildLearningPlan(user) {
+  const cards = await listFlashcards(user, { dueOnly: false, limit: 5000 });
+  const dueCards = cards.filter((c) => isCardDueAtOrBeforeNow(c));
+  const notes = await listNotes(user);
+  return buildLearningPlanFromData(cards, dueCards, notes);
+}
+
+function analyticsCount(counts, key) {
+  return Number((counts && counts[key]) || 0);
+}
+
+function aiOutputCountFromAnalyticsCounts(counts = {}) {
+  const keys = [
+    "ai.action",
+    "tutor.ask",
+    "flashcards.generate",
+    "testprep.generate",
+    "study.plan",
+    "notes.transcribe"
+  ];
+  return keys.reduce((sum, k) => sum + analyticsCount(counts, k), 0);
+}
+
+function normalizeTopicLabel(value) {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[^\w\s\-/.]/g, "");
+  return raw.slice(0, 42);
+}
+
+function topicLabelFromTitle(title) {
+  const cleaned = String(title || "")
+    .trim()
+    .replace(/[^\w\s-]/g, " ");
+  if (!cleaned) return "";
+  return normalizeTopicLabel(cleaned.split(/\s+/).slice(0, 4).join(" "));
+}
+
+async function getWorkspaceBrief(user) {
+  const [notes, cards, analytics] = await Promise.all([
+    listNotes(user),
+    listFlashcards(user, { dueOnly: false, limit: 5000 }),
+    getAnalyticsSummary(user, 7)
+  ]);
+  const dueCards = cards.filter((c) => isCardDueAtOrBeforeNow(c));
+  const plan = buildLearningPlanFromData(cards, dueCards, notes);
+
+  const topicMap = new Map();
+  const pushTopic = (raw, weight = 1) => {
+    const topic = normalizeTopicLabel(raw);
+    if (!topic) return;
+    const prev = topicMap.get(topic) || { topic, score: 0 };
+    prev.score += Number(weight || 1);
+    topicMap.set(topic, prev);
+  };
+
+  notes.forEach((note) => {
+    const tags = Array.isArray(note?.tags) ? note.tags : [];
+    if (tags.length) {
+      tags.slice(0, 6).forEach((tag) => pushTopic(tag, 3));
+      return;
+    }
+    pushTopic(topicLabelFromTitle(note?.title || ""), 1);
+  });
+  cards.forEach((card) => {
+    const tags = Array.isArray(card?.tags) ? card.tags : [];
+    tags.slice(0, 4).forEach((tag) => pushTopic(tag, 1));
+  });
+
+  const counts = analytics?.counts || {};
+  const sourceImports7d = analyticsCount(counts, "sources.import");
+  const aiOutputs7d = aiOutputCountFromAnalyticsCounts(counts);
+  const lastEditedAt = notes.length ? String(notes[0]?.updatedAt || "") : "";
+  const weakTags = Array.isArray(plan?.weakTags) ? plan.weakTags : [];
+  const weakTag = weakTags.length ? String(weakTags[0]?.tag || "untagged").replaceAll('"', "") : "";
+
+  const nextMoves = [];
+  if (notes.length === 0) {
+    nextMoves.push("Create your first notebook and capture one concrete learning objective.");
+  }
+  if (sourceImports7d === 0) {
+    nextMoves.push("Import at least one source to unlock grounded answers with citations.");
+  }
+  if (dueCards.length > 0) {
+    nextMoves.push(`Review ${dueCards.length} due flashcard(s) before generating new cards.`);
+  }
+  if (weakTag) {
+    nextMoves.push(`Run a short tutor drill on weak topic "${weakTag}".`);
+  }
+  if (aiOutputs7d < 3 && notes.length > 0) {
+    nextMoves.push("Use Summarize or Improve on one note to keep momentum.");
+  }
+  if (!nextMoves.length) {
+    nextMoves.push("Keep momentum with a short loop: summarize one note, then run a practice test.");
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    overview: {
+      notes: notes.length,
+      flashcards: cards.length,
+      dueNow: dueCards.length,
+      masteryScore: Number(plan?.masteryScore || 0),
+      actions7d: Number(analytics?.total || 0),
+      aiOutputs7d,
+      sourceImports7d,
+      lastEditedAt
+    },
+    topTopics: [...topicMap.values()]
+      .sort((a, b) => b.score - a.score || a.topic.localeCompare(b.topic))
+      .slice(0, 6),
+    nextMoves: nextMoves.slice(0, 4)
   };
 }
 
@@ -4477,6 +4596,13 @@ const server = http.createServer(async (req, res) => {
         const user = await requireUser(req, res);
         if (!user) return;
         const out = await getDashboardSummary(user);
+        return json(res, 200, out);
+      }
+
+      if (pathname === "/api/workspace/brief" && req.method === "GET") {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const out = await getWorkspaceBrief(user);
         return json(res, 200, out);
       }
 
