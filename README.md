@@ -54,6 +54,7 @@ Open **http://localhost:3000** in your browser.
 | 📝 Notes | Saved per notebook in the database |
 | 👤 User profiles | Create, edit, delete profiles and change passwords |
 | 🔐 Session auth | Sign in/out with profile credentials (bearer token sessions) |
+| 🛡️ Security monitoring | Owner-only security event feed (failed logins, lockouts, CSRF/auth failures, account actions) |
 
 ---
 
@@ -131,6 +132,7 @@ Same as Railway — connect repo, set env var, deploy.
 | POST | `/api/auth/login` | Sign in with username/password |
 | GET | `/api/auth/me` | Get current signed-in profile |
 | POST | `/api/auth/logout` | Sign out and revoke current session |
+| GET | `/api/security/events` | Owner-only security event feed |
 | GET | `/api/health` | Server health check |
 
 ## Owner-only lock

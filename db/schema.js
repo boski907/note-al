@@ -15,7 +15,7 @@ function load() {
   if (fs.existsSync(DB_PATH)) {
     try { _db = JSON.parse(fs.readFileSync(DB_PATH, 'utf8')); return _db; } catch {}
   }
-  _db = { notebooks: [], sources: [], messages: [], notes: [], profiles: [], sessions: [], _seq: {} };
+  _db = { notebooks: [], sources: [], messages: [], notes: [], profiles: [], sessions: [], security_events: [], _seq: {} };
   seed();
   save();
   return _db;
@@ -87,6 +87,7 @@ const db = {
     if (!Array.isArray(_db.notes)) _db.notes = [];
     if (!Array.isArray(_db.profiles)) _db.profiles = [];
     if (!Array.isArray(_db.sessions)) _db.sessions = [];
+    if (!Array.isArray(_db.security_events)) _db.security_events = [];
     if (!_db._seq || typeof _db._seq !== 'object') _db._seq = {};
     if (Array.isArray(_db.profiles) && _db.profiles.length > 0) {
       _db.profiles = _db.profiles.map(p => ({ ...p, role: normalizeRole(p.role) }));
@@ -241,6 +242,33 @@ const db = {
     const before = _db.sessions.length;
     _db.sessions = _db.sessions.filter(s => s.token_hash !== tokenHash);
     if (_db.sessions.length !== before) save();
+  },
+  logSecurityEvent(type, severity, message, meta = {}) {
+    load();
+    if (!Array.isArray(_db.security_events)) _db.security_events = [];
+    const ev = {
+      id: nextId('security_events'),
+      type: String(type || 'unknown'),
+      severity: ['low', 'medium', 'high'].includes(severity) ? severity : 'low',
+      message: String(message || ''),
+      meta: meta && typeof meta === 'object' ? meta : {},
+      created_at: now()
+    };
+    _db.security_events.push(ev);
+    // Keep only most recent 5000 events.
+    if (_db.security_events.length > 5000) {
+      _db.security_events = _db.security_events.slice(-5000);
+    }
+    save();
+    return ev;
+  },
+  getSecurityEvents(limit = 200) {
+    load();
+    if (!Array.isArray(_db.security_events)) _db.security_events = [];
+    const n = Math.max(1, Math.min(Number(limit) || 200, 1000));
+    return [..._db.security_events]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, n);
   },
 
   // Notebooks

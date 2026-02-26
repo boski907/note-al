@@ -12,6 +12,11 @@ const OWNER_ONLY_MODE = String(process.env.OWNER_ONLY_MODE || '0') === '1';
 const OWNER_USERNAME = String(process.env.OWNER_USERNAME || '');
 const OWNER_PASSWORD = String(process.env.OWNER_PASSWORD || '');
 
+function getClientIp(req) {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || req.ip || 'unknown-ip';
+}
+
 // ── Middleware ──────────────────────────────────────────────────────────────
 app.use(cors({
   origin(origin, cb) {
@@ -49,18 +54,45 @@ function ownerOnly(req, res, next) {
   if (!OWNER_ONLY_MODE) return next();
   if (req.path === '/api/health') return next();
   if (!OWNER_USERNAME || !OWNER_PASSWORD) {
+    db.logSecurityEvent('owner_mode_misconfigured', 'high', 'Owner-only mode enabled without credentials', {
+      path: req.path,
+      ip: getClientIp(req),
+      method: req.method
+    });
     return res.status(503).json({ error: 'OWNER_ONLY_MODE is enabled but owner credentials are not configured' });
   }
 
   const auth = String(req.headers.authorization || '');
-  if (!auth.startsWith('Basic ')) return unauthorized(res);
+  if (!auth.startsWith('Basic ')) {
+    db.logSecurityEvent('owner_basic_auth_missing', 'medium', 'Missing owner basic auth header', {
+      path: req.path,
+      ip: getClientIp(req),
+      method: req.method
+    });
+    return unauthorized(res);
+  }
   const decoded = Buffer.from(auth.slice(6), 'base64').toString('utf8');
   const split = decoded.indexOf(':');
-  if (split < 0) return unauthorized(res);
+  if (split < 0) {
+    db.logSecurityEvent('owner_basic_auth_malformed', 'medium', 'Malformed owner basic auth header', {
+      path: req.path,
+      ip: getClientIp(req),
+      method: req.method
+    });
+    return unauthorized(res);
+  }
 
   const username = decoded.slice(0, split);
   const password = decoded.slice(split + 1);
-  if (username !== OWNER_USERNAME || password !== OWNER_PASSWORD) return unauthorized(res);
+  if (username !== OWNER_USERNAME || password !== OWNER_PASSWORD) {
+    db.logSecurityEvent('owner_basic_auth_failed', 'high', 'Invalid owner basic auth credentials', {
+      path: req.path,
+      ip: getClientIp(req),
+      method: req.method,
+      username
+    });
+    return unauthorized(res);
+  }
   return next();
 }
 
@@ -100,6 +132,11 @@ function sessionAuth(req, res, next) {
     if (db.getProfileCount() === 0) {
       return res.status(403).json({ error: 'no profiles exist yet; create one via /api/auth/bootstrap' });
     }
+    db.logSecurityEvent('session_auth_failed', 'medium', 'Session auth failed', {
+      path: req.path,
+      ip: getClientIp(req),
+      method: req.method
+    });
     return res.status(401).json({ error: 'authentication required' });
   }
   req.profile = session.profile;
@@ -118,6 +155,11 @@ function csrfProtection(req, res, next) {
   if (req.path === '/api/health') return next();
   const token = String(req.headers['x-csrf-token'] || '');
   if (!req.csrfToken || !token || token !== req.csrfToken) {
+    db.logSecurityEvent('csrf_failed', 'high', 'Invalid CSRF token', {
+      path: req.path,
+      ip: getClientIp(req),
+      method: req.method
+    });
     return res.status(403).json({ error: 'invalid csrf token' });
   }
   return next();
@@ -132,6 +174,7 @@ const sourcesRouter   = require('./routes/sources');
 const chatRouter      = require('./routes/chat');
 const transcribeRouter = require('./routes/transcribe');
 const profilesRouter = require('./routes/profiles');
+const securityRouter = require('./routes/security');
 
 app.use('/api/auth', authRouter);
 app.use('/api/notebooks', notebooksRouter);
@@ -139,6 +182,7 @@ app.use('/api', sourcesRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/transcribe', transcribeRouter);
 app.use('/api/profiles', profilesRouter);
+app.use('/api/security', securityRouter);
 
 // ── Health check ────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {

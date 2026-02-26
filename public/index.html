@@ -230,6 +230,7 @@
     <div class="studio-tab" onclick="switchStudioTab('notes',this)">Notes</div>
     <div class="studio-tab" onclick="switchStudioTab('mind',this)">Mind Map</div>
     <div class="studio-tab" onclick="switchStudioTab('profiles',this)">Profiles</div>
+    <div class="studio-tab" onclick="switchStudioTab('security',this)">Security</div>
   </div>
   <div class="studio-content" id="studio-content"></div>
 </div>
@@ -399,6 +400,7 @@ let sources = [];
 let messages = [];
 let notesList = [];
 let profiles = [];
+let securityEvents = [];
 let uploadTab = 'file';
 let studioTab = 'studio';
 let isRecording = false;
@@ -543,7 +545,7 @@ async function submitAuth() {
     csrfToken = String(out.csrfToken || '');
     updateAuthUi();
     closeAuthModal();
-    await Promise.all([loadNotebooks(), loadProfiles()]);
+    await Promise.all([loadNotebooks(), loadProfiles(), loadSecurityEvents()]);
     showToast(authMode === 'bootstrap' ? '✅ Account created and signed in' : '✅ Signed in');
   } catch (e) {
     err.textContent = e.message;
@@ -560,6 +562,7 @@ async function logout() {
   messages = [];
   notesList = [];
   profiles = [];
+  securityEvents = [];
   renderNotebooks();
   renderSources();
   renderMessages();
@@ -621,6 +624,21 @@ async function loadProfiles() {
   try {
     profiles = await api('GET', '/api/profiles');
     if (studioTab === 'profiles') renderStudio();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function loadSecurityEvents() {
+  if (!currentProfile || currentProfile.role !== 'owner') {
+    securityEvents = [];
+    if (studioTab === 'security') renderStudio();
+    return;
+  }
+  try {
+    const out = await api('GET', '/api/security/events?limit=200');
+    securityEvents = Array.isArray(out.events) ? out.events : [];
+    if (studioTab === 'security') renderStudio();
   } catch (e) {
     console.error(e);
   }
@@ -741,6 +759,27 @@ function renderStudio() {
         </div>`).join('') : '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No users found.</div>'}
       ` : ''}
     `;
+  } else if (studioTab === 'security') {
+    if (!currentProfile || currentProfile.role !== 'owner') {
+      el.innerHTML = `<div style="font-size:12px;color:var(--text3);padding:6px 0;">Security monitoring is available only for owner accounts.</div>`;
+      return;
+    }
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="font-size:12px;color:var(--text3);">Recent security events</div>
+        <button class="topbar-btn" onclick="refreshSecurityEvents()">Refresh</button>
+      </div>
+      ${securityEvents.length ? securityEvents.map(ev => `
+        <div class="note-item">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <div class="note-title">${esc(ev.type)}</div>
+            <div class="note-meta">${esc((ev.severity || 'low').toUpperCase())}</div>
+          </div>
+          <div class="note-body">${esc(ev.message || '')}</div>
+          <div class="note-meta" style="margin-top:8px;">${formatEventTs(ev.created_at)}</div>
+        </div>
+      `).join('') : '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No security events yet.</div>'}
+    `;
   }
 }
 
@@ -754,7 +793,13 @@ function switchStudioTab(tab, el) {
   studioTab = tab;
   document.querySelectorAll('.studio-tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
+  if (tab === 'security') loadSecurityEvents();
   renderStudio();
+}
+
+async function refreshSecurityEvents() {
+  await loadSecurityEvents();
+  showToast('Security events refreshed');
 }
 
 function useSuggestion(text) {
@@ -1175,6 +1220,13 @@ function formatTs(ts) {
   if (!ts) return '';
   const d = new Date(ts.includes('T') ? ts : ts + 'Z');
   return isNaN(d) ? '' : d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+}
+
+function formatEventTs(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d)) return '';
+  return d.toLocaleString([], { month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' });
 }
 
 function fmtSize(b) {

@@ -42,6 +42,10 @@ function recordFailure(key) {
 function clearFailures(key) {
   attempts.delete(key);
 }
+function requestIp(req) {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || req.ip || 'unknown-ip';
+}
 
 router.get('/status', (req, res) => {
   res.json({ hasProfiles: db.getProfileCount() > 0 });
@@ -59,6 +63,10 @@ router.post('/bootstrap', (req, res) => {
   const profile = db.createProfile(username, password, 'owner');
   if (!profile) return res.status(409).json({ error: 'username already exists' });
   const session = db.createSession(profile.id);
+  db.logSecurityEvent('owner_bootstrap', 'medium', 'Owner account bootstrapped', {
+    username: profile.username,
+    ip: requestIp(req)
+  });
   res.cookie('notematica_session', session.token, cookieOpts());
   return res.status(201).json({ expires_at: session.expires_at, csrfToken: session.csrf_token, profile });
 });
@@ -73,17 +81,32 @@ router.post('/login', (req, res) => {
   const key = limitKey(req, username);
   const st = getAttemptState(key);
   if (st.lockUntil && st.lockUntil > nowMs()) {
+    db.logSecurityEvent('login_locked', 'high', 'Login blocked by temporary lockout', {
+      username,
+      ip: requestIp(req)
+    });
     return res.status(429).json({ error: 'too many login attempts; try again later' });
   }
 
   const profile = db.verifyProfileCredentials(username, password);
   if (!profile) {
-    recordFailure(key);
+    const failed = recordFailure(key);
+    db.logSecurityEvent('login_failed', failed.lockUntil ? 'high' : 'medium', 'Invalid login attempt', {
+      username,
+      ip: requestIp(req),
+      failures: failed.count,
+      locked: !!failed.lockUntil
+    });
     return res.status(401).json({ error: 'invalid username or password' });
   }
   clearFailures(key);
 
   const session = db.createSession(profile.id);
+  db.logSecurityEvent('login_success', 'low', 'User login success', {
+    username: profile.username,
+    role: profile.role,
+    ip: requestIp(req)
+  });
   res.cookie('notematica_session', session.token, cookieOpts());
   return res.json({ expires_at: session.expires_at, csrfToken: session.csrf_token, profile });
 });
@@ -97,6 +120,10 @@ router.post('/logout', (req, res) => {
   const auth = String(req.headers.authorization || '');
   const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
   const token = bearer || String(req.headers.cookie || '').split(';').map(v => v.trim()).find(v => v.startsWith('notematica_session='))?.split('=')[1] || '';
+  db.logSecurityEvent('logout', 'low', 'User logout', {
+    username: req.profile ? req.profile.username : 'unknown',
+    ip: requestIp(req)
+  });
   if (token) db.revokeSession(decodeURIComponent(token));
   res.clearCookie('notematica_session', { path: '/' });
   return res.json({ success: true });

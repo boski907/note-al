@@ -4,6 +4,10 @@ const db = require('../db/schema');
 
 function requireOwner(req, res, next) {
   if (!req.profile || req.profile.role !== 'owner') {
+    db.logSecurityEvent('owner_access_denied', 'medium', 'Non-owner attempted owner-only profile endpoint', {
+      username: req.profile ? req.profile.username : 'anonymous',
+      path: req.path
+    });
     return res.status(403).json({ error: 'owner access required' });
   }
   return next();
@@ -29,6 +33,10 @@ router.patch('/me', (req, res) => {
   const out = db.updateOwnProfile(req.profile.id, username);
   if (out?.error === 'not_found') return res.status(404).json({ error: 'profile not found' });
   if (out?.error === 'duplicate') return res.status(409).json({ error: 'username already exists' });
+  db.logSecurityEvent('profile_updated', 'low', 'User updated own profile username', {
+    profileId: req.profile.id,
+    newUsername: out.username
+  });
   return res.json(out);
 });
 
@@ -42,6 +50,10 @@ router.patch('/me/password', (req, res) => {
   const out = db.updateOwnProfilePassword(req.profile.id, currentPassword, newPassword);
   if (out?.error === 'not_found') return res.status(404).json({ error: 'profile not found' });
   if (out?.error === 'bad_password') return res.status(401).json({ error: 'current password is incorrect' });
+  db.logSecurityEvent('password_changed', 'medium', 'User changed own password', {
+    profileId: req.profile.id,
+    username: req.profile.username
+  });
   return res.json(out);
 });
 
@@ -54,6 +66,10 @@ router.delete('/me', (req, res) => {
   if (out?.error === 'not_found') return res.status(404).json({ error: 'profile not found' });
   if (out?.error === 'bad_password') return res.status(401).json({ error: 'password is incorrect' });
   if (out?.error === 'last_owner') return res.status(409).json({ error: 'cannot delete the last owner account' });
+  db.logSecurityEvent('account_deleted', 'high', 'User deleted own account', {
+    profileId: req.profile.id,
+    username: req.profile.username
+  });
   return res.json({ success: true });
 });
 
