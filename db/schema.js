@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { sendSecurityAlert } = require('../services/discord');
 
 const DB_PATH = path.join(__dirname, '..', 'notematica.db.json');
 
@@ -260,6 +261,12 @@ const db = {
       _db.security_events = _db.security_events.slice(-5000);
     }
     save();
+    // Fire-and-forget Discord alerting for medium/high events.
+    Promise.resolve(sendSecurityAlert(ev)).catch((err) => {
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn('Discord alert delivery failed:', err.message);
+      }
+    });
     return ev;
   },
   getSecurityEvents(limit = 200) {

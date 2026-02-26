@@ -25,6 +25,9 @@ OWNER_ONLY_MODE=1
 OWNER_USERNAME=your-username
 OWNER_PASSWORD=your-strong-password
 APP_ORIGIN=https://notematica.com
+DISCORD_ALERTS_ENABLED=1
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+DISCORD_ALERT_MIN_SEVERITY=medium
 ```
 
 `OWNER_ONLY_MODE=1` locks the entire app and API to HTTP Basic Auth using `OWNER_USERNAME` and `OWNER_PASSWORD`.
@@ -55,6 +58,7 @@ Open **http://localhost:3000** in your browser.
 | 👤 User profiles | Create, edit, delete profiles and change passwords |
 | 🔐 Session auth | Sign in/out with profile credentials (bearer token sessions) |
 | 🛡️ Security monitoring | Owner-only security event feed (failed logins, lockouts, CSRF/auth failures, account actions) |
+| 🔔 Discord alerts | Medium/high security events posted to your Discord webhook |
 
 ---
 
@@ -150,3 +154,4 @@ Same as Railway — connect repo, set env var, deploy.
 - Login has basic brute-force protection (rate limit + temporary lockout on repeated failures).
 - CSRF protection is enforced for state-changing API routes (`POST`, `PATCH`, `PUT`, `DELETE`) after login.
 - In production, set `APP_ORIGIN` to your exact frontend origin to tighten CORS.
+- Security dashboard is hidden from the main UI; alerts flow to Discord when webhook vars are set.

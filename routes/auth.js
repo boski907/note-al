@@ -97,6 +97,24 @@ router.post('/login', (req, res) => {
       failures: failed.count,
       locked: !!failed.lockUntil
     });
+    if (failed.count === 6) {
+      db.logSecurityEvent('login_repeated_failures', 'medium', 'Repeated login failures for one account fingerprint', {
+        username,
+        ip: requestIp(req),
+        count: failed.count,
+        threshold: 6,
+        window: '15m'
+      });
+    }
+    if (failed.count === 8) {
+      db.logSecurityEvent('login_bruteforce_suspected', 'high', 'Potential brute-force login activity', {
+        username,
+        ip: requestIp(req),
+        count: failed.count,
+        threshold: 8,
+        window: '15m'
+      });
+    }
     return res.status(401).json({ error: 'invalid username or password' });
   }
   clearFailures(key);
