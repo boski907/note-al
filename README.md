@@ -24,6 +24,7 @@ PORT=3000
 OWNER_ONLY_MODE=1
 OWNER_USERNAME=your-username
 OWNER_PASSWORD=your-strong-password
+APP_ORIGIN=https://notematica.com
 ```
 
 `OWNER_ONLY_MODE=1` locks the entire app and API to HTTP Basic Auth using `OWNER_USERNAME` and `OWNER_PASSWORD`.
@@ -145,3 +146,5 @@ Same as Railway — connect repo, set env var, deploy.
 - After that, all API routes (except health + auth bootstrap/login/status) require sign-in.
 - Sessions use HttpOnly cookies (not localStorage tokens) and can be revoked with `POST /api/auth/logout`.
 - Login has basic brute-force protection (rate limit + temporary lockout on repeated failures).
+- CSRF protection is enforced for state-changing API routes (`POST`, `PATCH`, `PUT`, `DELETE`) after login.
+- In production, set `APP_ORIGIN` to your exact frontend origin to tighten CORS.

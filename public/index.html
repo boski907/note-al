@@ -408,6 +408,7 @@ let pendingAudioFile = null;
 let pendingVideoFile = null;
 let currentProfile = null;
 let authMode = 'login';
+let csrfToken = '';
 
 const API = ''; // same-origin
 
@@ -423,6 +424,9 @@ const SUGGESTIONS = [
 async function api(method, path, body, opts = {}) {
   const fetchOpts = { method, headers: {} };
   fetchOpts.credentials = 'same-origin';
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && csrfToken) {
+    fetchOpts.headers['X-CSRF-Token'] = csrfToken;
+  }
   if (body && !(body instanceof FormData)) {
     fetchOpts.headers['Content-Type'] = 'application/json';
     fetchOpts.body = JSON.stringify(body);
@@ -456,6 +460,7 @@ async function init() {
 
 function clearAuth() {
   currentProfile = null;
+  csrfToken = '';
   updateAuthUi();
 }
 
@@ -510,6 +515,7 @@ async function ensureAuth() {
   try {
     const me = await api('GET', '/api/auth/me', null, { skipAuthRedirect: true });
     currentProfile = me.profile || null;
+    csrfToken = String(me.csrfToken || '');
     if (!currentProfile) throw new Error('Invalid session');
     updateAuthUi();
     closeAuthModal();
@@ -534,6 +540,7 @@ async function submitAuth() {
   try {
     const out = await api('POST', path, { username, password }, { skipAuthRedirect: true });
     currentProfile = out.profile || null;
+    csrfToken = String(out.csrfToken || '');
     updateAuthUi();
     closeAuthModal();
     await Promise.all([loadNotebooks(), loadProfiles()]);

@@ -11,7 +11,7 @@ function nowMs() { return Date.now(); }
 function cookieOpts() {
   return {
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: 'strict',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000
@@ -60,7 +60,7 @@ router.post('/bootstrap', (req, res) => {
   if (!profile) return res.status(409).json({ error: 'username already exists' });
   const session = db.createSession(profile.id);
   res.cookie('notematica_session', session.token, cookieOpts());
-  return res.status(201).json({ expires_at: session.expires_at, profile });
+  return res.status(201).json({ expires_at: session.expires_at, csrfToken: session.csrf_token, profile });
 });
 
 router.post('/login', (req, res) => {
@@ -85,12 +85,12 @@ router.post('/login', (req, res) => {
 
   const session = db.createSession(profile.id);
   res.cookie('notematica_session', session.token, cookieOpts());
-  return res.json({ expires_at: session.expires_at, profile });
+  return res.json({ expires_at: session.expires_at, csrfToken: session.csrf_token, profile });
 });
 
 router.get('/me', (req, res) => {
   if (!req.profile) return res.status(401).json({ error: 'not authenticated' });
-  return res.json({ profile: req.profile });
+  return res.json({ profile: req.profile, csrfToken: String(req.csrfToken || '') });
 });
 
 router.post('/logout', (req, res) => {

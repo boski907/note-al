@@ -61,6 +61,10 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(String(token)).digest('hex');
 }
 
+function newCsrfToken() {
+  return crypto.randomBytes(24).toString('hex');
+}
+
 function seed() {
   const nbId = nextId('notebooks');
   _db.notebooks.push({ id: nbId, name: 'My Research', source_count: 1, created_at: now(), updated_at: now() });
@@ -91,6 +95,9 @@ const db = {
         const idx = _db.profiles.findIndex(p => p.id === oldest.id);
         if (idx >= 0) _db.profiles[idx].role = 'owner';
       }
+    }
+    if (Array.isArray(_db.sessions)) {
+      _db.sessions = _db.sessions.map(s => ({ ...s, csrf_token: String(s.csrf_token || newCsrfToken()) }));
     }
     save();
   },
@@ -196,14 +203,15 @@ const db = {
       id: nextId('sessions'),
       profile_id: +profileId,
       token_hash: hashToken(token),
+      csrf_token: newCsrfToken(),
       created_at: now(),
       expires_at: expiresAt
     };
     _db.sessions.push(session);
     save();
-    return { token, expires_at: expiresAt };
+    return { token, csrf_token: session.csrf_token, expires_at: expiresAt };
   },
-  getProfileByToken(token) {
+  getSessionByToken(token) {
     load();
     if (!Array.isArray(_db.sessions) || !Array.isArray(_db.profiles)) return null;
     const tokenHash = hashToken(token);
@@ -216,7 +224,15 @@ const db = {
     }
     const profile = _db.profiles.find(p => p.id === session.profile_id);
     if (!profile) return null;
-    return { id: profile.id, username: profile.username, role: normalizeRole(profile.role), created_at: profile.created_at, updated_at: profile.updated_at };
+    return {
+      token,
+      csrf_token: String(session.csrf_token || ''),
+      profile: { id: profile.id, username: profile.username, role: normalizeRole(profile.role), created_at: profile.created_at, updated_at: profile.updated_at }
+    };
+  },
+  getProfileByToken(token) {
+    const s = db.getSessionByToken(token);
+    return s ? s.profile : null;
   },
   revokeSession(token) {
     load();

@@ -6,14 +6,39 @@ const db = require('./db/schema');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const IS_PROD = process.env.NODE_ENV === 'production';
+const APP_ORIGIN = String(process.env.APP_ORIGIN || '');
 const OWNER_ONLY_MODE = String(process.env.OWNER_ONLY_MODE || '0') === '1';
 const OWNER_USERNAME = String(process.env.OWNER_USERNAME || '');
 const OWNER_PASSWORD = String(process.env.OWNER_PASSWORD || '');
 
 // ── Middleware ──────────────────────────────────────────────────────────────
-app.use(cors());
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin) return cb(null, true);
+    if (!IS_PROD) return cb(null, true);
+    if (!APP_ORIGIN) return cb(null, false);
+    return cb(null, origin === APP_ORIGIN);
+  },
+  credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  if (IS_PROD) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://img.youtube.com; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+  );
+  return next();
+});
 
 function unauthorized(res) {
   res.set('WWW-Authenticate', 'Basic realm="Notematica Owner Access", charset="UTF-8"');
@@ -70,19 +95,35 @@ function sessionAuth(req, res, next) {
   if (req.path === '/api/auth/login' && req.method === 'POST') return next();
 
   const token = getSessionToken(req);
-  const profile = token ? db.getProfileByToken(token) : null;
-  if (!profile) {
+  const session = token ? db.getSessionByToken(token) : null;
+  if (!session) {
     if (db.getProfileCount() === 0) {
       return res.status(403).json({ error: 'no profiles exist yet; create one via /api/auth/bootstrap' });
     }
     return res.status(401).json({ error: 'authentication required' });
   }
-  req.profile = profile;
+  req.profile = session.profile;
+  req.csrfToken = String(session.csrf_token || '');
   req.authToken = token;
   return next();
 }
 
 app.use(sessionAuth);
+
+function csrfProtection(req, res, next) {
+  if (!req.path.startsWith('/api')) return next();
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  if (req.path === '/api/auth/bootstrap') return next();
+  if (req.path === '/api/auth/login') return next();
+  if (req.path === '/api/health') return next();
+  const token = String(req.headers['x-csrf-token'] || '');
+  if (!req.csrfToken || !token || token !== req.csrfToken) {
+    return res.status(403).json({ error: 'invalid csrf token' });
+  }
+  return next();
+}
+
+app.use(csrfProtection);
 
 // ── Routes ──────────────────────────────────────────────────────────────────
 const authRouter = require('./routes/auth');
