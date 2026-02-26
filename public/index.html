@@ -620,6 +620,11 @@ async function loadNotes(nbId) {
 }
 
 async function loadProfiles() {
+  if (!currentProfile || currentProfile.role !== 'owner') {
+    profiles = [];
+    if (studioTab === 'profiles') renderStudio();
+    return;
+  }
   try {
     profiles = await api('GET', '/api/profiles');
     if (studioTab === 'profiles') renderStudio();
@@ -722,25 +727,26 @@ function renderStudio() {
       </div>
       <div id="mind-map-area"></div>`;
   } else if (studioTab === 'profiles') {
+    const me = currentProfile || {};
     el.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div style="font-size:12px;color:var(--text3);">Manage app user profiles</div>
-        <button class="topbar-btn primary" onclick="createProfile()">＋ New</button>
+      <div class="note-item">
+        <div class="note-title">My account</div>
+        <div class="note-meta">Role: ${esc(me.role || 'user')}</div>
+        <div class="note-body" style="margin-top:6px;">${esc(me.username || '')}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+          <button class="topbar-btn" onclick="updateMyUsername()">Edit username</button>
+          <button class="topbar-btn" onclick="changeMyPassword()">Change password</button>
+          <button class="topbar-btn" onclick="deleteMyAccount()">Delete my account</button>
+        </div>
       </div>
+      ${me.role === 'owner' ? `
+      <div style="font-size:12px;color:var(--text3);margin:12px 0 6px;">User directory (owner view only)</div>
       ${profiles.length ? profiles.map(p => `
         <div class="note-item">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
-            <div>
-              <div class="note-title" style="margin:0;">${esc(p.username)}</div>
-              <div class="note-meta">Created ${formatTs(p.created_at)}</div>
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="topbar-btn" onclick="editProfile(${p.id})">Edit username</button>
-            <button class="topbar-btn" onclick="changeProfilePassword(${p.id})">Change password</button>
-            <button class="topbar-btn" onclick="deleteProfile(${p.id})">Delete profile</button>
-          </div>
-        </div>`).join('') : '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No profiles yet. Create one to add login credentials.</div>'}
+          <div class="note-title">${esc(p.username)}</div>
+          <div class="note-meta">Role: ${esc(p.role || 'user')} · Created ${formatTs(p.created_at)}</div>
+        </div>`).join('') : '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No users found.</div>'}
+      ` : ''}
     `;
   }
 }
@@ -812,50 +818,41 @@ async function deleteNote(id) {
   renderStudio();
 }
 
-async function createProfile() {
-  const username = prompt('Username (minimum 3 characters):');
-  if (username === null) return;
-  const password = prompt('Password (minimum 8 characters):');
-  if (password === null) return;
-
-  await api('POST', '/api/profiles', { username: username.trim(), password });
-  await loadProfiles();
-  showToast('✅ Profile created');
+async function refreshMe() {
+  const out = await api('GET', '/api/auth/me', null, { skipAuthRedirect: true });
+  currentProfile = out.profile || currentProfile;
+  updateAuthUi();
 }
 
-async function editProfile(id) {
-  const profile = profiles.find(p => p.id === id);
-  if (!profile) return;
-  const username = prompt('New username:', profile.username);
+async function updateMyUsername() {
+  const username = prompt('New username:', (currentProfile && currentProfile.username) || '');
   if (username === null) return;
 
-  await api('PATCH', `/api/profiles/${id}`, { username: username.trim() });
+  await api('PATCH', '/api/profiles/me', { username: username.trim() });
+  await refreshMe();
   await loadProfiles();
   showToast('✅ Username updated');
 }
 
-async function changeProfilePassword(id) {
+async function changeMyPassword() {
   const currentPassword = prompt('Current password:');
   if (currentPassword === null) return;
   const newPassword = prompt('New password (minimum 8 characters):');
   if (newPassword === null) return;
 
-  await api('PATCH', `/api/profiles/${id}/password`, { currentPassword, newPassword });
-  await loadProfiles();
+  await api('PATCH', '/api/profiles/me/password', { currentPassword, newPassword });
   showToast('✅ Password updated');
 }
 
-async function deleteProfile(id) {
-  const profile = profiles.find(p => p.id === id);
-  if (!profile) return;
-  if (!confirm(`Delete profile "${profile.username}"?`)) return;
+async function deleteMyAccount() {
+  if (!confirm('Delete your account? This action cannot be undone.')) return;
 
   const password = prompt('Enter current password to confirm delete:');
   if (password === null) return;
 
-  await api('DELETE', `/api/profiles/${id}`, { password });
-  await loadProfiles();
-  showToast('✅ Profile deleted');
+  await api('DELETE', '/api/profiles/me', { password });
+  await logout();
+  showToast('✅ Account deleted');
 }
 
 function renderMindMap() {

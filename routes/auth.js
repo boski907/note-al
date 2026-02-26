@@ -15,7 +15,7 @@ router.post('/bootstrap', (req, res) => {
   if (username.length < 3) return res.status(400).json({ error: 'username must be at least 3 characters' });
   if (password.length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
 
-  const profile = db.createProfile(username, password);
+  const profile = db.createProfile(username, password, 'owner');
   if (!profile) return res.status(409).json({ error: 'username already exists' });
   const session = db.createSession(profile.id);
   return res.status(201).json({ token: session.token, expires_at: session.expires_at, profile });

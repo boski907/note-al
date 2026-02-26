@@ -36,6 +36,10 @@ function normalizeUsername(username) {
   return String(username || '').trim().toLowerCase();
 }
 
+function normalizeRole(role) {
+  return role === 'owner' ? 'owner' : 'user';
+}
+
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(password, salt, 64).toString('hex');
@@ -80,6 +84,14 @@ const db = {
     if (!Array.isArray(_db.profiles)) _db.profiles = [];
     if (!Array.isArray(_db.sessions)) _db.sessions = [];
     if (!_db._seq || typeof _db._seq !== 'object') _db._seq = {};
+    if (Array.isArray(_db.profiles) && _db.profiles.length > 0) {
+      _db.profiles = _db.profiles.map(p => ({ ...p, role: normalizeRole(p.role) }));
+      if (!_db.profiles.some(p => p.role === 'owner')) {
+        const oldest = [..._db.profiles].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0];
+        const idx = _db.profiles.findIndex(p => p.id === oldest.id);
+        if (idx >= 0) _db.profiles[idx].role = 'owner';
+      }
+    }
     save();
   },
 
@@ -91,10 +103,17 @@ const db = {
       save();
     }
     return _db.profiles
-      .map(p => ({ id: p.id, username: p.username, created_at: p.created_at, updated_at: p.updated_at }))
+      .map(p => ({ id: p.id, username: p.username, role: normalizeRole(p.role), created_at: p.created_at, updated_at: p.updated_at }))
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   },
-  createProfile(username, password) {
+  getProfilePublic(id) {
+    load();
+    if (!Array.isArray(_db.profiles)) _db.profiles = [];
+    const p = _db.profiles.find(x => x.id === +id);
+    if (!p) return null;
+    return { id: p.id, username: p.username, role: normalizeRole(p.role), created_at: p.created_at, updated_at: p.updated_at };
+  },
+  createProfile(username, password, role = 'user') {
     load();
     if (!Array.isArray(_db.profiles)) _db.profiles = [];
     const normalized = normalizeUsername(username);
@@ -103,50 +122,54 @@ const db = {
     const profile = {
       id: nextId('profiles'),
       username: String(username).trim(),
+      role: normalizeRole(role),
       password_hash: hashPassword(password),
       created_at: now(),
       updated_at: now()
     };
     _db.profiles.push(profile);
     save();
-    return { id: profile.id, username: profile.username, created_at: profile.created_at, updated_at: profile.updated_at };
+    return { id: profile.id, username: profile.username, role: profile.role, created_at: profile.created_at, updated_at: profile.updated_at };
   },
-  updateProfile(id, username) {
+  updateOwnProfile(profileId, username) {
     load();
     if (!Array.isArray(_db.profiles)) _db.profiles = [];
-    const profile = _db.profiles.find(p => p.id === +id);
+    const profile = _db.profiles.find(p => p.id === +profileId);
     if (!profile) return { error: 'not_found' };
 
     const normalized = normalizeUsername(username);
-    const exists = _db.profiles.some(p => p.id !== +id && normalizeUsername(p.username) === normalized);
+    const exists = _db.profiles.some(p => p.id !== +profileId && normalizeUsername(p.username) === normalized);
     if (exists) return { error: 'duplicate' };
 
     profile.username = String(username).trim();
     profile.updated_at = now();
     save();
-    return { id: profile.id, username: profile.username, created_at: profile.created_at, updated_at: profile.updated_at };
+    return { id: profile.id, username: profile.username, role: normalizeRole(profile.role), created_at: profile.created_at, updated_at: profile.updated_at };
   },
-  updateProfilePassword(id, currentPassword, newPassword) {
+  updateOwnProfilePassword(profileId, currentPassword, newPassword) {
     load();
     if (!Array.isArray(_db.profiles)) _db.profiles = [];
-    const profile = _db.profiles.find(p => p.id === +id);
+    const profile = _db.profiles.find(p => p.id === +profileId);
     if (!profile) return { error: 'not_found' };
     if (!verifyPassword(currentPassword, profile.password_hash)) return { error: 'bad_password' };
 
     profile.password_hash = hashPassword(newPassword);
     profile.updated_at = now();
     save();
-    return { id: profile.id, username: profile.username, created_at: profile.created_at, updated_at: profile.updated_at };
+    return { id: profile.id, username: profile.username, role: normalizeRole(profile.role), created_at: profile.created_at, updated_at: profile.updated_at };
   },
-  deleteProfile(id, password) {
+  deleteOwnProfile(profileId, password) {
     load();
     if (!Array.isArray(_db.profiles)) _db.profiles = [];
-    const idx = _db.profiles.findIndex(p => p.id === +id);
+    const idx = _db.profiles.findIndex(p => p.id === +profileId);
     if (idx < 0) return { error: 'not_found' };
     if (!verifyPassword(password, _db.profiles[idx].password_hash)) return { error: 'bad_password' };
-    const profileId = _db.profiles[idx].id;
+    const role = normalizeRole(_db.profiles[idx].role);
+    const ownerCount = _db.profiles.filter(p => normalizeRole(p.role) === 'owner').length;
+    if (role === 'owner' && ownerCount <= 1) return { error: 'last_owner' };
+    const deletedProfileId = _db.profiles[idx].id;
     _db.profiles.splice(idx, 1);
-    _db.sessions = _db.sessions.filter(s => s.profile_id !== profileId);
+    _db.sessions = _db.sessions.filter(s => s.profile_id !== deletedProfileId);
     save();
     return { success: true };
   },
@@ -157,7 +180,7 @@ const db = {
     const profile = _db.profiles.find(p => normalizeUsername(p.username) === normalized);
     if (!profile) return null;
     if (!verifyPassword(password, profile.password_hash)) return null;
-    return { id: profile.id, username: profile.username, created_at: profile.created_at, updated_at: profile.updated_at };
+    return { id: profile.id, username: profile.username, role: normalizeRole(profile.role), created_at: profile.created_at, updated_at: profile.updated_at };
   },
   getProfileCount() {
     load();
@@ -193,7 +216,7 @@ const db = {
     }
     const profile = _db.profiles.find(p => p.id === session.profile_id);
     if (!profile) return null;
-    return { id: profile.id, username: profile.username, created_at: profile.created_at, updated_at: profile.updated_at };
+    return { id: profile.id, username: profile.username, role: normalizeRole(profile.role), created_at: profile.created_at, updated_at: profile.updated_at };
   },
   revokeSession(token) {
     load();
