@@ -406,7 +406,6 @@ let recognition = null;
 let liveTranscriptText = '';
 let pendingAudioFile = null;
 let pendingVideoFile = null;
-let authToken = localStorage.getItem('notematica_auth_token') || '';
 let currentProfile = null;
 let authMode = 'login';
 
@@ -423,7 +422,7 @@ const SUGGESTIONS = [
 // ─── API helpers ──────────────────────────────────────────────────────────
 async function api(method, path, body, opts = {}) {
   const fetchOpts = { method, headers: {} };
-  if (authToken) fetchOpts.headers.Authorization = `Bearer ${authToken}`;
+  fetchOpts.credentials = 'same-origin';
   if (body && !(body instanceof FormData)) {
     fetchOpts.headers['Content-Type'] = 'application/json';
     fetchOpts.body = JSON.stringify(body);
@@ -455,14 +454,7 @@ async function init() {
   if (authed) await Promise.all([loadNotebooks(), loadProfiles()]);
 }
 
-function setAuthToken(token) {
-  authToken = token || '';
-  if (authToken) localStorage.setItem('notematica_auth_token', authToken);
-  else localStorage.removeItem('notematica_auth_token');
-}
-
 function clearAuth() {
-  setAuthToken('');
   currentProfile = null;
   updateAuthUi();
 }
@@ -515,11 +507,6 @@ async function ensureAuth() {
     return false;
   }
 
-  if (!authToken) {
-    openAuthModal('login');
-    return false;
-  }
-
   try {
     const me = await api('GET', '/api/auth/me', null, { skipAuthRedirect: true });
     currentProfile = me.profile || null;
@@ -546,7 +533,6 @@ async function submitAuth() {
   const path = authMode === 'bootstrap' ? '/api/auth/bootstrap' : '/api/auth/login';
   try {
     const out = await api('POST', path, { username, password }, { skipAuthRedirect: true });
-    setAuthToken(out.token);
     currentProfile = out.profile || null;
     updateAuthUi();
     closeAuthModal();

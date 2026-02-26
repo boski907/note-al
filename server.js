@@ -42,10 +42,24 @@ function ownerOnly(req, res, next) {
 app.use(ownerOnly);
 app.use(express.static(path.join(__dirname, 'public')));
 
-function getBearerToken(req) {
+function parseCookies(req) {
+  const raw = String(req.headers.cookie || '');
+  if (!raw) return {};
+  return raw.split(';').reduce((acc, pair) => {
+    const idx = pair.indexOf('=');
+    if (idx < 0) return acc;
+    const key = pair.slice(0, idx).trim();
+    const value = decodeURIComponent(pair.slice(idx + 1).trim());
+    if (key) acc[key] = value;
+    return acc;
+  }, {});
+}
+
+function getSessionToken(req) {
   const auth = String(req.headers.authorization || '');
-  if (!auth.startsWith('Bearer ')) return '';
-  return auth.slice(7).trim();
+  if (auth.startsWith('Bearer ')) return auth.slice(7).trim();
+  const cookies = parseCookies(req);
+  return String(cookies.notematica_session || '');
 }
 
 function sessionAuth(req, res, next) {
@@ -55,7 +69,7 @@ function sessionAuth(req, res, next) {
   if (req.path === '/api/auth/bootstrap' && req.method === 'POST') return next();
   if (req.path === '/api/auth/login' && req.method === 'POST') return next();
 
-  const token = getBearerToken(req);
+  const token = getSessionToken(req);
   const profile = token ? db.getProfileByToken(token) : null;
   if (!profile) {
     if (db.getProfileCount() === 0) {

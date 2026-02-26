@@ -143,4 +143,5 @@ Same as Railway — connect repo, set env var, deploy.
 
 - On first run (no profiles), the app asks you to create the first account.
 - After that, all API routes (except health + auth bootstrap/login/status) require sign-in.
-- Sessions use bearer tokens and can be revoked with `POST /api/auth/logout`.
+- Sessions use HttpOnly cookies (not localStorage tokens) and can be revoked with `POST /api/auth/logout`.
+- Login has basic brute-force protection (rate limit + temporary lockout on repeated failures).
